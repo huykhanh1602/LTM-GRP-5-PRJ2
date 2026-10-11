@@ -1,60 +1,126 @@
 import './style.css'
-import heroImg from './assets/hero.png'
-import javascriptLogo from './assets/javascript.svg'
-import viteLogo from './assets/vite.svg'
-import { setupCounter } from './counter.js'
 
-document.querySelector('#app').innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${javascriptLogo}" class="framework" alt="JavaScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.js</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+const app = document.querySelector('#app')
 
-<div class="ticks"></div>
+app.innerHTML = `
+  <main class="spectator-page">
+    <header class="page-header">
+      <h1>Oẳn Tù Tì Cờ Vua</h1>
+      <p>Giao diện theo dõi trận đấu</p>
+    </header>
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript" target="_blank">
-          <img class="button-icon" src="${javascriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+    <section class="connection-panel">
+      <label for="room-id">Mã phòng</label>
 
-<div class="ticks"></div>
-<section id="spacer"></section>
+      <div class="room-controls">
+        <input
+          id="room-id"
+          type="text"
+          value="room-01"
+          placeholder="Nhập mã phòng"
+        />
+
+        <button id="connect-button" type="button">
+          Theo dõi
+        </button>
+      </div>
+
+      <p id="connection-status">Chưa kết nối</p>
+    </section>
+
+    <section class="game-panel">
+      <h2>Trạng thái trận đấu</h2>
+      <pre id="game-state">Chưa có dữ liệu trận đấu.</pre>
+    </section>
+
+    <section class="message-panel">
+      <h2>Thông báo từ server</h2>
+      <ul id="message-log"></ul>
+    </section>
+  </main>
 `
 
-setupCounter(document.querySelector('#counter'))
+const roomInput = document.querySelector('#room-id')
+const connectButton = document.querySelector('#connect-button')
+const connectionStatus = document.querySelector('#connection-status')
+const gameState = document.querySelector('#game-state')
+const messageLog = document.querySelector('#message-log')
+
+let socket = null
+
+function addLog(message) {
+  const item = document.createElement('li')
+  item.textContent = message
+  messageLog.prepend(item)
+}
+
+function connectToRoom() {
+  const roomId = roomInput.value.trim()
+
+  if (!roomId) {
+    connectionStatus.textContent = 'Vui lòng nhập mã phòng.'
+    return
+  }
+
+  if (socket) {
+    socket.close()
+    socket = null
+  }
+
+  connectionStatus.textContent = 'Đang kết nối...'
+
+  socket = new WebSocket(
+  `ws://${window.location.hostname}:3000/spectator`
+)
+
+  socket.addEventListener('open', () => {
+    connectionStatus.textContent = 'Đã kết nối, đang tham gia phòng...'
+
+    socket.send(JSON.stringify({
+      type: 'join',
+      roomId: roomId
+    }))
+  })
+
+  socket.addEventListener('message', (event) => {
+    let message
+
+    try {
+      message = JSON.parse(event.data)
+    } catch {
+      addLog('Server gửi dữ liệu không phải JSON hợp lệ.')
+      return
+    }
+
+    addLog(JSON.stringify(message))
+
+    if (message.type === 'joined') {
+      connectionStatus.textContent =
+        `Đang theo dõi phòng ${message.roomId}`
+    }
+
+    if (message.type === 'game_state') {
+      gameState.textContent = JSON.stringify(message, null, 2)
+    }
+
+    if (message.type === 'game_over') {
+      gameState.textContent = JSON.stringify(message, null, 2)
+    }
+
+    if (message.type === 'error') {
+      connectionStatus.textContent =
+        `Lỗi: ${message.code ?? 'UNKNOWN_ERROR'}`
+    }
+  })
+
+  socket.addEventListener('close', () => {
+    connectionStatus.textContent = 'Đã ngắt kết nối.'
+  })
+
+  socket.addEventListener('error', () => {
+    connectionStatus.textContent =
+      'Không thể kết nối. Hãy kiểm tra server game.'
+  })
+}
+
+connectButton.addEventListener('click', connectToRoom)
