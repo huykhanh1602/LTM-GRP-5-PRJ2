@@ -1,0 +1,88 @@
+{
+  "match_info": {
+    "match_id": "M_2026_01",
+    "teams": {
+      "team_a": "Bot_Alpha",
+      "team_b": "Bot_Beta"
+    },
+    "winner": "team_a",
+    "win_reason": "REACHED_BASE",
+    "final_scores": { "team_a": 10, "team_b": 4 }
+  },
+
+  "game_config": {
+    "board": {
+      "width": 8,
+      "height": 8,
+      "special_tiles": [
+        { "pos": [0, 7], "type": "BASE", "owner": "team_a" },
+        { "pos": [7, 0], "type": "BASE", "owner": "team_b" },
+        { "pos": [3, 3], "type": "OBSTACLE" },
+        { "pos": [4, 4], "type": "TRAP" }
+      ]
+    },
+    "max_turns": 100,
+    "turn_mode": "ALTERNATING" 
+  },
+
+  "initial_state": [
+    { "id": "A1", "owner": "team_a", "type": "ROCK", "pos": [0, 0], "hp": 1 },
+    { "id": "A2", "owner": "team_a", "type": "PAPER", "pos": [1, 0], "hp": 1 },
+    { "id": "B1", "owner": "team_b", "type": "UNKNOWN", "pos": [7, 7], "hp": 2 }
+  ],
+
+  "turns": [
+    {
+      "turn": 1,
+      "actions": [
+        {
+          "player": "team_a",
+          "action_type": "MOVE",
+          "piece_id": "A1",
+          "from": [0, 0],
+          "to": [1, 1]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A1",
+          "from": [0, 0],
+          "to": [1, 1]
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "actions": [
+        {
+          "player": "team_b",
+          "action_type": "MOVE",
+          "piece_id": "B1",
+          "from": [7, 7],
+          "to": [1, 1]
+        }
+      ],
+      "events": [
+        {
+          "type": "REVEAL",
+          "piece_id": "B1",
+          "real_type": "SCISSORS"
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "cause": "RPS_RULE",
+          "location": [1, 1],
+          "destroyed_pieces": ["B1"],
+          "damaged_pieces": [
+            { "piece_id": "A1", "old_hp": 1, "new_hp": 1 }
+          ]
+        },
+        {
+          "type": "SCORE_UPDATED",
+          "scores": { "team_a": 1, "team_b": 0 }
+        }
+      ]
+    }
+  ]
+}

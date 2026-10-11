@@ -1,0 +1,167 @@
+{
+  "match_info": {
+    "match_id": "M_2026_ROCK_PAPER_SCISSORS",
+    "teams": {
+      "team_a": "Bot_Alpha",
+      "team_b": "Bot_Beta"
+    },
+    "winner": "team_a",
+    "win_reason": "BASE_CAPTURED",
+    "final_scores": {
+      "team_a": 1,
+      "team_b": 0
+    }
+  },
+
+  "game_config": {
+    "board": {
+      "width": 8,
+      "height": 8,
+      "coordinate_system": "TOP_LEFT_ORIGIN_X_RIGHT_Y_DOWN",
+      "special_tiles": [
+        { "pos": [0, 7], "type": "BASE", "owner": "team_a" },
+        { "pos": [7, 0], "type": "BASE", "owner": "team_b" },
+        { "pos": [3, 3], "type": "OBSTACLE" },
+        { "pos": [4, 4], "type": "TRAP" }
+      ]
+    },
+    "max_turns": 100,
+    "turn_mode": "ALTERNATING"
+  },
+
+  "initial_state": [
+    { "id": "A1", "owner": "team_a", "type": "ROCK", "pos": [0, 0], "hp": 1 },
+    { "id": "A2", "owner": "team_a", "type": "PAPER", "pos": [1, 0], "hp": 1 },
+    { "id": "A3", "owner": "team_a", "type": "SCISSORS", "pos": [2, 0], "hp": 1 },
+    { "id": "B1", "owner": "team_b", "type": "ROCK", "pos": [7, 7], "hp": 1 },
+    { "id": "B2", "owner": "team_b", "type": "PAPER", "pos": [6, 7], "hp": 1 },
+    { "id": "B3", "owner": "team_b", "type": "SCISSORS", "pos": [5, 7], "hp": 1 }
+  ],
+
+  "turns": [
+    {
+      "turn": 1,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A1",
+          "action_type": "MOVE",
+          "from": [0, 0],
+          "to": [1, 1]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A1",
+          "from": [0, 0],
+          "to": [1, 1]
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B3",
+          "action_type": "MOVE",
+          "from": [5, 7],
+          "to": [1, 1]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B3",
+          "from": [5, 7],
+          "to": [1, 1]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "B3",
+          "defender_id": "A1",
+          "location": [1, 1],
+          "winner_id": "A1",
+          "destroyed_pieces": ["B3"],
+          "damaged_pieces": []
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A2",
+          "action_type": "MOVE",
+          "from": [1, 0],
+          "to": [4, 4]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A2",
+          "from": [1, 0],
+          "to": [4, 4]
+        },
+        {
+          "type": "TRAP_TRIGGERED",
+          "piece_id": "A2",
+          "location": [4, 4],
+          "effect": "DESTROYED"
+        }
+      ]
+    },
+    {
+      "turn": 4,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B1",
+          "action_type": "MOVE",
+          "from": [7, 7],
+          "to": [7, 6]
+        }
+      ],
+      "events": [
+        {
+          "type": "BOT_TIMEOUT",
+          "team_id": "team_b",
+          "max_time_ms": 1000
+        }
+      ]
+    },
+    {
+      "turn": 5,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A1",
+          "action_type": "MOVE",
+          "from": [1, 1],
+          "to": [7, 0]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A1",
+          "from": [1, 1],
+          "to": [7, 0]
+        },
+        {
+          "type": "BASE_CAPTURED",
+          "team_id": "team_a",
+          "location": [7, 0]
+        },
+        {
+          "type": "GAME_OVER",
+          "winner_team": "team_a",
+          "reason": "BASE_CAPTURED"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+/* ===================== THEME: Đấu Trường Kéo · Búa · Bao =====================
+   Muốn đổi chủ đề: chỉ cần sửa các biến màu ở khối :root bên dưới. */
+:root {
+  --bg: #0b1022;
+  --bg-glow-1: rgba(255, 176, 46, 0.13); /* hổ phách (đội 1) */
+  --bg-glow-2: rgba(62, 198, 255, 0.13); /* lam băng (đội 2) */
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-solid: #141b38;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #eef1ff;
+  --muted: #98a2c8;
+  --accent: #ffb02e;
+  --accent-2: #3ec6ff;
+  --gold: #ffd35c;
+
+  --cell-a: #1a2347;
+  --cell-b: #212c57;
+  --stone: #3b4163;
+  --danger: #ff5a6a;
+
+  --move-ms: 450ms;
+  --font-display: "Baloo 2", "Segoe UI", system-ui, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 500px at 8% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(900px 500px at 95% 0%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+button, select { font: inherit; color: inherit; }
+
+.app { max-width: 1180px; margin: 0 auto; padding: 14px 16px 20px; }
+
+/* ---------- Top bar ---------- */
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-icons {
+  font-size: 22px; letter-spacing: 2px; padding: 8px 12px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.topbar h1 {
+  margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.1;
+  background: linear-gradient(90deg, var(--accent), #fff 50%, var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.loader { display: flex; gap: 8px; align-items: center; }
+.loader select, .file-btn, .controls button, .speed select {
+  padding: 7px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel-solid); cursor: pointer; transition: background .15s, border-color .15s;
+}
+.loader select option, .speed select option { background: var(--panel-solid); }
+.file-btn:hover, .controls button:hover:not(:disabled) { background: #1d2750; border-color: rgba(255,255,255,.25); }
+
+/* ---------- Layout ---------- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.stage, .side {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 14px;
+  backdrop-filter: blur(6px);
+}
+.side { position: sticky; top: 12px; }
+@media (max-width: 860px) { .side { position: static; } }
+.side h2 { margin: 0 0 10px; font-family: var(--font-display); font-size: 18px; color: var(--gold); }
+
+/* ---------- Teams ---------- */
+.teams { display: flex; gap: 10px; margin-bottom: 12px; }
+.team-card {
+  flex: 1; border: 1px solid var(--line); border-left: 6px solid var(--team); border-radius: 12px;
+  padding: 8px 12px; background: color-mix(in srgb, var(--team) 7%, transparent);
+  transition: box-shadow .25s, border-color .25s, background .25s;
+}
+.team-card.active {
+  border-color: var(--team);
+  background: color-mix(in srgb, var(--team) 16%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--team) 40%, transparent);
+}
+.team-name { font-family: var(--font-display); font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 8px; color: var(--team); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--team); box-shadow: 0 0 8px var(--team); display: inline-block; }
+.team-stats { display: flex; gap: 14px; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.team-stats b { color: var(--text); }
+
+/* ---------- Board ---------- */
+/* Bàn cờ luôn vừa chiều cao màn hình -> không phải cuộn để xem trận */
+.board {
+  position: relative; margin: 0 auto; container-type: inline-size;
+  width: min(100%, 680px, calc((100vh - 340px) * var(--w) / var(--h)));
+  min-width: 260px;
+  border-radius: 14px; overflow: hidden;
+  border: 3px solid #5a6498;
+  box-shadow: 0 0 0 3px #0b1022, 0 12px 40px rgba(0, 0, 0, .55), 0 0 40px rgba(62, 198, 255, .08);
+}
+.board-grid { position: absolute; inset: 0; display: grid; }
+.cell { position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255, 255, 255, .035); }
+.cell.even { background: var(--cell-a); }
+.cell.odd { background: var(--cell-b); }
+.cell.trail { box-shadow: inset 0 0 0 3px rgba(255, 211, 92, .9), inset 0 0 14px rgba(255, 211, 92, .45); }
+.cell.tile-base {
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--team, #888) 55%, transparent), transparent 70%),
+    var(--cell-a);
+  box-shadow: inset 0 0 0 2px var(--team, #888);
+}
+.cell.tile-obstacle { background: repeating-linear-gradient(45deg, #3b4163, #3b4163 6px, #333858 6px, #333858 12px); box-shadow: inset 0 0 10px rgba(0,0,0,.5); }
+.cell.tile-trap { background: radial-gradient(circle, rgba(255, 90, 106, .35), rgba(255, 90, 106, .08) 70%), var(--cell-a); }
+.cell.tile-trap .tile-icon { animation: throb 1.6s ease-in-out infinite; }
+.tile-icon { font-size: calc(100cqw / var(--w) * 0.45); opacity: .9; }
+@keyframes throb { 0%, 100% { transform: scale(1); opacity: .7; } 50% { transform: scale(1.18); opacity: 1; } }
+
+.board-layer { position: absolute; inset: 0; pointer-events: none; }
+.piece { position: absolute; left: 0; top: 0; padding: 6%; transition: transform var(--move-ms) cubic-bezier(.4, .1, .2, 1); }
+.piece-body {
+  position: relative; width: 100%; height: 100%; border-radius: 50%;
+  background: radial-gradient(circle at 32% 25%, color-mix(in srgb, var(--team) 60%, #ffffff), color-mix(in srgb, var(--team) 40%, #0b1022) 75%);
+  border: 3px solid var(--team);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .5), 0 0 16px color-mix(in srgb, var(--team) 55%, transparent);
+  transition: opacity .35s ease var(--move-ms), transform .35s ease var(--move-ms);
+}
+.piece-body.dead { opacity: 0; transform: scale(.2) rotate(40deg); }
+.piece-icon { font-size: calc(100cqw / var(--w) * 0.42); line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+.piece-id {
+  position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%);
+  font-size: calc(100cqw / var(--w) * 0.16); background: #0b1022; color: var(--team);
+  border: 1px solid var(--team); border-radius: 6px; padding: 0 5px; font-weight: 700;
+}
+.piece-hp {
+  position: absolute; top: -4px; right: -4px; background: var(--danger); color: #fff; border-radius: 50%;
+  min-width: 1.4em; height: 1.4em; font-size: calc(100cqw / var(--w) * 0.16);
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+
+.effect { position: absolute; left: 0; top: 0; z-index: 8; display: flex; align-items: center; justify-content: center; }
+.effect-body { font-size: calc(100cqw / var(--w) * 0.8); animation: pop .9s ease-out forwards; animation-delay: calc(var(--move-ms) * .8); opacity: 0; }
+@keyframes pop {
+  0% { transform: scale(.3); opacity: 0; }
+  30% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ---------- Banners (có khung giữ chỗ để không làm nhảy layout) ---------- */
+.banner-slot { min-height: 56px; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.banner { border-radius: 12px; padding: 10px 14px; border: 1px solid var(--line); }
+.banner.win {
+  background: linear-gradient(90deg, rgba(255, 211, 92, .2), rgba(255, 176, 46, .08));
+  border-color: rgba(255, 211, 92, .55); font-family: var(--font-display); font-size: 18px; color: var(--gold);
+}
+.banner.win b { color: #fff; }
+.banner.warn { background: rgba(255, 176, 46, .12); border-color: rgba(255, 176, 46, .5); color: #ffd9a0; font-size: 14px; }
+.banner.error { background: rgba(255, 90, 106, .12); border-color: rgba(255, 90, 106, .5); margin-bottom: 12px; }
+.banner pre { margin: 6px 0 0; white-space: pre-wrap; font: inherit; }
+
+/* ---------- Controls ---------- */
+.controls { max-width: 680px; margin: 8px auto 0; }
+.controls-buttons { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.controls button:disabled { opacity: .35; cursor: default; }
+.controls button.primary {
+  background: linear-gradient(135deg, var(--accent), #ff8a2e); color: #1a1100; border-color: transparent;
+  font-weight: 700; min-width: 108px;
+}
+.controls button.primary:hover { filter: brightness(1.08); background: linear-gradient(135deg, var(--accent), #ff8a2e) !important; }
+.speed { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.slider { width: 100%; margin: 12px 0 2px; accent-color: var(--accent); }
+.controls-count { font-size: 12px; color: var(--muted); text-align: right; }
+
+/* ---------- Turn list ---------- */
+.turn-list {
+  position: relative; /* để offsetTop tính theo danh sách */
+  max-height: calc(100vh - 120px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+  scrollbar-width: thin; scrollbar-color: #39426e transparent;
+}
+@media (max-width: 860px) { .turn-list { max-height: 360px; } }
+.turn-head { margin-top: 10px; font-family: var(--font-display); font-size: 13px; font-weight: 700; color: var(--team, var(--muted)); text-transform: uppercase; letter-spacing: .05em; }
+.turn-item {
+  text-align: left; display: flex; gap: 8px; padding: 6px 8px; border: 1px solid transparent;
+  border-radius: 10px; background: transparent; cursor: pointer; font-size: 13px; color: var(--text);
+}
+.turn-item:hover { background: rgba(255, 255, 255, .06); }
+.turn-item.past { color: var(--muted); }
+.turn-item.current { background: rgba(255, 176, 46, .16); border-color: rgba(255, 176, 46, .6); color: #fff; font-weight: 600; }
+.turn-icon { width: 1.4em; text-align: center; }
