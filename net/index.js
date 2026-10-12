@@ -4,8 +4,11 @@ import { createRegistry } from "./registry.js";
 import { createBotGateway } from "./botGateway.js";
 import { createSpectatorGateway } from "./spectatorGateway.js";
 import { createOrchestrator } from "./orchestrator.js";
+import { createMatchStore } from './storage/matchStore.js';
 
-const server = createHttpServer();
+const matchStore = createMatchStore();
+matchStore.abortInterruptedMatches();
+const server = createHttpServer({ matchStore });
 const registry = createRegistry();
 
 const botGateway = createBotGateway(server, registry);
@@ -17,7 +20,8 @@ const spectatorGateway = createSpectatorGateway(
 
 const orchestrator = createOrchestrator(
     registry,
-    spectatorGateway
+    spectatorGateway,
+    matchStore
 );
 
 // Khi một bot đăng ký thành công, kiểm tra xem phòng đã đủ hai đội chưa.
