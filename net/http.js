@@ -1,12 +1,33 @@
 import http from "node:http";
 import { StorageError } from './storage/matchStore.js';
 
-export function createHttpServer({ matchStore } = {}) {
+export function createHttpServer({ matchStore, roomGateway } = {}) {
     const server = http.createServer((request, response) => {
         const url = new URL(
             request.url,
             "http://localhost"
         );
+
+        if (url.pathname.startsWith("/api/rooms/")) {
+            if (!roomGateway) {
+                response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+                response.end(JSON.stringify({ error: "ROOM_SERVICE_UNAVAILABLE" }));
+                return;
+            }
+            void roomGateway.handleSubmission(request, response, url).then((handled) => {
+                if (!handled && !response.headersSent) {
+                    response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+                    response.end(JSON.stringify({ error: "NOT_FOUND" }));
+                }
+            }).catch((error) => {
+                console.error("Room submission error:", error);
+                if (!response.headersSent) {
+                    response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+                    response.end(JSON.stringify({ error: "INTERNAL_ERROR" }));
+                }
+            });
+            return;
+        }
 
         if (url.pathname.startsWith('/api/')) {
             const send = (status, body) => {

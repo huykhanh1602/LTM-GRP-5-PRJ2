@@ -27,6 +27,7 @@ import json
 import multiprocessing
 import os
 import queue as queue_module
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -385,6 +386,7 @@ def _bot_worker_entry(
 
     Hàm này phải ở cấp module để ``multiprocessing`` (spawn) có thể pickle.
     """
+    sys.stdout = sys.stderr
     make_move = None
     load_error = None
 
@@ -866,9 +868,22 @@ class GameEngine:
 
     # -- Chạy trận ----------------------------------------------------------
 
-    def run(self) -> Dict[str, Any]:
-        """Chạy toàn bộ trận đấu và trả về dữ liệu replay."""
+    def run(self, on_event: Any = None) -> Dict[str, Any]:
+        """Chạy trận đấu và tùy chọn phát các sự kiện replay sau mỗi lượt."""
         self._setup()
+
+        if on_event is not None:
+            on_event(
+                {
+                    "type": "match_start",
+                    "match_info": {
+                        "match_id": self.config.match_id,
+                        "teams": self.config.teams,
+                    },
+                    "game_config": self.config.to_replay_config(),
+                    "initial_state": self._initial_state,
+                }
+            )
 
         for turn_no in range(1, self.config.max_turns + 1):
             if self.game_over is not None:
@@ -887,6 +902,8 @@ class GameEngine:
 
             if self.game_over is None and turn_no == self.config.max_turns:
                 self._resolve_max_turns(turn)
+            if on_event is not None:
+                on_event({"type": "turn", "turn": turn})
 
         if self.game_over is None:
             if self.turns:
@@ -900,8 +917,19 @@ class GameEngine:
                 }
                 self.turns.append(synthetic)
                 self._finish(None, REASON_DRAW, synthetic)
+                if on_event is not None:
+                    on_event({"type": "turn", "turn": synthetic})
 
-        return self._build_replay()
+        replay = self._build_replay()
+        if on_event is not None:
+            on_event(
+                {
+                    "type": "match_end",
+                    "winner": replay["match_info"]["winner"],
+                    "reason": replay["match_info"]["win_reason"],
+                }
+            )
+        return replay
 
     # -- Xuất replay --------------------------------------------------------
 

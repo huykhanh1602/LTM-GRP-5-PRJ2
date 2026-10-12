@@ -25,6 +25,7 @@ export default function Room({ state, onSubmit, onReady, onLeave }) {
   const waitingFor = room.teams.filter((t) => !t.isMe && !t.ready);
   let hint = "";
   if (spectating) hint = "Bạn đang xem. Trận sẽ tự chạy khi cả 2 đội sẵn sàng.";
+  else if (room.status === "finished") hint = "Trận đã kết thúc. Hai đội có thể sẵn sàng để đấu lại.";
   else if (!me.submitted) hint = "Bước 1: nộp code của đội bạn.";
   else if (!me.ready) hint = "Bước 2: bấm Sẵn sàng khi bạn muốn bắt đầu.";
   else if (waitingFor.length) hint = "Đang chờ đối thủ…";

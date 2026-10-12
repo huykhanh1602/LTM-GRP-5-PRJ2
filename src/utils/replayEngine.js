@@ -7,10 +7,15 @@ export const REASON_LABELS = {
   REACHED_BASE: "chạm được căn cứ địch",
   NO_PIECES: "đối phương hết quân",
   MAX_TURNS: "hết số lượt tối đa",
+  MAX_TURNS_PIECE_COUNT: "hết lượt, xét số quân còn lại",
+  ALL_PIECES_CAPTURED: "bắt hết quân đối phương",
+  OPPONENT_TIMEOUT: "đối thủ quá số lần hết giờ",
+  OPPONENT_CRASH: "đối thủ quá số lần lỗi hoặc đi sai",
   TIMEOUT: "đối phương quá giờ",
   BOT_TIMEOUT: "đối phương quá giờ",
   CRASH: "code đối phương bị lỗi",
   INVALID_MOVE: "đối phương đi sai luật",
+  DRAW: "hòa",
 };
 
 export function teamName(replay, id) {

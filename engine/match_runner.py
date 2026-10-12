@@ -17,6 +17,7 @@ tiến trình ``multiprocessing`` (spawn) - điều kiện bắt buộc trên Wi
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -89,6 +90,11 @@ def parse_args(argv=None):
         default="replay.json",
         help="Đường dẫn file replay đầu ra (mặc định: replay.json).",
     )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Phát sự kiện match_start, turn, match_end dưới dạng NDJSON.",
+    )
     return parser.parse_args(argv)
 
 
@@ -109,7 +115,13 @@ def main(argv=None) -> int:
 
     try:
         engine = GameEngine(config, {TEAM_A: bot_a, TEAM_B: bot_b})
-        replay = engine.run()
+        on_event = None
+        if args.stream:
+            on_event = lambda event: print(
+                json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                flush=True,
+            )
+        replay = engine.run(on_event=on_event)
     finally:
         bot_a.close()
         bot_b.close()
@@ -117,20 +129,21 @@ def main(argv=None) -> int:
     written_path = ReplayExporter.write(replay, out_path)
 
     info = replay["match_info"]
-    print("=" * 60)
-    print("KẾT QUẢ TRẬN ĐẤU")
-    print("=" * 60)
-    print(f"Trận:        {info['match_id']}")
-    print(f"Đội A:       {config.teams.get(TEAM_A)}")
-    print(f"Đội B:       {config.teams.get(TEAM_B)}")
-    print(f"Tổng lượt:   {info['total_turns']}")
+    output = sys.stderr if args.stream else sys.stdout
+    print("=" * 60, file=output)
+    print("KẾT QUẢ TRẬN ĐẤU", file=output)
+    print("=" * 60, file=output)
+    print(f"Trận:        {info['match_id']}", file=output)
+    print(f"Đội A:       {config.teams.get(TEAM_A)}", file=output)
+    print(f"Đội B:       {config.teams.get(TEAM_B)}", file=output)
+    print(f"Tổng lượt:   {info['total_turns']}", file=output)
     if info["winner"] is None:
-        print("Kết quả:     HÒA")
+        print("Kết quả:     HÒA", file=output)
     else:
-        print(f"Đội thắng:   {info['winner']} ({config.teams.get(info['winner'])})")
-    print(f"Lý do:       {info['win_reason']}")
-    print(f"Replay:      {written_path}")
-    print("=" * 60)
+        print(f"Đội thắng:   {info['winner']} ({config.teams.get(info['winner'])})", file=output)
+    print(f"Lý do:       {info['win_reason']}", file=output)
+    print(f"Replay:      {written_path}", file=output)
+    print("=" * 60, file=output)
 
     return 0
 

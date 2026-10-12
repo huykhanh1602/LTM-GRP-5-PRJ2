@@ -8,26 +8,29 @@ import { useLivePlayback } from "../hooks/useLivePlayback.js";
 import { makeColorOf } from "../utils/colors.js";
 
 // Xem trận TRỰC TIẾP (frames tăng dần khi server gửi lượt mới).
-export default function Match({ state, onRematch, onLeave }) {
+export default function Match({ state, onReturnToRoom, onLeave }) {
   const { init, frames, finished } = state;
   const player = useLivePlayback(frames);
   const colorOf = makeColorOf(Object.keys(init.match_info.teams));
-  const atEnd = player.index >= player.last;
   const [showHistory, setShowHistory] = useState(false);
 
   return (
     <div>
       <div className="live-bar">
-        {finished ? (
-          <span className="badge ended">ĐÃ KẾT THÚC</span>
-        ) : (
-          <span className="badge live"><i /> TRỰC TIẾP</span>
-        )}
+        <div className="match-status">
+          {finished ? (
+            <span className="badge ended">ĐÃ KẾT THÚC</span>
+          ) : (
+            <span className="badge live"><i /> TRỰC TIẾP</span>
+          )}
+          <button className="btn small" onClick={onReturnToRoom}>← Phòng chờ</button>
+        </div>
         {!finished && player.behind > 0 && (
           <button className="btn small" onClick={() => player.seek(player.last)}>
             Đang chậm {player.behind} bước · Về trực tiếp ⏭
           </button>
         )}
+        <button className="btn small" onClick={onLeave}>Thoát phòng</button>
       </div>
 
       <main className={`layout ${showHistory ? "history-expanded" : "history-collapsed"}`}>
@@ -36,10 +39,9 @@ export default function Match({ state, onRematch, onLeave }) {
           <Board board={init.game_config.board} frame={player.frame} colorOf={colorOf} />
           <ResultBanner replay={init} frame={player.frame} />
           <Controls {...player} />
-          {finished && atEnd && (
+          {finished && (
             <div className="end-actions">
-              <button className="btn primary" onClick={onRematch}>↺ Đấu lại</button>
-              <button className="btn" onClick={onLeave}>Rời phòng</button>
+              <button className="btn" onClick={onReturnToRoom}>← Quay lại phòng chờ</button>
             </div>
           )}
         </section>

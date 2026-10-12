@@ -113,6 +113,11 @@ export function createMockChannel({
           emit({ type: "error", message: "Hãy nộp code trước khi bấm Sẵn sàng." });
           return;
         }
+        if (room.status === "finished") {
+          room.status = "waiting";
+          A.ready = false;
+          B.ready = true;
+        }
         A.ready = !!msg.ready;
         pushRoom();
         if (A.ready) maybeStart();

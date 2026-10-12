@@ -1,14 +1,14 @@
-// Kênh THẬT tới server: WebSocket cho trạng thái phòng + trận trực tiếp,
-// HTTP (multipart) để nộp file code. Cùng giao diện với mockServer.js.
+// Kênh thật: WebSocket cho trạng thái phòng + trận trực tiếp, HTTP để nộp bot.
 // Định dạng tin nhắn: xem docs/PROTOCOL.md.
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role }) {
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, teamId }) {
   const listeners = new Set();
   const emit = (m) => listeners.forEach((l) => l(m));
+  let playerToken = null;
 
   const ws = new WebSocket(`${wsUrl.replace(/\/$/, "")}/rooms/${encodeURIComponent(code)}`);
   ws.onopen = () =>
-    ws.send(JSON.stringify({ type: "join_room", code, team_name: teamName, role }));
+    ws.send(JSON.stringify({ type: "join_room", code, team_name: teamName, role, team_id: teamId }));
   ws.onmessage = (e) => {
     let msg;
     try {
@@ -16,6 +16,7 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role }) {
     } catch {
       return; // bỏ qua tin không phải JSON
     }
+    if (msg.type === "joined") playerToken = msg.player_token;
     emit(msg);
   };
   ws.onerror = () => emit({ type: "error", message: "Không kết nối được tới server." });
@@ -30,15 +31,23 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role }) {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
     },
     async submitCode(file) {
-      const body = new FormData();
-      body.append("team_name", teamName);
-      body.append("file", file);
-      const res = await fetch(`${httpUrl}/api/rooms/${encodeURIComponent(code)}/submissions`, {
+      if (!playerToken) throw new Error("Chưa kết nối vào phòng với tư cách đội chơi.");
+      const url = new URL(
+        `${httpUrl}/api/rooms/${encodeURIComponent(code)}/submissions`,
+        window.location.href
+      );
+      url.searchParams.set("filename", file.name);
+      const res = await fetch(url, {
         method: "POST",
-        body,
+        headers: {
+          Authorization: `Bearer ${playerToken}`,
+          "Content-Type": "application/octet-stream",
+        },
+        body: file,
       });
-      if (!res.ok) throw new Error((await res.text()) || `Lỗi ${res.status}`);
-      return res.json();
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || result.error || `Lỗi ${res.status}`);
+      return result;
     },
     close() {
       ws.onclose = null;

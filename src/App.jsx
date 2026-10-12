@@ -12,9 +12,16 @@ export default function App() {
 
   let page;
   if (tab === "replay") {
-    page = <ReplayPage />;
+    page = <ReplayPage onBack={() => setTab("play")} />;
   } else if (room.phase === "match") {
-    page = <Match key={room.matchKey} state={room} onRematch={room.rematch} onLeave={room.leave} />;
+    page = (
+      <Match
+        key={room.matchKey}
+        state={room}
+        onReturnToRoom={room.returnToRoom}
+        onLeave={room.leave}
+      />
+    );
   } else if (room.phase === "room") {
     page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} />;
   } else {

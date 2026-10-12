@@ -1,13 +1,24 @@
-# Giao thức giao diện ↔ server 
+# Giao thức giao diện ↔ server
 
-Giao diện chỉ là **người xem + người điều khiển phòng**. Code của 2 đội chạy trên **server**; engine là trọng tài.
+Giao diện chỉ là **người xem + người điều khiển phòng**. Code Python của hai đội được gửi lên server; engine Python là trọng tài và phát diễn biến trận qua WebSocket.
+
+## Chạy local
+
+- Chạy server: `npm run server` (mặc định cổng `3000`).
+- Chạy giao diện: `npm run dev`.
+- Sao chép `.env.example` thành `.env`. Để `VITE_API_URL` trống trong local để Vite proxy HTTP API tới cổng `3000`.
+- Cần cài Python và bảo đảm lệnh `python` (Windows) hoặc `python3` (macOS/Linux) chạy được. Có thể đặt `PYTHON_EXECUTABLE` để chọn lệnh Python cụ thể.
+- Đặt `VITE_USE_MOCK=true` để dùng replay mẫu thay vì kết nối server.
 
 ## Kết nối
 
 - WebSocket: `ws://<host>/rooms/<MÃ_PHÒNG>`
-- HTTP nộp code: `POST /api/rooms/<MÃ_PHÒNG>/submissions` (`multipart/form-data`: `team_name`, `file`)
-  - Thành công: `200 { "id": "...", "filename": "bot.py" }`
-  - Lỗi: mã khác 200, nội dung là câu báo lỗi (ví dụ "File quá lớn")
+- HTTP nộp code: `POST /api/rooms/<MÃ_PHÒNG>/submissions?filename=bot.py`
+  - Header: `Authorization: Bearer <player_token>` (nhận từ thông điệp `joined`).
+  - Body: nội dung file Python dạng `application/octet-stream`, tối đa 100 KB.
+  - Thành công: `200 { "id": "...", "filename": "bot.py" }`.
+  - Lỗi: mã khác 200 và JSON `{ "error": "...", "message": "..." }`.
+- Mỗi phòng nhận tối đa hai đội chơi. Người chơi đầu tiên vào là `team_a`, người tiếp theo là `team_b`; người xem có thể vào bằng mã phòng.
 
 ## Giao diện → server (WebSocket)
 
@@ -17,6 +28,8 @@ Giao diện chỉ là **người xem + người điều khiển phòng**. Code c
 | `ready` | `ready: true/false` | Bấm Sẵn sàng / Hủy |
 
 ## Server → giao diện (WebSocket)
+
+**`joined`**: `{ "type": "joined", "team_id": "team_a", "player_token": "..." }`. Với khán giả, hai giá trị này là `null`.
 
 **`room_state`**: gửi mỗi khi phòng thay đổi.
 ```json
@@ -54,5 +67,5 @@ Giao diện chỉ là **người xem + người điều khiển phòng**. Code c
 ## Lưu ý
 
 - Mọi `turn` / `match_start` dùng **cùng định dạng với file replay**, nên cùng một giao diện phát được cả trận trực tiếp lẫn replay cũ.
-- Server nên kiểm tra lại đuôi file và dung lượng (giao diện chỉ kiểm tra để báo lỗi sớm).
-- Các giá trị còn chờ chốt: đuôi file code (`src/config.js`), có cần mã đội hay đăng nhập không, người xem có vào phòng được không.
+- Server kiểm tra đuôi file `.py`, UTF-8 và dung lượng; đội phải nộp bot trước khi sẵn sàng.
+- Engine dùng cấu hình mặc định trong `engine/config.json`; đặt `PYTHON_EXECUTABLE` nếu máy không gọi được lệnh Python mặc định.

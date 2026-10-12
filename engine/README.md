@@ -2,16 +2,18 @@
 
 Bộ engine Python chạy một trận đấu lượt đi giữa **hai bot** trên bàn cờ ma trận,
 xử lý va chạm theo luật oẳn tù tì, cô lập timeout/crash của bot và xuất file
-`replay.json` theo đúng định dạng mà giải đấu yêu cầu.
+`replay.json` theo đúng định dạng mà giải đấu yêu cầu. Server Node gọi engine
+này khi hai đội trong phòng đều đã nộp bot và sẵn sàng.
 
-Engine hoạt động **độc lập, offline** (không cần server Node.js), chỉ dùng
-thư viện chuẩn của Python.
+Engine vẫn có thể chạy **độc lập, offline** bằng `match_runner.py`; khi chạy qua
+server, cờ `--stream` phát NDJSON gồm `match_start`, từng `turn`, và `match_end`.
+Engine chỉ dùng thư viện chuẩn của Python.
 
 ## Cấu trúc thư mục
 
 | File                                                     | Vai trò                                                                                                        |
 | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [`config.json`](config.json)                             | Cấu hình bàn cờ, luật chơi, giới hạn thời gian/lượt.                                                           |
+| [`config.json`](config.json)                             | Cấu hình bàn cờ mặc định, luật chơi, giới hạn thời gian/lượt.                                                   |
 | [`game_engine.py`](game_engine.py)                       | Toàn bộ logic: `GameConfig`, `Piece`, `Board`, `CombatResolver`, `BotProcess`, `GameEngine`, `ReplayExporter`. |
 | [`match_runner.py`](match_runner.py)                     | Script chính chạy trận và ghi `replay.json`.                                                                   |
 | [`bot_sample_1.py`](bot_sample_1.py)                     | Bot mẫu đi ngẫu nhiên một nước hợp lệ.                                                                         |
@@ -37,11 +39,16 @@ python engine/match_runner.py \
 > **Windows:** luôn chạy qua `match_runner.py` (đã có `if __name__ == "__main__"`).
 > Bot chạy trong tiến trình `multiprocessing` (spawn) nên bắt buộc phải có guard này.
 
-## Chạy kiểm thử
+## Kiểm thử
 
 ```bash
-python -m unittest discover -s engine/tests -v
+npm test
 ```
+
+Lệnh trên chạy kiểm thử server/phòng WebSocket. Có thể xác minh engine trực tiếp
+bằng lệnh chạy trận mẫu phía trên. Server mặc định dùng `engine/config.json`. Đặt biến môi trường
+`PYTHON_EXECUTABLE` nếu lệnh Python trên máy không phải `python` (Windows) hoặc
+`python3` (macOS/Linux).
 
 ## Hợp đồng bot
 
@@ -107,8 +114,8 @@ hoặc `None` để bỏ lượt (bị tính là nước không hợp lệ).
         "height": 8,
         "coordinate_system": "TOP_LEFT_ORIGIN_X_RIGHT_Y_DOWN",
         "special_tiles": [
-            { "pos": [0, 7], "type": "BASE", "owner": "team_a" },
-            { "pos": [7, 0], "type": "BASE", "owner": "team_b" },
+            { "pos": [7, 0], "type": "BASE", "owner": "team_a" },
+            { "pos": [0, 7], "type": "BASE", "owner": "team_b" },
             { "pos": [3, 3], "type": "OBSTACLE" },
             { "pos": [2, 2], "type": "TRAP" },
         ],
@@ -131,6 +138,9 @@ hoặc `None` để bỏ lượt (bị tính là nước không hợp lệ).
     "initial_state": [{ "id": "A1", "owner": "team_a", "type": "ROCK", "pos": [0, 0], "hp": 1 }],
 }
 ```
+
+Quân `team_a` xuất phát ở cạnh trên nên cần tiến xuống căn cứ `team_b` ở cạnh dưới.
+Quân `team_b` xuất phát ở cạnh dưới nên cần tiến lên căn cứ `team_a` ở cạnh trên.
 
 Ghi chú: bot vượt `max_timeouts` lần timeout (hoặc `max_errors` lần lỗi/nước sai)
 sẽ thua. Ngưỡng dùng so sánh `>`, tức với `max_timeouts = 3` thì lần timeout thứ 4
