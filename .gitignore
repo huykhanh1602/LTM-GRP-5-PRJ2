@@ -1,5 +1,23 @@
+# ==========================================
+# 1. Environment & Secrets (Bảo mật)
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==========================================
+# 2. Node.js & Web Frontend
+# ==========================================
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,20 +25,53 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-engine/__pycache__/
+# ==========================================
+# 3. Python & Game Engine
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 
-# Editor directories and files
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# 4. Game Generated Files & Dynamic Storage
+# ==========================================
+# Bỏ qua file replay được tạo ra khi chạy thử match_runner
+engine/replay.json
+*.replay.json
+storage/replays/*
+!storage/replays/.gitkeep
+
+# Thư mục chứa bot tạm thời người dùng nộp lên
+uploads/
+temp_bots/
+
+# ==========================================
+# 5. Editors & OS Garbage Files
+# ==========================================
+.DS_Store
+Thumbs.db
+
+# VS Code & JetBrains
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
+
+# Visual Studio / Temp files
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-engine/tests/__pycache__/test_game_engine.cpython-312.pyc
