@@ -3,16 +3,20 @@ import Lobby from "./pages/Lobby.jsx";
 import Match from "./pages/Match.jsx";
 import ReplayPage from "./pages/ReplayPage.jsx";
 import Room from "./pages/Room.jsx";
+import DatabasePage from './pages/DatabasePage.jsx';
 import { useRoom } from "./hooks/useRoom.js";
 import "./styles/pages.css";
 
 export default function App() {
   const [tab, setTab] = useState("play"); // play | replay
   const room = useRoom();
+  const [databaseReplay, setDatabaseReplay] = useState(null);
 
   let page;
   if (tab === "replay") {
-    page = <ReplayPage onBack={() => setTab("play")} />;
+    page = <ReplayPage key={databaseReplay?.match_info.match_id ?? 'list'} initialReplay={databaseReplay} onBack={() => setTab("play")} />;
+  } else if (tab === 'history' || tab === 'rankings') {
+    page = <DatabasePage key={tab} view={tab} onReplay={replay => { setDatabaseReplay(replay); setTab('replay'); }} />;
   } else if (room.phase === "match") {
     page = (
       <Match
@@ -42,6 +46,8 @@ export default function App() {
           <button className={tab === "replay" ? "on" : ""} onClick={() => setTab("replay")}>
             Xem replay
           </button>
+          <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>Lịch sử trận đấu</button>
+          <button className={tab === 'rankings' ? 'on' : ''} onClick={() => setTab('rankings')}>Bảng xếp hạng</button>
         </nav>
       </header>
       {page}

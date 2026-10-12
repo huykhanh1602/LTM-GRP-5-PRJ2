@@ -4,7 +4,7 @@ import Controls from "../components/Controls.jsx";
 import ResultBanner from "../components/ResultBanner.jsx";
 import TeamInfo from "../components/TeamInfo.jsx";
 import TurnList from "../components/TurnList.jsx";
-import { getMatches, getMatchReplay } from "../api.js";
+import { getMatches, getMatchReplay, getRankings } from "../api.js";
 import { useReplay } from "../hooks/useReplay.js";
 import { makeColorOf } from "../utils/colors.js";
 import { parseReplay } from "../utils/parseReplay.js";
@@ -29,13 +29,20 @@ function formatDate(value) {
 }
 
 // Danh sách chỉ đọc từ API; chọn một trận để tải replay tương ứng.
-export default function ReplayPage({ onBack }) {
+export default function ReplayPage({ onBack, initialReplay = null }) {
   const [matches, setMatches] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [teamId, setTeamId] = useState('');
+  const [teams, setTeams] = useState([]);
+  const [refresh, setRefresh] = useState(0);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(() => initialReplay ? {
+    id: initialReplay.match_info.match_id,
+    label: `Trận ${initialReplay.match_info.match_id}`,
+    ...tryParse(initialReplay),
+  } : null);
   const [loadingReplay, setLoadingReplay] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const replayRequestRef = useRef(0);
@@ -45,14 +52,13 @@ export default function ReplayPage({ onBack }) {
     setLoadingList(true);
     setMatches([]);
     setListError(null);
-    getMatches({ status: "finished", limit: PAGE_SIZE, offset })
-      .then(async (result) => {
-        const items = await Promise.all(result.items.map(async (match) => {
-          const replay = parseReplay(await getMatchReplay(match.id));
-          return { ...match, teams: replay.match_info.teams };
-        }));
+    Promise.all([getMatches({ status: "finished", teamId: teamId || undefined, limit: PAGE_SIZE, offset }), getRankings()])
+      .then(([result, rankings]) => {
+        const items = result.items.map(match => ({ ...match,
+          teams: { team_a: match.team_a_name ?? match.team_a_id, team_b: match.team_b_name ?? match.team_b_id } }));
         if (!active) return;
         setMatches(items);
+        setTeams(rankings.items);
         setTotal(result.total);
       })
       .catch((error) => {
@@ -62,7 +68,7 @@ export default function ReplayPage({ onBack }) {
         if (active) setLoadingList(false);
       });
     return () => { active = false; };
-  }, [offset]);
+  }, [offset, teamId, refresh]);
 
   const replay = selected?.replay ?? null;
   const frames = useMemo(
@@ -134,6 +140,14 @@ export default function ReplayPage({ onBack }) {
           <div className="replay-list-heading">
             <h2>Lịch sử trận đấu</h2>
             <span className="muted">{total} trận</span>
+            <button className="btn small" disabled={loadingList} onClick={() => setRefresh(value => value + 1)}>Tải lại danh sách</button>
+          </div>
+          <div className="replay-filter">
+            <label htmlFor="replay-team-filter">Chọn đội của bạn</label>
+            <select id="replay-team-filter" value={teamId} onChange={e => { setTeamId(e.target.value); setOffset(0); }}>
+              <option value="">Tất cả đội</option>
+              {teams.map(team => <option key={team.team_id} value={team.team_id}>{team.name}</option>)}
+            </select>
           </div>
           {loadingList && <p className="muted">Đang tải danh sách trận…</p>}
           {listError && (
@@ -155,6 +169,10 @@ export default function ReplayPage({ onBack }) {
                     {match.teams.team_a} <span>vs</span> {match.teams.team_b}
                   </span>
                   <time dateTime={match.started_at}>{formatDate(match.started_at)}</time>
+                  <span className="replay-result">{match.winner_id === match.team_a_id ? `${match.teams.team_a} thắng` :
+                    match.winner_id === match.team_b_id ? `${match.teams.team_b} thắng` : 'Hòa'}
+                    <small>{match.ranked ? 'Trận chính thức' : 'Luyện tập / ví dụ'}</small>
+                  </span>
                 </button>
               ))}
             </div>

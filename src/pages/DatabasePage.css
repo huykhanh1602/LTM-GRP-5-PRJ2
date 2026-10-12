@@ -1,0 +1,16 @@
+.database-page { margin-top: 20px; }
+.database-heading, .database-filters, .database-pagination { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.database-heading { justify-content: space-between; }
+.database-heading h2 { margin: 0; }
+.database-filters { margin: 16px 0; }
+.database-filters label { display: flex; align-items: center; gap: 8px; }
+.database-filters select { font: inherit; max-width: 250px; }
+.database-table-wrap { overflow-x: auto; }
+.database-page table { width: 100%; border-collapse: collapse; text-align: left; }
+.database-page th, .database-page td { padding: 12px 10px; border-bottom: 1px solid var(--line); }
+.database-page td:first-child { overflow-wrap: anywhere; max-width: 230px; }
+.database-page td .btn { margin: 3px; white-space: nowrap; }
+.database-pagination { justify-content: center; margin-top: 20px; }
+.database-detail { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 10px; }
+.database-detail pre { overflow: auto; max-height: 300px; }
+@media (max-width: 700px) { .topbar { flex-wrap: wrap; } .tabs { flex-wrap: wrap; } }

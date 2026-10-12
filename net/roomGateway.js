@@ -37,6 +37,7 @@ function createRoom(code) {
 export function createRoomGateway({
     runMatch = runEngineMatch,
     countdownMs = 1000,
+    matchStore = null,
 } = {}) {
     const wss = new WebSocketServer({ noServer: true });
     const rooms = new Map();
@@ -99,10 +100,11 @@ export function createRoomGateway({
         room.status = "playing";
         room.countdownTimer = null;
         const runToken = ++room.runToken;
+        const startedAt = new Date().toISOString();
         broadcastRoom(room);
 
         try {
-            await runMatch({
+            const replay = await runMatch({
                 roomCode: room.code,
                 teamA: room.teams[0],
                 teamB: room.teams[1],
@@ -116,6 +118,10 @@ export function createRoomGateway({
                     if (message.type === "match_end") broadcastRoom(room);
                 },
             });
+
+            if (matchStore) {
+                matchStore.importReplay(replay, { roomId: room.code, startedAt, endedAt: new Date().toISOString() });
+            }
 
             if (runToken === room.runToken && room.status === "playing") {
                 throw new Error("Engine kết thúc mà không gửi sự kiện match_end.");

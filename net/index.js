@@ -10,7 +10,7 @@ import { createRoomGateway } from "./roomGateway.js";
 const matchStore = createMatchStore();
 matchStore.abortInterruptedMatches();
 const registry = createRegistry();
-const roomGateway = createRoomGateway();
+const roomGateway = createRoomGateway({ matchStore });
 const server = createHttpServer({ matchStore, roomGateway });
 
 const botGateway = createBotGateway(server, registry);

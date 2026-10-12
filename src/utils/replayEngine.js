@@ -148,7 +148,7 @@ export function endFrames(frames, result) {
 export function buildFrames(replay) {
   let frames = createFrames(replay);
   for (const turn of replay.turns) frames = appendTurn(frames, turn);
-  if (replay.match_info?.winner) {
+  if (replay.match_info?.winner || replay.match_info?.win_reason === 'DRAW') {
     frames = endFrames(frames, {
       winner: replay.match_info.winner,
       reason: replay.match_info.win_reason ?? null,

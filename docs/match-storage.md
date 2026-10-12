@@ -49,7 +49,8 @@ Chạy `npm run server`, sau đó `npm run dev`. Vite chuyển tiếp `/api` san
 Các bộ lọc không bắt buộc. Status: `playing`, `finished`, `aborted`.
 Limit từ 1 đến 100, mặc định 20; offset là số nguyên không âm, mặc định 0.
 Lịch sử sắp theo thời gian bắt đầu mới nhất. `win_rate` là tỷ lệ 0..1.
-Replay gần với cấu trúc replay.json; `team_ids` ánh xạ hai vị trí tới ID đội thực.
+Replay dùng team_a/team_b cho owner, player và winner giống engine Python và renderer;
+`team_ids` ánh xạ hai vị trí tới ID đội thực. API chi tiết và bảng xếp hạng vẫn dùng ID đội thực.
 API lỗi trả `{ error, message }`: 400 cho tham số sai, 404 khi không có trận,
 405 khi gọi phương thức ghi. UI chỉ đọc; kết quả do game server ghi.
 
@@ -66,8 +67,11 @@ const replay = await getMatchReplay(match.id);
 
 UI cần kiểm tra lịch sử rỗng và xử lý exception bằng thông báo lỗi. Không ghi kết quả
 từ trình duyệt. WebSocket `game_state`/`game_over` có `matchId` để UI lấy replay.
-Chưa thêm màn hình lịch sử/bảng xếp hạng vào giao diện hiện tại để người phụ trách UI
-có thể dùng trực tiếp các hàm này trong thiết kế của nhóm.
+Đã có hai tab **Lịch sử trận đấu** và **Bảng xếp hạng** gọi API thật, độc lập với
+chế độ server giả của phòng đấu. Lịch sử có lọc đội/trạng thái, phân trang,
+chi tiết trận và nút mở replay bằng trình xem bàn cờ hiện có. Có trạng thái tải,
+database rỗng và lỗi backend cùng nút Tải lại. Chạy lại backend sau khi cập nhật
+mã và refresh trình duyệt để dùng phiên bản mới.
 
 Khi deploy, reverse proxy cần chuyển `/api` đến game server cùng origin với UI.
 `VITE_API_BASE_URL` có thể đổi URL API nhưng server chưa bật CORS cho origin khác.
@@ -76,7 +80,7 @@ Nếu đổi PORT backend, sửa đích proxy trong vite.config.js tương ứng
 ## Hàm phía server và điểm tích hợp game engine
 
 Store cung cấp `registerTeam`, `startMatch`, `appendTurn`, `finishMatch`,
-`getMatch`, `listMatches`, `getReplay`, `getRankings`, `abortInterruptedMatches`, `close`.
+`getMatch`, `listMatches`, `getReplay`, `getRankings`, `importReplay`, `abortInterruptedMatches`, `close`.
 
 Đã tích hợp vào ba hàm orchestrator hiện có:
 
@@ -109,8 +113,61 @@ Khi hai bot đăng ký, luồng tự bắt đầu hiện tại vẫn tạo trậ
 Không tự nhập replay.json vào database và không tạo kết quả/điểm giả.
 Người phụ trách game engine cần nối khởi tạo bàn cờ và các callback trên.
 
+## Nhập kết quả engine Python
+
+Đối với engine offline, sau khi tạo replay của trận chính thức, chạy:
+
+```powershell
+node net/importReplay.js engine/replay.json
+```
+
+Lệnh này ghi đội, thông tin trận, lượt đi, bàn cờ cuối và kết quả trong một
+transaction. Sau đó bấm Tải lại ở tab lịch sử/xếp hạng để xem. Nhập lại cùng
+match_id bị từ chối, không cộng điểm trùng. Lượt không hợp lệ khiến toàn bộ import
+rollback. Kết quả GAME_OVER phải khớp match_info. Trận hòa phải có winner null,
+win_reason DRAW. Lệnh không sửa replay đầu vào.
+
+Để nhập một trận luyện tập mà không ảnh hưởng điểm:
+
+```powershell
+node net/importReplay.js engine/replay.json --unranked
+```
+
+Không mở API công khai cho browser tự ghi kết quả. Hàm server `importReplay`
+có thể được gọi trực tiếp bởi bộ điều phối engine. `teamAId`/`teamBId` là tùy chọn
+để chỉ định ID đội ổn định; nếu không có, dùng team_ids trong replay, rồi fallback
+tên đội. Bộ engine phải giữ tên hoặc ID đội ổn định giữa các trận.
+Luồng phòng đấu mô phỏng không tự ghi vào database. Luồng phòng đấu thật qua
+roomGateway đã nhận matchStore từ net/index.js: khi runEngineMatch trả replay,
+backend tự nhập kết quả và lượt đi, giữ thời gian bắt đầu/kết thúc trận.
+
+## Danh sách replay và ví dụ
+
+Tab Xem replay tải danh sách trận hoàn tất bằng một API phân trang, hiển thị
+hai đội, ngày giờ bắt đầu, kết quả thắng/hòa và loại trận. Có bộ lọc chọn đội.
+Chỉ khi bấm vào trận mới tải dữ liệu replay đầy đủ; nút Danh sách trận quay về
+danh sách. API list trả thêm team_a_name và team_b_name để không phải tải toàn
+bộ replay của từng trận chỉ để lấy tên đội.
+
+Chạy `node scripts/seed-replay-examples.mjs` để lưu ba trận ví dụ có nhãn
+[Ví dụ]: Hoàng Định thắng Huy Khánh, Hoàng Định thua LTM 5, Hoàng Định hòa
+Huy Khánh. Đây là dữ liệu minh họa, ranked=false, không tính điểm. Chạy lại
+không thêm trùng hoặc sửa bản đã lưu. Script dùng DB_PATH nếu được cấu hình.
+
+`scripts/check-saved-replays.mjs` kiểm thử trên Chrome với database hiện tại
+sau khi seed: danh sách, tên đội, thời gian, kết quả, mở cả ba replay và tải
+lại trang. Dùng PLAYWRIGHT_MODULE như script kiểm thử UI ở dưới.
+
 ## Kiểm thử
 
 `npm test` hoặc `node --test` kiểm tra: thắng/hòa, tính điểm một lần,
 bỏ qua luyện tập/hủy trận, persistence khi mở lại database, transaction rollback,
 thứ tự lượt, tích hợp orchestrator và HTTP API (phân trang, lỗi, từ chối ghi).
+
+Đã có thêm kiểm thử import Python replay -> database -> parseReplay/buildFrames
+của frontend, chuẩn hóa ID đội, hòa và bàn cờ cuối. Kiểm thử trình duyệt tùy chọn:
+`node scripts/check-database-ui.mjs` (cần package Playwright và Chrome; có thể
+đặt PLAYWRIGHT_MODULE thành URL file của module Playwright đã cài).
+Script dùng database/port tạm, xác nhận bảng xếp hạng, lọc, phân trang, chi tiết,
+replay, màn hình mobile và lỗi khi backend dừng; không ghi dữ liệu giả vào
+data/game.sqlite. Ảnh kiểm chứng lưu trong data/verification.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import WebSocket from "ws";
 import { createHttpServer } from "../net/http.js";
 import { createRoomGateway } from "../net/roomGateway.js";
+import { createMatchStore } from '../net/storage/matchStore.js';
 
 function createClient(url) {
   const socket = new WebSocket(url);
@@ -71,7 +72,10 @@ async function startServer(t, gateway) {
 test("players upload bots, ready up, and receive streamed engine events", async (t) => {
   let engineRun = false;
   let matchRuns = 0;
+  const store = createMatchStore({ filename: ':memory:' });
+  t.after(() => store.close());
   const gateway = createRoomGateway({
+    matchStore: store,
     countdownMs: 1,
     async runMatch({ roomCode, teamA, teamB, onEvent }) {
       engineRun = true;
@@ -87,6 +91,9 @@ test("players upload bots, ready up, and receive streamed engine events", async 
       });
       onEvent({ type: "turn", turn: { turn: 1, player: "team_a", actions: [], events: [] } });
       onEvent({ type: "match_end", winner: null, reason: "DRAW" });
+      return { match_info: { match_id: `test-match-${matchRuns}`, teams: { team_a: 'Alpha', team_b: 'Beta' }, winner: null, win_reason: 'DRAW' },
+        game_config: { board: { width: 8, height: 8 } }, initial_state: [],
+        turns: [{ turn: 1, player: 'team_a', actions: [], events: [{ type: 'GAME_OVER', winner_team: null, reason: 'DRAW' }] }] };
     },
   });
   const { httpUrl, wsUrl } = await startServer(t, gateway);
@@ -131,6 +138,9 @@ test("players upload bots, ready up, and receive streamed engine events", async 
   assert.equal(turn.turn.turn, 1);
   assert.equal(end.reason, "DRAW");
   assert.equal(engineRun, true);
+  assert.equal(store.listMatches({ status: 'finished' }).total, 1);
+  assert.equal(store.getMatch('test-match-1').room_id, 'AB23');
+  assert.ok(store.getRankings().every(team => team.points === 1));
 
   await Promise.all([
     alpha.waitFor((message) => message.type === "room_state" && message.room.status === "finished"),

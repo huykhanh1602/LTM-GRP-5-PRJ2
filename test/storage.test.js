@@ -56,6 +56,14 @@ test('restart aborts unfinished matches without ranking points', t => {
   assert.ok(store.getRankings().every(row => row.points === 0));
 });
 
+test('finishing without a new snapshot retains the last accepted board state', t => {
+  const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
+  start(store, 'snapshot');
+  store.appendTurn('snapshot', { turn: 1, state: [{ id: 'A1', pos: [1, 0] }] });
+  store.finishMatch('snapshot', { winner: 'alpha' });
+  assert.deepEqual(store.getMatch('snapshot').final_state, [{ id: 'A1', pos: [1, 0] }]);
+});
+
 test('orchestrator saves accepted turns and results with stable team IDs', t => {
   const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
   const bots = [{ team: 'B', teamId: 'beta', teamName: 'Beta' }, { team: 'A', teamId: 'alpha', teamName: 'Alpha' }];
@@ -96,7 +104,7 @@ test('HTTP APIs support pagination, filters, replay, errors and reject public wr
   const list = await (await fetch(`${base}/api/matches?teamId=alpha&status=finished&limit=1`)).json();
   assert.equal(list.total, 1); assert.equal(list.items.length, 1);
   const replay = await (await fetch(`${base}/api/matches/api/replay`)).json();
-  assert.equal(replay.match_info.winner, 'alpha');
+  assert.equal(replay.match_info.winner, 'team_a');
   for (const path of ['/api/matches/missing', '/api/unknown']) assert.equal((await fetch(base + path)).status, 404);
   for (const query of ['limit=0', 'limit=abc', 'offset=-1', 'status=bad', 'limit=']) {
     assert.equal((await fetch(`${base}/api/matches?${query}`)).status, 400);

@@ -194,3 +194,7 @@ input[type="text"]:focus, .field input:focus, .code-input:focus {
 .live-bar ~ .layout.history-collapsed .board-frame {
   width: min(calc(100% - 60px), 900px, calc((100vh - 344px) * var(--w) / var(--h)));
 }
+.replay-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.replay-filter input { width: min(300px, 100%); }
+.replay-result { font-weight: 700; }
+.replay-result small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }

@@ -34,7 +34,7 @@ export function useReplay(frames) {
   return {
     index,
     last,
-    frame: frames[index],
+    frame: frames[Math.min(index, last)],
     playing,
     speed,
     setSpeed,
