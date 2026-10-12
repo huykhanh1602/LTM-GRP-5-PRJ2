@@ -1,11 +1,54 @@
 import http from "node:http";
+import { StorageError } from './storage/matchStore.js';
 
-export function createHttpServer() {
+export function createHttpServer({ matchStore } = {}) {
     const server = http.createServer((request, response) => {
         const url = new URL(
             request.url,
             "http://localhost"
         );
+
+        if (url.pathname.startsWith('/api/')) {
+            const send = (status, body) => {
+                response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+                response.end(JSON.stringify(body));
+            };
+            if (request.method !== 'GET') {
+                response.setHeader('Allow', 'GET');
+                send(405, { error: 'METHOD_NOT_ALLOWED' });
+                return;
+            }
+            if (!matchStore) { send(503, { error: 'STORAGE_UNAVAILABLE' }); return; }
+            try {
+                if (url.pathname === '/api/rankings') {
+                    send(200, { items: matchStore.getRankings(), scoring: { win: 3, draw: 1, loss: 0 } });
+                    return;
+                }
+                if (url.pathname === '/api/matches') {
+                    send(200, matchStore.listMatches({
+                        teamId: url.searchParams.get('teamId') ?? undefined,
+                        status: url.searchParams.get('status') ?? undefined,
+                        limit: url.searchParams.get('limit'), offset: url.searchParams.get('offset'),
+                    }));
+                    return;
+                }
+                const route = url.pathname.match(/^\/api\/matches\/([^/]+)(\/replay)?$/);
+                if (route) {
+                    let id;
+                    try { id = decodeURIComponent(route[1]); }
+                    catch { throw new StorageError('INVALID_INPUT', 'Invalid match ID'); }
+                    send(200, route[2] ? matchStore.getReplay(id) : matchStore.getMatch(id));
+                    return;
+                }
+                send(404, { error: 'NOT_FOUND' });
+            } catch (error) {
+                if (!(error instanceof StorageError)) console.error('Storage API error:', error);
+                send(error instanceof StorageError ? error.status : 500,
+                    { error: error instanceof StorageError ? error.code : 'INTERNAL_ERROR',
+                      message: error instanceof StorageError ? error.message : 'Unable to read match data' });
+            }
+            return;
+        }
 
         // Kiểm tra server còn hoạt động hay không.
         if (

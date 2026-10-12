@@ -1,6 +1,6 @@
 import { createRuleManager } from "./ruleManager.js";
 
-export function createOrchestrator(registry, spectatorGateway) {
+export function createOrchestrator(registry, spectatorGateway, matchStore = null) {
     const ruleManager = createRuleManager();
 
     // Lưu các trận đấu đang được quản lý.
@@ -63,6 +63,7 @@ export function createOrchestrator(registry, spectatorGateway) {
         return broadcastRoomState(roomId, {
             type: "game_state",
             roomId: room.roomId,
+            matchId: room.matchId ?? null,
             status: room.status,
             currentTurn: room.currentTurn,
             state: room.state,
@@ -70,7 +71,7 @@ export function createOrchestrator(registry, spectatorGateway) {
     }
 
     // Bắt đầu trận đấu khi phòng đã có đủ hai bot.
-    function startRoom(roomId, initialState = null) {
+    function startRoom(roomId, initialState = null, options = {}) {
         const roomStatus = getRoomStatus(roomId);
 
         if (!roomStatus.ready) {
@@ -89,6 +90,14 @@ export function createOrchestrator(registry, spectatorGateway) {
             };
         }
 
+        if (matchStore) {
+            // Arrival order must not swap the two sides in stored replay data.
+            const bots = [...getRoomBots(roomId)].sort((a, b) => a.team.localeCompare(b.team));
+            const team = bot => ({ id: bot.teamId ?? bot.team, name: bot.teamName ?? bot.team });
+            const match = matchStore.startMatch({ roomId, teamA: team(bots[0]), teamB: team(bots[1]),
+                initialState, config: options.config ?? {}, ranked: options.ranked ?? true });
+            room.matchId = match.id;
+        }
         room.state = initialState;
         room.status = "playing";
         room.currentTurn = null;
@@ -100,6 +109,7 @@ export function createOrchestrator(registry, spectatorGateway) {
             ok: true,
             roomId,
             status: room.status,
+            matchId: room.matchId ?? null,
         };
     }
 
@@ -113,6 +123,7 @@ export function createOrchestrator(registry, spectatorGateway) {
 
         return {
             roomId: room.roomId,
+            matchId: room.matchId ?? null,
             state: room.state,
             status: room.status,
             currentTurn: room.currentTurn,
@@ -120,7 +131,7 @@ export function createOrchestrator(registry, spectatorGateway) {
     }
 
     // Cập nhật trạng thái chính thức và phát cho người xem.
-    function updateRoomState(roomId, newState, currentTurn = null) {
+    function updateRoomState(roomId, newState, currentTurn = null, turnRecord = null) {
         const room = rooms.get(roomId);
 
         if (!room) {
@@ -137,6 +148,10 @@ export function createOrchestrator(registry, spectatorGateway) {
             };
         }
 
+        // Only record an accepted move; UI refreshes are not turns.
+        if (matchStore && room.matchId && turnRecord) {
+            matchStore.appendTurn(room.matchId, { ...turnRecord, state: newState });
+        }
         room.state = newState;
         room.currentTurn = currentTurn;
 
@@ -153,10 +168,11 @@ export function createOrchestrator(registry, spectatorGateway) {
     function stopRoom(roomId, result = null) {
         const room = rooms.get(roomId);
 
-        if (!room) {
+        if (!room || room.status !== 'playing') {
             return false;
         }
 
+        if (matchStore && room.matchId) matchStore.finishMatch(room.matchId, result, room.state);
         room.status = "stopped";
         room.currentTurn = null;
 
@@ -164,6 +180,7 @@ export function createOrchestrator(registry, spectatorGateway) {
         broadcastRoomState(roomId, {
             type: "game_over",
             roomId,
+            matchId: room.matchId ?? null,
             result,
             state: room.state,
         });

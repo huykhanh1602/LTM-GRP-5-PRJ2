@@ -110,6 +110,7 @@ export function createSpectatorGateway(
                         serializeMessage({
                             type: MESSAGE_TYPES.GAME_STATE,
                             roomId: room.roomId,
+                            matchId: room.matchId ?? null,
                             status: room.status,
                             currentTurn: room.currentTurn,
                             state: room.state,

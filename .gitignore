@@ -32,6 +32,7 @@ lerna-debug.log*
 __pycache__/
 *.py[cod]
 *$py.class
+data/
 
 # Virtual Environments
 .venv/
