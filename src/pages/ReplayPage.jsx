@@ -22,7 +22,7 @@ function tryParse(raw) {
 }
 
 // Xem lại 1 trận đã xong (từ file). Sau này đổi nguồn sang API: GET /api/matches/{id}/replay
-export default function ReplayPage() {
+export default function ReplayPage({ onBack }) {
   const [source, setSource] = useState(() => tryParse(sampleV2));
   const [fileName, setFileName] = useState("Mẫu v2 (đầy đủ)");
   const [showHistory, setShowHistory] = useState(false);
@@ -48,6 +48,7 @@ export default function ReplayPage() {
   return (
     <div>
       <div className="toolbar">
+        <button className="btn small" type="button" onClick={onBack}>← Quay lại</button>
         <div className="loader">
           <select
             value={SAMPLES[fileName] ? fileName : ""}

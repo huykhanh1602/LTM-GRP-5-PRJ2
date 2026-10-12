@@ -8,7 +8,7 @@ import { useLivePlayback } from "../hooks/useLivePlayback.js";
 import { makeColorOf } from "../utils/colors.js";
 
 // Xem trận TRỰC TIẾP (frames tăng dần khi server gửi lượt mới).
-export default function Match({ state, onRematch, onLeave }) {
+export default function Match({ state, onRematch, onLeave, onBack }) {
   const { init, frames, finished } = state;
   const player = useLivePlayback(frames);
   const colorOf = makeColorOf(Object.keys(init.match_info.teams));
@@ -18,6 +18,7 @@ export default function Match({ state, onRematch, onLeave }) {
   return (
     <div>
       <div className="live-bar">
+        <button className="btn small" type="button" onClick={onBack}>← Quay lại</button>
         {finished ? (
           <span className="badge ended">ĐÃ KẾT THÚC</span>
         ) : (

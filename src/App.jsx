@@ -10,13 +10,25 @@ export default function App() {
   const [tab, setTab] = useState("play"); // play | replay
   const room = useRoom();
 
+  function handleBack() {
+    if (tab === "replay") {
+      setTab("play");
+      return;
+    }
+    if (room.phase === "match" || room.phase === "room" || room.phase === "connecting") {
+      room.leave();
+      return;
+    }
+    setTab("play");
+  }
+
   let page;
   if (tab === "replay") {
-    page = <ReplayPage />;
+    page = <ReplayPage onBack={handleBack} />;
   } else if (room.phase === "match") {
-    page = <Match key={room.matchKey} state={room} onRematch={room.rematch} onLeave={room.leave} />;
+    page = <Match key={room.matchKey} state={room} onRematch={room.rematch} onLeave={room.leave} onBack={handleBack} />;
   } else if (room.phase === "room") {
-    page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} />;
+    page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} onBack={handleBack} />;
   } else {
     page = <Lobby onJoin={room.join} connecting={room.phase === "connecting"} error={room.error} />;
   }

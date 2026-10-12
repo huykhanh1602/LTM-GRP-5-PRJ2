@@ -4,7 +4,7 @@ import TeamSlot from "../components/TeamSlot.jsx";
 import { PALETTE } from "../utils/colors.js";
 
 // Phòng chờ: thấy trạng thái 2 đội, nộp code, bấm Sẵn sàng; cả 2 sẵn sàng thì đếm ngược.
-export default function Room({ state, onSubmit, onReady, onLeave }) {
+export default function Room({ state, onSubmit, onReady, onLeave, onBack }) {
   const { room, countdown, error } = state;
   const [copied, setCopied] = useState(false);
   if (!room) return null;
@@ -40,7 +40,10 @@ export default function Room({ state, onSubmit, onReady, onLeave }) {
           </div>
           <div className="muted">Gửi mã này cho đội đối thủ để họ vào phòng.</div>
         </div>
-        <button className="btn" onClick={onLeave}>Rời phòng</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn small" type="button" onClick={onBack}>← Quay lại</button>
+          <button className="btn" onClick={onLeave}>Rời phòng</button>
+        </div>
       </div>
 
       <div className="slots">
