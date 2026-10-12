@@ -1,3 +1,6 @@
+import Media from "./Media.jsx";
+import { theme } from "../theme/theme.js";
+
 const EFFECTS = {
   combat: "💥",
   trap: "☠️",
@@ -14,7 +17,9 @@ export default function ClashEffect({ kind, cell, width, height }) {
   };
   return (
     <div className="effect" style={style}>
-      <div className={`effect-body effect-${kind}`}>{EFFECTS[kind] ?? "✨"}</div>
+      <div className={`effect-body`}>
+        <Media className="effect-media" src={theme.effects[kind]} fallback={EFFECTS[kind] ?? "✨"} loop={false} />
+      </div>
     </div>
   );
 }

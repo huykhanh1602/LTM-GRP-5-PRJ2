@@ -1,4 +1,6 @@
-// Bảng tra icon theo loại quân. Loại lạ (thầy thêm loại mới) -> hiện chữ cái đầu, không crash.
+import Media from "./Media.jsx";
+import { theme } from "../theme/theme.js";
+
 const ICONS = {
   ROCK: "✊",
   PAPER: "✋",
@@ -21,7 +23,7 @@ export default function Piece({ piece, cell, width, height, color, isMover }) {
   return (
     <div className="piece" style={style}>
       <div className={`piece-body ${piece.alive ? "" : "dead"}`} title={`${piece.id} · ${piece.type}`}>
-        <span className="piece-icon">{pieceIcon(piece.type)}</span>
+        <Media className="piece-icon" src={theme.pieces[piece.type]?.[piece.owner]} fallback={pieceIcon(piece.type)} />
         <span className="piece-id">{piece.id}</span>
         {piece.hp > 1 && <span className="piece-hp">{piece.hp}</span>}
       </div>

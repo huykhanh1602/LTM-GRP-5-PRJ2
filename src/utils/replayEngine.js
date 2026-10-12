@@ -90,16 +90,16 @@ function applyEvent(prev, ev, step, index) {
   return next;
 }
 
-export function buildFrames(replay) {
+// Tạo khung hình đầu tiên từ { match_info, game_config, initial_state }.
+export function createFrames(init) {
   const pieces = {};
-  for (const p of replay.initial_state) {
+  for (const p of init.initial_state) {
     pieces[p.id] = { ...p, alive: true };
   }
   const scores = Object.fromEntries(
-    Object.keys(replay.match_info.teams).map((t) => [t, 0])
+    Object.keys(init.match_info.teams).map((t) => [t, 0])
   );
-
-  const frames = [
+  return [
     {
       index: 0,
       turn: 0,
@@ -114,28 +114,40 @@ export function buildFrames(replay) {
       over: null,
     },
   ];
-  const steps = [null]; // steps[i] khớp với frames[i]
+}
 
-  for (const turn of replay.turns) {
-    const step = {
-      turn: turn.turn,
-      player: turn.player ?? turn.actions?.[0]?.player ?? null,
-    };
-    const events = turn.events?.length ? turn.events : [{ type: "TURN_PASSED" }];
-    for (const ev of events) {
-      const frame = applyEvent(frames[frames.length - 1], ev, step, frames.length);
-      frames.push(frame);
-      steps.push(step);
-    }
+// Thêm 1 lượt (turn) vào cuối. Trả về mảng frames MỚI (dùng được trực tiếp với setState).
+// Dùng cho cả replay (gọi lần lượt từng lượt) lẫn trận trực tiếp (server đẩy từng lượt).
+export function appendTurn(frames, turn) {
+  const step = {
+    turn: turn.turn,
+    player: turn.player ?? turn.actions?.[0]?.player ?? null,
+  };
+  const events = turn.events?.length ? turn.events : [{ type: "TURN_PASSED" }];
+  const out = frames.slice();
+  for (const ev of events) {
+    out.push(applyEvent(out[out.length - 1], ev, step, out.length));
   }
+  return out;
+}
 
-  // Nếu file không có GAME_OVER thì dùng match_info.winner ở frame cuối.
+// Gắn kết quả cuối ván nếu chưa có event GAME_OVER.
+export function endFrames(frames, result) {
   const last = frames[frames.length - 1];
-  if (!last.over && replay.match_info?.winner) {
-    last.over = {
+  if (last.over) return frames;
+  const out = frames.slice(0, -1);
+  out.push({ ...last, over: { winner: result.winner ?? null, reason: result.reason ?? null } });
+  return out;
+}
+
+export function buildFrames(replay) {
+  let frames = createFrames(replay);
+  for (const turn of replay.turns) frames = appendTurn(frames, turn);
+  if (replay.match_info?.winner) {
+    frames = endFrames(frames, {
       winner: replay.match_info.winner,
       reason: replay.match_info.win_reason ?? null,
-    };
+    });
   }
   return frames;
 }

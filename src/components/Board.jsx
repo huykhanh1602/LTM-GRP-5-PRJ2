@@ -1,6 +1,8 @@
 import { toCell } from "../utils/coords.js";
 import Piece from "./Piece.jsx";
 import ClashEffect from "./ClashEffect.jsx";
+import Media from "./Media.jsx";
+import { theme } from "../theme/theme.js";
 
 const TILE_ICONS = { BASE: "🏁", OBSTACLE: "🧱", TRAP: "🕳️" };
 
@@ -34,7 +36,7 @@ export default function Board({ board, frame, colorOf }) {
           style={tile?.owner ? { "--team": colorOf(tile.owner) } : undefined}
           title={tile ? `${tile.type}${tile.owner ? " · " + tile.owner : ""}` : `[${x},${y}]`}
         >
-          {tile && <span className="tile-icon">{TILE_ICONS[tile.type] ?? "?"}</span>}
+          {tile && <Media className="tile-icon" src={theme.tiles[tile.type]} fallback={TILE_ICONS[tile.type] ?? "?"} />}
         </div>
       );
     }
@@ -44,40 +46,42 @@ export default function Board({ board, frame, colorOf }) {
 
   return (
     <div
-      className="board"
+      className="board-frame"
       style={{
         "--w": width,
         "--h": height,
         aspectRatio: `${width} / ${height}`,
       }}
     >
-      <div
-        className="board-grid"
-        style={{ gridTemplateColumns: `repeat(${width}, 1fr)`, gridTemplateRows: `repeat(${height}, 1fr)` }}
-      >
-        {cells}
-      </div>
-      <div className="board-layer">
-        {Object.values(frame.pieces).map((p) => (
-          <Piece
-            key={p.id}
-            piece={p}
-            cell={toCell(p.pos, board)}
-            width={width}
-            height={height}
-            color={colorOf(p.owner)}
-            isMover={frame.mover === p.id}
-          />
-        ))}
-        {flash && (
-          <ClashEffect
-            key={frame.index}
-            kind={frame.flash.kind}
-            cell={flash}
-            width={width}
-            height={height}
-          />
-        )}
+      <div className="board" style={{ aspectRatio: `${width} / ${height}` }}>
+        <div
+          className="board-grid"
+          style={{ gridTemplateColumns: `repeat(${width}, 1fr)`, gridTemplateRows: `repeat(${height}, 1fr)` }}
+        >
+          {cells}
+        </div>
+        <div className="board-layer">
+          {Object.values(frame.pieces).map((p) => (
+            <Piece
+              key={p.id}
+              piece={p}
+              cell={toCell(p.pos, board)}
+              width={width}
+              height={height}
+              color={colorOf(p.owner)}
+              isMover={frame.mover === p.id}
+            />
+          ))}
+          {flash && (
+            <ClashEffect
+              key={frame.index}
+              kind={frame.flash.kind}
+              cell={flash}
+              width={width}
+              height={height}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
