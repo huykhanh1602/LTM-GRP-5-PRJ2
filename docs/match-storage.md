@@ -17,11 +17,11 @@ ID đội chỉ dùng để sắp xếp ổn định khi đồng hạng. Đội 
 
 Schema thực thi: `net/storage/schema.sql`.
 
-| Bảng | Nội dung | Khóa / quan hệ |
-| --- | --- | --- |
-| teams | ID ổn định, tên đội, thời gian tạo | PK id |
-| matches | Phòng, hai đội, trạng thái, kết quả, thời gian, cấu hình, bàn cờ đầu/cuối | PK id; FK team_a_id, team_b_id, winner_id -> teams |
-| match_turns | Số lượt, đội chơi, hành động, sự kiện, trạng thái sau lượt | PK (match_id, turn); FK match_id -> matches |
+| Bảng        | Nội dung                                                                  | Khóa / quan hệ                                     |
+| ----------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| teams       | ID ổn định, tên đội, thời gian tạo                                        | PK id                                              |
+| matches     | Phòng, hai đội, trạng thái, kết quả, thời gian, cấu hình, bàn cờ đầu/cuối | PK id; FK team_a_id, team_b_id, winner_id -> teams |
+| match_turns | Số lượt, đội chơi, hành động, sự kiện, trạng thái sau lượt                | PK (match_id, turn); FK match_id -> matches        |
 
 Trường bàn cờ/cấu hình/hành động/sự kiện lưu JSON để không chốt luật chơi khi nhóm
 chưa triển khai game engine. Mốc thời gian là ISO 8601 UTC.
@@ -39,12 +39,12 @@ Khi server khởi động lại, trận còn `playing` được đánh dấu `ab
 
 Chạy `npm run server`, sau đó `npm run dev`. Vite chuyển tiếp `/api` sang cổng 3000.
 
-| Method | Đường dẫn | Kết quả |
-| --- | --- | --- |
-| GET | /api/rankings | `{ items, scoring: { win: 3, draw: 1, loss: 0 } }` |
-| GET | /api/matches?teamId=A&status=finished&limit=20&offset=0 | `{ items, total, limit, offset }` |
-| GET | /api/matches/:id | Chi tiết trận, cấu hình, bàn cờ đầu/cuối, kết quả |
-| GET | /api/matches/:id/replay | `{ match_info, game_config, initial_state, turns, final_state }` |
+| Method | Đường dẫn                                               | Kết quả                                                          |
+| ------ | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| GET    | /api/rankings                                           | `{ items, scoring: { win: 3, draw: 1, loss: 0 } }`               |
+| GET    | /api/matches?teamId=A&status=finished&limit=20&offset=0 | `{ items, total, limit, offset }`                                |
+| GET    | /api/matches/:id                                        | Chi tiết trận, cấu hình, bàn cờ đầu/cuối, kết quả                |
+| GET    | /api/matches/:id/replay                                 | `{ match_info, game_config, initial_state, turns, final_state }` |
 
 Các bộ lọc không bắt buộc. Status: `playing`, `finished`, `aborted`.
 Limit từ 1 đến 100, mặc định 20; offset là số nguyên không âm, mặc định 0.
@@ -57,10 +57,10 @@ API lỗi trả `{ error, message }`: 400 cho tham số sai, 404 khi không có 
 Hàm gọi đã có trong `src/api.js`:
 
 ```js
-import { getRankings, getMatches, getMatch, getMatchReplay } from './api.js';
+import { getRankings, getMatches, getMatch, getMatchReplay } from "./api.js";
 
 const { items: rankings } = await getRankings();
-const history = await getMatches({ teamId: 'A', status: 'finished', limit: 10 });
+const history = await getMatches({ teamId: "A", status: "finished", limit: 10 });
 const match = await getMatch(history.items[0].id);
 const replay = await getMatchReplay(match.id);
 ```
@@ -73,8 +73,9 @@ chi tiết trận và nút mở replay bằng trình xem bàn cờ hiện có. C
 database rỗng và lỗi backend cùng nút Tải lại. Chạy lại backend sau khi cập nhật
 mã và refresh trình duyệt để dùng phiên bản mới.
 
-Khi deploy, reverse proxy cần chuyển `/api` đến game server cùng origin với UI.
-`VITE_API_BASE_URL` có thể đổi URL API nhưng server chưa bật CORS cho origin khác.
+Khi deploy, có hai cách: reverse proxy `/api` đến game server cùng origin với UI, hoặc
+đặt `VITE_API_URL` trỏ thẳng tới origin backend (ví dụ Railway). Backend đã bật CORS
+(headers dùng chung trong `net/cors.js`) nên gọi cross-origin từ Vercel hoạt động bình thường.
 Nếu đổi PORT backend, sửa đích proxy trong vite.config.js tương ứng.
 
 ## Hàm phía server và điểm tích hợp game engine
@@ -85,20 +86,20 @@ Store cung cấp `registerTeam`, `startMatch`, `appendTurn`, `finishMatch`,
 Đã tích hợp vào ba hàm orchestrator hiện có:
 
 ```js
-orchestrator.startRoom('room-01', initialState, {
-  config: { board: { width: 8, height: 8 }, max_turns: 100 },
-  ranked: true,
+orchestrator.startRoom("room-01", initialState, {
+    config: { board: { width: 8, height: 8 }, max_turns: 100 },
+    ranked: true,
 });
 
 // Chỉ gọi sau khi game engine xác nhận nước đi hợp lệ và áp dụng thành công.
-orchestrator.updateRoomState('room-01', nextState, 'B', {
-  turn: 1,
-  player: 'A', // ID đội ổn định, không phải botId
-  actions: [{ piece_id: 'A1', action_type: 'MOVE', from: [0, 0], to: [1, 0] }],
-  events: [{ type: 'PIECE_MOVED', piece_id: 'A1', from: [0, 0], to: [1, 0] }],
+orchestrator.updateRoomState("room-01", nextState, "B", {
+    turn: 1,
+    player: "A", // ID đội ổn định, không phải botId
+    actions: [{ piece_id: "A1", action_type: "MOVE", from: [0, 0], to: [1, 0] }],
+    events: [{ type: "PIECE_MOVED", piece_id: "A1", from: [0, 0], to: [1, 0] }],
 });
 
-orchestrator.stopRoom('room-01', { winner: 'A', reason: 'BASE_CAPTURED' });
+orchestrator.stopRoom("room-01", { winner: "A", reason: "BASE_CAPTURED" });
 // Hòa: { draw: true, reason: 'MAX_TURNS' }
 // Hủy/dừng: null hoặc { reason: 'CANCELLED' }
 ```
