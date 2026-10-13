@@ -42,8 +42,26 @@
     { "id": "A1", "owner": "team_a", "type": "ROCK", "pos": [0, 0], "hp": 1 },
     { "id": "A2", "owner": "team_a", "type": "PAPER", "pos": [1, 0], "hp": 1 },
     { "id": "A3", "owner": "team_a", "type": "SCISSORS", "pos": [2, 0], "hp": 1 },
+    { "id": "A4", "owner": "team_a", "type": "ROCK", "pos": [3, 0], "hp": 1 },
+    { "id": "A5", "owner": "team_a", "type": "PAPER", "pos": [6, 0], "hp": 1 },
+    { "id": "A6", "owner": "team_a", "type": "SCISSORS", "pos": [6, 1], "hp": 1 },
+    { "id": "A7", "owner": "team_a", "type": "ROCK", "pos": [7, 1], "hp": 1 },
+    { "id": "A8", "owner": "team_a", "type": "SCISSORS", "pos": [5, 0], "hp": 1 },
+    { "id": "A9", "owner": "team_a", "type": "PAPER", "pos": [5, 1], "hp": 1 },
+    { "id": "A10", "owner": "team_a", "type": "ROCK", "pos": [5, 2], "hp": 1 },
+    { "id": "A11", "owner": "team_a", "type": "SCISSORS", "pos": [6, 2], "hp": 1 },
+    { "id": "A12", "owner": "team_a", "type": "PAPER", "pos": [7, 2], "hp": 1 },
     { "id": "B1", "owner": "team_b", "type": "ROCK", "pos": [7, 7], "hp": 1 },
     { "id": "B2", "owner": "team_b", "type": "PAPER", "pos": [6, 7], "hp": 1 },
-    { "id": "B3", "owner": "team_b", "type": "SCISSORS", "pos": [5, 7], "hp": 1 }
+    { "id": "B3", "owner": "team_b", "type": "SCISSORS", "pos": [5, 7], "hp": 1 },
+    { "id": "B4", "owner": "team_b", "type": "ROCK", "pos": [4, 7], "hp": 1 },
+    { "id": "B5", "owner": "team_b", "type": "PAPER", "pos": [1, 7], "hp": 1 },
+    { "id": "B6", "owner": "team_b", "type": "SCISSORS", "pos": [1, 6], "hp": 1 },
+    { "id": "B7", "owner": "team_b", "type": "ROCK", "pos": [0, 6], "hp": 1 },
+    { "id": "B8", "owner": "team_b", "type": "SCISSORS", "pos": [2, 7], "hp": 1 },
+    { "id": "B9", "owner": "team_b", "type": "PAPER", "pos": [2, 6], "hp": 1 },
+    { "id": "B10", "owner": "team_b", "type": "ROCK", "pos": [2, 5], "hp": 1 },
+    { "id": "B11", "owner": "team_b", "type": "SCISSORS", "pos": [1, 5], "hp": 1 },
+    { "id": "B12", "owner": "team_b", "type": "PAPER", "pos": [0, 5], "hp": 1 }
   ]
 }
