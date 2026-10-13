@@ -101,6 +101,7 @@ export function createRoomGateway({
         room.countdownTimer = null;
         const runToken = ++room.runToken;
         const startedAt = new Date().toISOString();
+        broadcast(room, { type: "countdown", seconds: null });
         broadcastRoom(room);
 
         try {
@@ -130,11 +131,11 @@ export function createRoomGateway({
             if (runToken !== room.runToken) return;
             room.status = "waiting";
             room.teams.forEach((team) => { team.ready = false; });
+            broadcastRoom(room);
             broadcast(room, {
                 type: "error",
                 message: `Không thể chạy trận đấu: ${error.message}`,
             });
-            broadcastRoom(room);
         }
     }
 

@@ -266,3 +266,55 @@ test("bot submissions require a room token and reject unsupported or oversized f
   });
   assert.equal(oversized.status, 413);
 });
+
+test("engine startup failure clears countdown and leaves the error visible", async (t) => {
+  const gateway = createRoomGateway({
+    countdownMs: 1,
+    async runMatch() {
+      throw new Error("Python unavailable");
+    },
+  });
+  const { httpUrl, wsUrl } = await startServer(t, gateway);
+  const alpha = createClient(`${wsUrl}/rooms/GH67`);
+  const beta = createClient(`${wsUrl}/rooms/GH67`);
+  t.after(() => { alpha.close(); beta.close(); });
+  await Promise.all([alpha.open(), beta.open()]);
+
+  alpha.send({ type: "join_room", code: "GH67", team_name: "Alpha", role: "player" });
+  beta.send({ type: "join_room", code: "GH67", team_name: "Beta", role: "player" });
+  const [alphaJoined, betaJoined] = await Promise.all([
+    alpha.waitFor((message) => message.type === "joined"),
+    beta.waitFor((message) => message.type === "joined"),
+  ]);
+
+  for (const joined of [alphaJoined, betaJoined]) {
+    const response = await fetch(`${httpUrl}/api/rooms/GH67/submissions?filename=bot.py`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${joined.player_token}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: "def make_move(*args): return None",
+    });
+    assert.equal(response.status, 200);
+  }
+
+  alpha.send({ type: "ready", ready: true });
+  beta.send({ type: "ready", ready: true });
+
+  const countdownCleared = await alpha.waitFor(
+    (message) => message.type === "countdown" && message.seconds === null
+  );
+  assert.equal(countdownCleared.seconds, null);
+  await alpha.waitFor((message) => message.type === "room_state" && message.room.status === "playing");
+  const waiting = await alpha.waitFor(
+    (message) => message.type === "room_state"
+      && message.room.status === "waiting"
+      && message.room.teams.every((team) => !team.ready)
+  );
+  assert.equal(waiting.room.status, "waiting");
+  const error = await alpha.waitFor(
+    (message) => message.type === "error" && message.message.includes("Python unavailable")
+  );
+  assert.match(error.message, /Python unavailable/);
+});

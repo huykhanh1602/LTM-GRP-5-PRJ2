@@ -8,6 +8,7 @@ Giao diện chỉ là **người xem + người điều khiển phòng**. Code P
 - Chạy giao diện: `npm run dev`.
 - Sao chép `.env.example` thành `.env`. Để `VITE_API_URL` trống trong local để Vite proxy HTTP API tới cổng `3000`.
 - Cần cài Python và bảo đảm lệnh `python` (Windows) hoặc `python3` (macOS/Linux) chạy được. Có thể đặt `PYTHON_EXECUTABLE` để chọn lệnh Python cụ thể.
+- Backend Railway dùng `Dockerfile` ở thư mục gốc để cài cả Node.js và Python 3; cần triển khai service backend từ thư mục gốc repository.
 - Đặt `VITE_USE_MOCK=true` để dùng replay mẫu thay vì kết nối server.
 
 ## Kết nối
