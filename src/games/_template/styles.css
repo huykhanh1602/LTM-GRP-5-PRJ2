@@ -1,0 +1,22 @@
+.tap-counter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px;
+}
+
+.tap-counter .tc-hint {
+    opacity: 0.8;
+    margin: 0;
+}
+
+.tap-counter .tc-stats {
+    display: flex;
+    gap: 24px;
+    font-size: 1.1rem;
+}
+
+.tap-counter .tc-done {
+    font-weight: 600;
+}
