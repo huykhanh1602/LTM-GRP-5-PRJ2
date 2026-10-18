@@ -4,9 +4,10 @@ import { appendTurn, createFrames, endFrames } from "../utils/replayEngine.js";
 import { appendLiveReplayTurn, createLiveReplay, finishLiveReplay } from "../utils/liveReplay.js";
 
 const INITIAL = {
-  phase: "idle", // idle | connecting | room | match
+  phase: "idle", // idle | connecting | queue | room | match
   params: null,
   room: null,
+  queue: null, // { wait_time, mode } khi đang chờ ghép trận
   countdown: null,
   error: null,
   init: null, // { match_info, game_config, initial_state } của trận đang xem
@@ -33,6 +34,15 @@ export function useRoom() {
           }));
         }
         break;
+      case "queue_state":
+        // in_queue=false đến ngay trước match_found nên bỏ qua; rời hàng đợi là do người dùng bấm Hủy.
+        if (m.in_queue) {
+          setState((p) => ({ ...p, phase: "queue", queue: { wait_time: m.wait_time, mode: m.mode }, error: null }));
+        }
+        break;
+      case "match_found":
+        setState((p) => ({ ...p, phase: "connecting", queue: null, opponent: m.opponent ?? null }));
+        break;
       case "room_state":
         setState((p) => ({
           ...p,
@@ -40,6 +50,7 @@ export function useRoom() {
             ? "match"
             : "room",
           room: m.room,
+          queue: null,
           error: null,
         }));
         break;

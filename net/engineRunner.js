@@ -9,7 +9,7 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const engineDirectory = join(projectRoot, "engine");
 const configTemplatePath = join(engineDirectory, "config.json");
 
-export async function runEngineMatch({ roomCode, teamA, teamB, onEvent }) {
+export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPatch = null }) {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "ltm-match-"));
     const botAPath = join(temporaryDirectory, "team_a.py");
     const botBPath = join(temporaryDirectory, "team_b.py");
@@ -19,6 +19,8 @@ export async function runEngineMatch({ roomCode, teamA, teamB, onEvent }) {
     try {
         const config = JSON.parse(await readFile(configTemplatePath, "utf8"));
         const matchId = `M-${roomCode}-${randomUUID()}`;
+        // Chỉ phòng casual có configPatch; gateway đã lọc sẵn các khóa được phép.
+        if (configPatch?.limits) config.limits = { ...config.limits, ...configPatch.limits };
         config.match = {
             ...(config.match ?? {}),
             match_id: matchId,

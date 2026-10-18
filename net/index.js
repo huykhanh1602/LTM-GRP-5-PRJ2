@@ -6,12 +6,20 @@ import { createSpectatorGateway } from "./spectatorGateway.js";
 import { createOrchestrator } from "./orchestrator.js";
 import { createMatchStore } from './storage/matchStore.js';
 import { createRoomGateway } from "./roomGateway.js";
+import { createAuthService } from "./auth/authService.js";
+import { createWsGateway } from "./wsGateway.js";
 
 const matchStore = createMatchStore();
 matchStore.abortInterruptedMatches();
 const registry = createRegistry();
 const roomGateway = createRoomGateway({ matchStore });
-const server = createHttpServer({ matchStore, roomGateway });
+const authService = createAuthService();
+const wsGateway = createWsGateway({
+    sessions: authService.sessions,
+    users: authService.users,
+    matchStore,
+});
+const server = createHttpServer({ matchStore, roomGateway, authService });
 
 const botGateway = createBotGateway(server, registry);
 
@@ -53,6 +61,10 @@ server.on("upgrade", (request, socket, head) => {
         return;
     }
 
+    if (wsGateway.handleUpgrade(request, socket, head)) {
+        return;
+    }
+
     if (roomGateway.handleUpgrade(request, socket, head)) {
         return;
     }
@@ -78,7 +90,10 @@ server.listen(config.port,"0.0.0.0", () => {
         `Spectator WebSocket: ws://localhost:${config.port}/spectator`
     );
     console.log(
-        `Room WebSocket: ws://localhost:${config.port}/rooms/<ROOM_CODE>`
+        `Room WebSocket (v1): ws://localhost:${config.port}/rooms/<ROOM_CODE>`
+    );
+    console.log(
+        `Platform WebSocket (v2): ws://localhost:${config.port}/ws`
     );
 });
 
@@ -93,4 +108,6 @@ export {
     spectatorGateway,
     orchestrator,
     roomGateway,
+    wsGateway,
+    authService,
 };

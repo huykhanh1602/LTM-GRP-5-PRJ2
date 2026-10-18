@@ -1,28 +1,145 @@
-// Kênh thật: WebSocket cho trạng thái phòng + trận trực tiếp, HTTP để nộp bot.
-// Định dạng tin nhắn: xem docs/PROTOCOL.md.
+// Kênh thật nói chuyện với server bằng GIAO THỨC WEBSOCKET v2 (docs/WS_PROTOCOL_V2.md).
+//
+// Giao diện (useRoom, Room, Match...) vẫn dùng mô hình phòng quen thuộc, nên file này làm hai việc:
+//   1. Đăng nhập: POST /api/auth/guest lấy token phiên, mở /ws rồi gửi tin `auth`.
+//   2. Chuyển tin v2 -> mô hình giao diện (toUiMessage) và ngược lại (ready, submit_bot).
+//
+// Kênh trả về: on(fn), send(msg), submitCode(file), close() — giống hệt mockServer.js.
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, teamId }) {
+const TEAM_IDS = ["team_a", "team_b"];
+
+// Chuyển room_state v2 thành mô hình phòng của giao diện (luôn đủ 2 ô đội).
+export function toUiRoom(m, myUserId) {
+    const players = Array.isArray(m.players) ? m.players : [];
+    return {
+        code: m.room_id,
+        status: m.status,
+        mode: m.mode,
+        game_id: m.game_id,
+        spectators: m.spectators ?? 0,
+        teams: TEAM_IDS.map((id) => {
+            const p = players.find((player) => player.team_id === id);
+            return {
+                id,
+                name: p?.display_name ?? "",
+                isMe: Boolean(p) && p.user_id === myUserId,
+                connected: Boolean(p?.connected),
+                submitted: Boolean(p?.has_bot),
+                ready: Boolean(p?.ready),
+                filename: p?.filename ?? null,
+            };
+        }),
+    };
+}
+
+// Chuyển một tin v2 từ server thành tin cho giao diện. Trả về null nếu giao diện không cần tin này.
+export function toUiMessage(m, myUserId) {
+    switch (m.type) {
+        case "room_state":
+            return { type: "room_state", room: toUiRoom(m, myUserId) };
+        case "game_over":
+            return {
+                type: "match_end",
+                match_id: m.match_id,
+                winner: m.winner === "draw" ? null : m.winner,
+                reason: m.reason ?? null,
+                elo_change_a: m.elo_change_a,
+                elo_change_b: m.elo_change_b,
+            };
+        case "match_start":
+        case "turn":
+        case "countdown":
+        case "queue_state":
+        case "match_found":
+            return m;
+        case "error":
+            return { type: "error", code: m.code, message: m.message || m.code };
+        default:
+            return null; // auth_ok, bot_accepted, pong, room_left...: kênh tự xử lý
+    }
+}
+
+const SUBMIT_ERRORS = new Set([
+    "INVALID_BOT", "BOT_TOO_LARGE", "UNSUPPORTED_LANGUAGE", "WRONG_STATE", "NOT_IN_ROOM", "INVALID_MESSAGE", "RATE_LIMITED",
+]);
+
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, create, find, mode = "casual", gameId = "rps_chess" }) {
     const listeners = new Set();
     const emit = (m) => listeners.forEach((l) => l(m));
-    let playerToken = null;
+    let ws = null;
+    let myUserId = null;
+    let closed = false;
+    let pendingSubmit = null;
 
-    const ws = new WebSocket(`${wsUrl.replace(/\/$/, "")}/rooms/${encodeURIComponent(code)}`);
-    ws.onopen = () =>
-        ws.send(
-            JSON.stringify({ type: "join_room", code, team_name: teamName, role, team_id: teamId }),
-        );
-    ws.onmessage = (e) => {
-        let msg;
-        try {
-            msg = JSON.parse(e.data);
-        } catch {
-            return; // bỏ qua tin không phải JSON
+    const base = typeof window !== "undefined" ? window.location.href : "http://localhost/";
+    const apiUrl = (path) => new URL(`${(httpUrl ?? "").replace(/\/+$/, "")}${path}`, base);
+    const fail = (message) => emit({ type: "error", message });
+
+    function enterRoom() {
+        if (role === "spectator") ws.send(JSON.stringify({ type: "watch_room", code }));
+        else if (find) ws.send(JSON.stringify({ type: "find_match", game_id: gameId, mode }));
+        else if (create) ws.send(JSON.stringify({ type: "create_room", game_id: gameId, mode: "casual" }));
+        else ws.send(JSON.stringify({ type: "join_room", game_id: gameId, mode: "casual", code }));
+    }
+
+    function handle(msg) {
+        if (msg.type === "auth_ok") {
+            myUserId = msg.user.id;
+            enterRoom();
+            return;
         }
-        if (msg.type === "joined") playerToken = msg.player_token;
-        emit(msg);
-    };
-    ws.onerror = () => emit({ type: "error", message: "Không kết nối được tới server." });
-    ws.onclose = () => emit({ type: "error", message: "Mất kết nối với server." });
+        if (pendingSubmit) {
+            if (msg.type === "bot_accepted") {
+                pendingSubmit.resolve({ id: msg.sha256, filename: pendingSubmit.filename, version: msg.version });
+                pendingSubmit = null;
+                return;
+            }
+            if (msg.type === "error" && SUBMIT_ERRORS.has(msg.code)) {
+                pendingSubmit.reject(new Error(msg.message || msg.code));
+                pendingSubmit = null;
+                return;
+            }
+        }
+        const ui = toUiMessage(msg, myUserId);
+        if (ui) emit(ui);
+    }
+
+    async function start() {
+        let token;
+        try {
+            const res = await fetch(apiUrl("/api/auth/guest"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ display_name: teamName }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.message || body.error || `Lỗi ${res.status}`);
+            token = body.token;
+        } catch (e) {
+            if (!closed) fail(`Không đăng nhập được: ${e.message}`);
+            return;
+        }
+        if (closed) return;
+
+        ws = new WebSocket(`${wsUrl.replace(/\/$/, "")}/ws`);
+        ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token }));
+        ws.onmessage = (e) => {
+            let msg;
+            try {
+                msg = JSON.parse(e.data);
+            } catch {
+                return; // bỏ qua tin không phải JSON
+            }
+            handle(msg);
+        };
+        ws.onerror = () => fail("Không kết nối được tới server.");
+        ws.onclose = () => {
+            if (pendingSubmit) pendingSubmit.reject(new Error("Mất kết nối với server."));
+            pendingSubmit = null;
+            if (!closed) fail("Mất kết nối với server.");
+        };
+    }
+    void start();
 
     return {
         on(fn) {
@@ -30,33 +147,35 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, team
             return () => listeners.delete(fn);
         },
         send(msg) {
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+            if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
         },
+        // file: File của trình duyệt. Trả về Promise, lỗi thì throw Error có câu báo lỗi tiếng Việt.
         async submitCode(file) {
-            if (!playerToken) throw new Error("Chưa kết nối vào phòng với tư cách đội chơi.");
-            // httpUrl là API_URL (VITE_API_URL). Rỗng -> dùng same-origin (dev proxy).
-            const apiBase = (httpUrl ?? "").replace(/\/+$/, "");
-            const url = new URL(
-                `${apiBase}/api/rooms/${encodeURIComponent(code)}/submissions`,
-                window.location.href,
-            );
-            url.searchParams.set("filename", file.name);
-            const res = await fetch(url, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${playerToken}`,
-                    "Content-Type": "application/octet-stream",
-                },
-                body: file,
+            if (!ws || ws.readyState !== WebSocket.OPEN || !myUserId) throw new Error("Chưa kết nối vào phòng.");
+            if (pendingSubmit) throw new Error("Đang nộp một file khác, hãy chờ.");
+            const content = await file.text();
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    pendingSubmit = null;
+                    reject(new Error("Server không phản hồi khi nộp bot."));
+                }, 15000);
+                pendingSubmit = {
+                    filename: file.name,
+                    resolve: (v) => { clearTimeout(timer); resolve(v); },
+                    reject: (e) => { clearTimeout(timer); reject(e); },
+                };
+                ws.send(JSON.stringify({ type: "submit_bot", mode_type: "file", language: "python", filename: file.name, content }));
             });
-            const result = await res.json();
-            if (!res.ok) throw new Error(result.message || result.error || `Lỗi ${res.status}`);
-            return result;
         },
         close() {
-            ws.onclose = null;
-            ws.close();
+            closed = true;
             listeners.clear();
+            if (ws) {
+                ws.onclose = null;
+                // Báo rời phòng để server nhả chỗ ngay thay vì giữ 30 giây.
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "leave_room" }));
+                ws.close();
+            }
         },
     };
 }

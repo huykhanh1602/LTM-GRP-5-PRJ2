@@ -10,16 +10,23 @@ function randomCode() {
 }
 
 // Trang đầu: nhập tên đội + tạo phòng / vào phòng bằng mã / chỉ xem.
-export default function Lobby({ onJoin, connecting, error }) {
+export default function Lobby({ onJoin, onCancel, connecting, queue, error }) {
   const [teamName, setTeamName] = useState("");
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState("");
 
-  function go(roomCode, role) {
+  function go(roomCode, role, create = false) {
     if (role === "player" && !teamName.trim()) return setProblem("Hãy nhập tên đội.");
     if (!roomCode.trim()) return setProblem("Hãy nhập mã phòng.");
     setProblem("");
-    onJoin({ code: roomCode.trim().toUpperCase(), teamName: teamName.trim(), role });
+    onJoin({ code: roomCode.trim().toUpperCase(), teamName: teamName.trim(), role, create });
+  }
+
+  // Ghép trận tự động: server tự tạo phòng khi tìm được đối thủ.
+  function findMatch() {
+    if (!teamName.trim()) return setProblem("Hãy nhập tên đội.");
+    setProblem("");
+    onJoin({ find: true, mode: "casual", code: randomCode(), teamName: teamName.trim(), role: "player" });
   }
 
   return (
@@ -39,7 +46,10 @@ export default function Lobby({ onJoin, connecting, error }) {
         </label>
 
         <div className="lobby-actions">
-          <button className="btn primary" disabled={connecting} onClick={() => go(randomCode(), "player")}>
+          <button className="btn primary" disabled={connecting} onClick={findMatch}>
+            Tìm trận nhanh
+          </button>
+          <button className="btn" disabled={connecting} onClick={() => go(randomCode(), "player", true)}>
             Tạo phòng mới
           </button>
         </div>
@@ -64,7 +74,13 @@ export default function Lobby({ onJoin, connecting, error }) {
           </button>
         </div>
 
-        {connecting && <p className="hint">Đang kết nối…</p>}
+        {queue && (
+          <p className="hint" role="status">
+            Đang tìm đối thủ… {queue.wait_time}s{" "}
+            <button className="btn small" onClick={onCancel}>Hủy</button>
+          </p>
+        )}
+        {connecting && !queue && <p className="hint">Đang kết nối…</p>}
         {(problem || error) && <p className="err">{problem || error}</p>}
       </div>
     </div>

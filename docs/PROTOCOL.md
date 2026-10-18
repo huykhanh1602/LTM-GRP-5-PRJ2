@@ -1,5 +1,7 @@
 # Giao thức giao diện ↔ server
 
+> **Giao diện hiện dùng giao thức v2** (`/ws`, đăng nhập, ghép trận): xem [`WS_PROTOCOL_V2.md`](WS_PROTOCOL_V2.md). Tài liệu này mô tả giao thức v1 theo mã phòng (`/rooms/<mã>`), vẫn chạy song song trên server nhưng giao diện không còn dùng.
+
 Giao diện chỉ là **người xem + người điều khiển phòng**. Code Python của hai đội được gửi lên server; engine Python là trọng tài và phát diễn biến trận qua WebSocket.
 
 ## Chạy local

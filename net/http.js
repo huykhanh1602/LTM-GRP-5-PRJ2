@@ -2,7 +2,7 @@ import http from "node:http";
 import { StorageError } from "./storage/matchStore.js";
 import { applyCorsHeaders, handleCorsPreflight } from "./cors.js";
 
-export function createHttpServer({ matchStore, roomGateway } = {}) {
+export function createHttpServer({ matchStore, roomGateway, authService } = {}) {
     const server = http.createServer((request, response) => {
         // Áp dụng CORS cho MỌI response: các route bên dưới chỉ cần gọi writeHead
         // (kèm Content-Type) là đã kế thừa đầy đủ bộ CORS headers này.
@@ -12,6 +12,25 @@ export function createHttpServer({ matchStore, roomGateway } = {}) {
         if (handleCorsPreflight(request, response)) return;
 
         const url = new URL(request.url, "http://localhost");
+
+        if (authService && (url.pathname === "/api/me" || url.pathname.startsWith("/api/auth/"))) {
+            authService
+                .handle(request, response, url)
+                .then((handled) => {
+                    if (!handled && !response.headersSent) {
+                        response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+                        response.end(JSON.stringify({ error: "NOT_FOUND" }));
+                    }
+                })
+                .catch((error) => {
+                    console.error("Auth error:", error);
+                    if (!response.headersSent) {
+                        response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+                        response.end(JSON.stringify({ error: "INTERNAL_ERROR" }));
+                    }
+                });
+            return;
+        }
 
         if (url.pathname.startsWith("/api/rooms/")) {
             if (!roomGateway) {

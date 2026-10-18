@@ -29,7 +29,13 @@ export default function App() {
   } else if (room.phase === "room") {
     page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} />;
   } else {
-    page = <Lobby onJoin={room.join} connecting={room.phase === "connecting"} error={room.error} />;
+    page = <Lobby
+        onJoin={room.join}
+        onCancel={room.leave}
+        connecting={room.phase === "connecting" || room.phase === "queue"}
+        queue={room.phase === "queue" ? room.queue : null}
+        error={room.error}
+      />;
   }
 
   return (
