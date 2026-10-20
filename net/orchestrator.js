@@ -71,7 +71,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
     }
 
     // Bắt đầu trận đấu khi phòng đã có đủ hai bot.
-    function startRoom(roomId, initialState = null, options = {}) {
+    async function startRoom(roomId, initialState = null, options = {}) {
         const roomStatus = getRoomStatus(roomId);
 
         if (!roomStatus.ready) {
@@ -94,7 +94,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
             // Arrival order must not swap the two sides in stored replay data.
             const bots = [...getRoomBots(roomId)].sort((a, b) => a.team.localeCompare(b.team));
             const team = bot => ({ id: bot.teamId ?? bot.team, name: bot.teamName ?? bot.team });
-            const match = matchStore.startMatch({ roomId, teamA: team(bots[0]), teamB: team(bots[1]),
+            const match = await matchStore.startMatch({ roomId, teamA: team(bots[0]), teamB: team(bots[1]),
                 initialState, config: options.config ?? {}, ranked: options.ranked ?? true });
             room.matchId = match.id;
         }
@@ -131,7 +131,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
     }
 
     // Cập nhật trạng thái chính thức và phát cho người xem.
-    function updateRoomState(roomId, newState, currentTurn = null, turnRecord = null) {
+    async function updateRoomState(roomId, newState, currentTurn = null, turnRecord = null) {
         const room = rooms.get(roomId);
 
         if (!room) {
@@ -150,7 +150,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
 
         // Only record an accepted move; UI refreshes are not turns.
         if (matchStore && room.matchId && turnRecord) {
-            matchStore.appendTurn(room.matchId, { ...turnRecord, state: newState });
+            await matchStore.appendTurn(room.matchId, { ...turnRecord, state: newState });
         }
         room.state = newState;
         room.currentTurn = currentTurn;
@@ -165,14 +165,14 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
     }
 
     // Kết thúc trận đấu.
-    function stopRoom(roomId, result = null) {
+    async function stopRoom(roomId, result = null) {
         const room = rooms.get(roomId);
 
         if (!room || room.status !== 'playing') {
             return false;
         }
 
-        if (matchStore && room.matchId) matchStore.finishMatch(room.matchId, result, room.state);
+        if (matchStore && room.matchId) await matchStore.finishMatch(room.matchId, result, room.state);
         room.status = "stopped";
         room.currentTurn = null;
 
@@ -188,7 +188,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
         return true;
     }
 
-    function onBotRegistered(roomId) {
+    async function onBotRegistered(roomId) {
     const roomStatus = getRoomStatus(roomId);
 
     // Chưa đủ hai đội thì tiếp tục chờ.
@@ -212,7 +212,7 @@ export function createOrchestrator(registry, spectatorGateway, matchStore = null
     }
 
     // Tạm thời chưa khởi tạo bàn cờ vì luật chơi chưa được xác định.
-    const result = startRoom(roomId, null);
+    const result = await startRoom(roomId, null);
 
     if (result.ok) {
         console.log(`Phòng ${roomId} tự động bắt đầu trận đấu.`);

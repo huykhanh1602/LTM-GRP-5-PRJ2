@@ -121,7 +121,9 @@ export function createRoomGateway({
             });
 
             if (matchStore) {
-                matchStore.importReplay(replay, { roomId: room.code, startedAt, endedAt: new Date().toISOString() });
+                await matchStore.importReplay(replay, { roomId: room.code,
+                    teamAId: `${room.code}:${TEAM_IDS[0]}`, teamBId: `${room.code}:${TEAM_IDS[1]}`,
+                    startedAt, endedAt: new Date().toISOString() });
             }
 
             if (runToken === room.runToken && room.status === "playing") {
@@ -319,15 +321,15 @@ export function createRoomGateway({
     }
 
     async function handleSubmission(request, response, url) {
-        const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{4})\/submissions$/);
+        const match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{4})\/submissions(?:\/[^/]+)?$/);
         if (!match) return false;
         const sendJson = (status, body) => {
             response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
             response.end(JSON.stringify(body));
         };
 
-        if (request.method !== "POST") {
-            response.setHeader("Allow", "POST");
+        if (!["GET", "POST"].includes(request.method)) {
+            response.setHeader("Allow", "GET, POST");
             sendJson(405, { error: "METHOD_NOT_ALLOWED" });
             return true;
         }
@@ -337,6 +339,31 @@ export function createRoomGateway({
         );
         if (!team) {
             sendJson(401, { error: "PLAYER_NOT_CONNECTED", message: "Hãy kết nối vào phòng trước khi nộp bot." });
+            return true;
+        }
+
+        if (request.method === "GET") {
+            if (!matchStore) {
+                sendJson(503, { error: "STORAGE_UNAVAILABLE" });
+                return true;
+            }
+            const teamId = `${room.code}:${team.id}`;
+            const submissionMatch = url.pathname.match(/^\/api\/rooms\/[A-Z0-9]{4}\/submissions(?:\/([^/]+))?$/);
+            try {
+                if (submissionMatch?.[1]) {
+                    const id = decodeURIComponent(submissionMatch[1]);
+                    sendJson(200, await matchStore.getBotSubmission(id, room.code, teamId));
+                } else {
+                    sendJson(200, await matchStore.listBotSubmissions({ roomId: room.code, teamId,
+                        limit: url.searchParams.get("limit"), offset: url.searchParams.get("offset") }));
+                }
+            } catch (error) {
+                if (error?.status) sendJson(error.status, { error: error.code, message: error.message });
+                else {
+                    console.error("Bot submission history error:", error);
+                    sendJson(500, { error: "INTERNAL_ERROR" });
+                }
+            }
             return true;
         }
 
@@ -378,12 +405,18 @@ export function createRoomGateway({
                 sendJson(400, { error: "INVALID_ENCODING", message: "File bot phải được mã hóa UTF-8." });
                 return true;
             }
+            if (matchStore) {
+                const teamId = `${room.code}:${team.id}`;
+                await matchStore.registerTeam({ id: teamId, name: team.name });
+                const saved = await matchStore.saveBotSubmission({ roomId: room.code, teamId, filename, source: codeText });
+                team.lastSubmissionId = saved.id;
+            }
             team.code = codeText;
             team.filename = filename;
             team.submitted = true;
             team.ready = false;
             broadcastRoom(room);
-            sendJson(200, { id: randomUUID(), filename });
+            sendJson(200, { id: team.lastSubmissionId ?? randomUUID(), filename });
             return true;
         } catch (error) {
             console.error("Bot submission error:", error);

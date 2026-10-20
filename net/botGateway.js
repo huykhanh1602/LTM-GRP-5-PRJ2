@@ -143,8 +143,9 @@ wss.on("connection", (socket) => {
             );
 
             if (onBotRegistered) {
-                const result = onBotRegistered(botConfig.roomId);
-                console.log("Kết quả kiểm tra bắt đầu trận:", result);
+                Promise.resolve(onBotRegistered(botConfig.roomId))
+                    .then(result => console.log("Kết quả kiểm tra bắt đầu trận:", result))
+                    .catch(error => console.error("Không thể khởi động trận:", error.message));
             }
 
             console.log(

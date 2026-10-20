@@ -1,7 +1,7 @@
 import { useState } from "react";
 import "../styles/auth.css";
 
-export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle }) {
+export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle, onLoginFacebook }) {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -26,8 +26,8 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
       if (!displayName.trim()) {
         return setError("Vui lòng nhập tên hiển thị.");
       }
-      if (password.length < 6) {
-        return setError("Mật khẩu phải từ 6 ký tự trở lên.");
+      if (password.length < 8) {
+        return setError("Mật khẩu phải từ 8 ký tự trở lên.");
       }
       if (password !== confirmPassword) {
         return setError("Mật khẩu xác nhận không khớp.");
@@ -69,6 +69,10 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
       <div className="auth-card" onClick={(e) => e.stopPropagation()}>
         <button className="auth-close" onClick={onClose} aria-label="Đóng">
           ✕
+        </button>
+
+        <button type="button" className="auth-google-btn" onClick={async()=>{setLoading(true);setError("");try{await onLoginFacebook?.();onClose();}catch(err){setError(err.message||"Đăng nhập Facebook thất bại.");}finally{setLoading(false);}}} disabled={loading}>
+          <span aria-hidden="true">f</span><span>Tiếp tục với Facebook</span>
         </button>
 
         <h2 className="auth-title">
@@ -150,7 +154,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
               className="auth-input"
               placeholder="Xác nhận mật khẩu"
               value={confirmPassword}
-              onChange={(e) => setConfirmNewPassword ? setConfirmPassword(e.target.value) : setConfirmPassword(e.target.value)}
+            onChange={(e) => setConfirmPassword(e.target.value)}
               disabled={loading}
             />
           )}

@@ -122,10 +122,25 @@ test("players upload bots, ready up, and receive streamed engine events", async 
       body: source,
     }
   );
+  const uploaded = [];
   for (const token of [alphaJoined.player_token, betaJoined.player_token]) {
     const response = await submit(token, "def make_move(*args): return None");
     assert.equal(response.status, 200);
+    uploaded.push(await response.json());
   }
+  const alphaHistoryResponse = await fetch(`${httpUrl}/api/rooms/AB23/submissions`, {
+    headers: { Authorization: `Bearer ${alphaJoined.player_token}` },
+  });
+  const alphaHistory = await alphaHistoryResponse.json();
+  assert.equal(alphaHistory.total, 1);
+  assert.equal('source' in alphaHistory.items[0], false);
+  const alphaSource = await fetch(`${httpUrl}/api/rooms/AB23/submissions/${uploaded[0].id}`, {
+    headers: { Authorization: `Bearer ${alphaJoined.player_token}` },
+  });
+  assert.equal((await alphaSource.json()).source, "def make_move(*args): return None");
+  assert.equal((await fetch(`${httpUrl}/api/rooms/AB23/submissions/${uploaded[0].id}`, {
+    headers: { Authorization: `Bearer ${betaJoined.player_token}` },
+  })).status, 404);
 
   alpha.send({ type: "ready", ready: true });
   beta.send({ type: "ready", ready: true });

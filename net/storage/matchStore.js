@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 
 export class StorageError extends Error {
@@ -39,6 +39,22 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   const db = new DatabaseSync(filename);
   db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
   db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  db.exec("INSERT OR IGNORE INTO games (id, name, default_config_json, active) VALUES ('rps_chess', 'Kéo · Búa · Bao Cờ', '{}', 1);");
+  const matchColumns = new Set(db.prepare('PRAGMA table_info(matches)').all().map(column => column.name));
+  const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(column => column.name));
+  for (const [name, type] of [['email','TEXT'],['phone','TEXT'],['password_salt','TEXT'],['password_hash','TEXT']]) {
+    if (!userColumns.has(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
+  }
+  const tournamentColumns = new Set(db.prepare('PRAGMA table_info(tournaments)').all().map(column => column.name));
+  if (!tournamentColumns.has('champion_id')) db.exec('ALTER TABLE tournaments ADD COLUMN champion_id TEXT');
+  if (!matchColumns.has('game_id')) {
+    db.exec("ALTER TABLE matches ADD COLUMN game_id TEXT REFERENCES games(id);");
+    db.exec("UPDATE matches SET game_id = 'rps_chess' WHERE game_id IS NULL;");
+  }
+  if (!matchColumns.has('mode')) db.exec("ALTER TABLE matches ADD COLUMN mode TEXT NOT NULL DEFAULT 'ranked' CHECK(mode IN ('casual','ranked','tournament'));");
+  if (!matchColumns.has('round_id')) db.exec('ALTER TABLE matches ADD COLUMN round_id TEXT REFERENCES tournament_rounds(id);');
+  db.exec("UPDATE matches SET game_id = 'rps_chess' WHERE game_id = 'ltm-strategy';");
+  db.exec("UPDATE games SET active = 0 WHERE id = 'ltm-strategy';");
 
   let writing = false;
   function transaction(work) {
@@ -74,10 +90,15 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       result: result_json === null ? null : JSON.parse(result_json) };
   }
 
-  function startMatch({ id = randomUUID(), roomId, teamA, teamB, ranked = true, config = {}, initialState = null, startedAt }) {
+  function startMatch({ id = randomUUID(), roomId, gameId = 'rps_chess', mode, roundId = null,
+    teamA, teamB, ranked = true, config = {}, initialState = null, startedAt }) {
     id = requireText(id, 'match.id');
     roomId = requireText(roomId, 'roomId');
-    if (!teamA || !teamB || teamA.id === teamB.id || typeof ranked !== 'boolean') {
+    gameId = requireText(gameId, 'gameId');
+    mode ??= ranked ? 'ranked' : 'casual';
+    if (!teamA || !teamB || teamA.id === teamB.id || typeof ranked !== 'boolean' ||
+        !['casual', 'ranked', 'tournament'].includes(mode) ||
+        (mode === 'ranked' && !ranked) || (mode === 'casual' && ranked)) {
       throw new StorageError('INVALID_INPUT', 'Two distinct teams and a boolean ranked are required');
     }
     return transaction(() => {
@@ -86,10 +107,10 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       }
       const a = registerTeam(teamA), b = registerTeam(teamB);
       db.prepare(`INSERT INTO matches
-        (id, room_id, team_a_id, team_b_id, status, ranked, started_at,
+        (id, room_id, game_id, mode, round_id, team_a_id, team_b_id, status, ranked, started_at,
          config_json, initial_state_json, final_state_json)
-        VALUES (?, ?, ?, ?, 'playing', ?, ?, ?, ?, ?)`).run(
-        id, roomId, a.id, b.id, Number(ranked), timestamp(startedAt),
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'playing', ?, ?, ?, ?, ?)`).run(
+        id, roomId, gameId, mode, roundId, a.id, b.id, Number(ranked), timestamp(startedAt),
         JSON.stringify(config), JSON.stringify(initialState), JSON.stringify(initialState));
       return getMatch(id);
     });
@@ -131,6 +152,13 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
         result_json = ?, final_state_json = ? WHERE id = ?`).run(
         status, winner, result?.reason ?? null, timestamp(endedAt),
         JSON.stringify(result), JSON.stringify(finalState === undefined ? match.final_state : finalState), id);
+      if (match.round_id) {
+        const round = db.prepare('SELECT tournament_id FROM tournament_rounds WHERE id=?').get(match.round_id);
+        if (round) recordTournamentMatchInternal({ tournamentId:round.tournament_id,roundId:match.round_id,matchId:id,
+          participantAId:match.team_a_id,participantAName:db.prepare('SELECT name FROM teams WHERE id=?').get(match.team_a_id).name,
+          participantBId:match.team_b_id,participantBName:db.prepare('SELECT name FROM teams WHERE id=?').get(match.team_b_id).name,
+          winnerId:winner,result,playedAt:endedAt });
+      }
       return getMatch(id);
     });
   }
@@ -171,7 +199,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     const turns = db.prepare('SELECT * FROM match_turns WHERE match_id = ? ORDER BY turn').all(id)
       .map(row => normalize({ turn: row.turn, player: row.player, actions: JSON.parse(row.actions_json),
         events: JSON.parse(row.events_json), state: JSON.parse(row.state_json) }));
-    return { match_info: { match_id: id, status: match.status,
+    return { match_info: { match_id: id, status: match.status, game_id: match.game_id, mode: match.mode,
       teams: { team_a: names[match.team_a_id], team_b: names[match.team_b_id] },
       team_ids: { team_a: match.team_a_id, team_b: match.team_b_id },
       winner: side(match.winner_id), win_reason: match.reason, total_turns: turns.length,
@@ -181,7 +209,8 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       final_state: normalize(match.final_state) };
   }
 
-  function importReplay(replay, { roomId = 'offline', ranked = true, teamAId, teamBId, startedAt, endedAt } = {}) {
+  function importReplay(replay, { roomId = 'offline', gameId = 'rps_chess', mode, roundId = null,
+    ranked = true, teamAId, teamBId, startedAt, endedAt } = {}) {
     const info = replay?.match_info;
     const board = replay?.game_config?.board;
     if (!info || !board || !Number.isInteger(board.width) || board.width < 1 ||
@@ -203,7 +232,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return transaction(() => {
       const match = startMatch({ id: requireText(info.match_id, 'match_id'), roomId,
         teamA: { id: a, name: info.teams?.team_a ?? a }, teamB: { id: b, name: info.teams?.team_b ?? b },
-        ranked, config: replay.game_config, initialState: replay.initial_state,
+        ranked, gameId, mode, roundId, config: replay.game_config, initialState: replay.initial_state,
         startedAt: startedAt ?? info.started_at });
       let frames = createFrames(replay);
       const pieces = () => Object.values(frames.at(-1).pieces).filter(piece => piece.alive)
@@ -236,11 +265,207 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     });
   }
 
+  function listGames() {
+    return db.prepare('SELECT id, name, default_config_json, active FROM games WHERE active = 1 ORDER BY name, id')
+      .all().map(row => ({ id: row.id, name: row.name,
+        default_config: JSON.parse(row.default_config_json), active: Boolean(row.active) }));
+  }
+
+  function upsertUser(user) {
+    const id = requireText(user?.id, 'user.id');
+    const displayName = requireText(user?.display_name ?? user?.id, 'user.display_name');
+    const role = ['player', 'organizer', 'admin'].includes(user.role) ? user.role : 'player';
+    db.prepare(`INSERT INTO users(id, display_name, avatar_url, role, created_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, avatar_url=excluded.avatar_url`)
+      .run(id, displayName, user.avatar_url ?? null, role, new Date().toISOString());
+    return db.prepare('SELECT id, display_name, avatar_url, role, banned FROM users WHERE id = ?').get(id);
+  }
+
+  function authUser(row) { return row ? { ...row, guest: false } : null; }
+  function getAuthUser(id) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash FROM users WHERE id=?').get(id)); }
+  function findAuthUser(identifier) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash FROM users WHERE email=? OR phone=?').get(identifier, identifier)); }
+  function createAuthUser(user) {
+    const id = user.id ?? randomUUID();
+    db.prepare(`INSERT INTO users(id,display_name,avatar_url,email,phone,password_salt,password_hash,role,created_at)
+      VALUES(?,?,?,?,?,?,?,'player',?)`).run(id,user.display_name,user.avatar_url??null,user.email??null,user.phone??null,user.password_salt??null,user.password_hash??null,new Date().toISOString());
+    return getAuthUser(id);
+  }
+  function updateAuthPassword(id, salt, hash) { db.prepare('UPDATE users SET password_salt=?,password_hash=? WHERE id=?').run(salt,hash,id); return getAuthUser(id); }
+  function getAuthIdentity(provider, providerUserId) { return db.prepare('SELECT user_id FROM auth_identities WHERE provider=? AND provider_user_id=?').get(provider,providerUserId) ?? null; }
+  function addAuthIdentity({ userId, provider, providerUserId, email = null }) {
+    db.prepare('INSERT INTO auth_identities(user_id,provider,provider_user_id,email) VALUES(?,?,?,?)').run(userId,provider,providerUserId,email);
+    return { user_id:userId, provider, provider_user_id:providerUserId, email };
+  }
+  function listAuthIdentities(userId) { return db.prepare('SELECT provider,email FROM auth_identities WHERE user_id=? ORDER BY provider').all(userId); }
+  function saveAuthSession({ tokenHash,userId,expiresAt }) { db.prepare('INSERT INTO auth_sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)').run(tokenHash,userId,new Date(expiresAt).toISOString(),new Date().toISOString()); }
+  function getAuthSession(tokenHash) { const row=db.prepare('SELECT user_id,expires_at FROM auth_sessions WHERE token_hash=?').get(tokenHash); return row?{userId:row.user_id,expiresAt:Date.parse(row.expires_at)}:null; }
+  function deleteAuthSession(tokenHash) { db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(tokenHash); }
+
+  function listTournaments({ status, limit, offset } = {}) {
+    limit = pageValue(limit, 20, 100);
+    offset = pageValue(offset, 0, Number.MAX_SAFE_INTEGER);
+    if (limit === 0) throw new StorageError('INVALID_PAGINATION', 'limit must be positive');
+    if (status !== undefined && !['draft', 'open', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+      throw new StorageError('INVALID_STATUS', 'Invalid tournament status');
+    }
+    const where = status === undefined ? '' : 'WHERE t.status = ?';
+    const args = status === undefined ? [] : [status];
+    const total = db.prepare(`SELECT COUNT(*) AS total FROM tournaments t ${where}`).get(...args).total;
+    const items = db.prepare(`SELECT t.id, t.game_id, g.name AS game_name, t.code, t.name, t.format,
+      t.status, t.config_json, t.starts_at, t.champion_id, t.created_at,
+      (SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id) AS participant_count
+      FROM tournaments t JOIN games g ON g.id = t.game_id ${where}
+      ORDER BY t.starts_at IS NULL, t.starts_at, t.created_at DESC, t.id LIMIT ? OFFSET ?`)
+      .all(...args, limit, offset).map(row => {
+        const { config_json, ...item } = row;
+        return { ...item, config: JSON.parse(config_json) };
+      });
+    return { items, total, limit, offset };
+  }
+
+  function getTournament(id) {
+    const row = db.prepare(`SELECT t.id, t.game_id, g.name AS game_name, t.code, t.name, t.format,
+      t.status, t.config_json, t.starts_at, t.champion_id, t.created_at
+      FROM tournaments t JOIN games g ON g.id = t.game_id WHERE t.id = ? OR t.code = ?`).get(id, id);
+    if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    const rounds = db.prepare('SELECT id, round_no, status FROM tournament_rounds WHERE tournament_id = ? ORDER BY round_no').all(row.id);
+    for (const round of rounds) round.matches = db.prepare(`SELECT id,match_id,participant_a_id,participant_a_name,
+      participant_b_id,participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE round_id=? ORDER BY played_at,id`)
+      .all(round.id).map(item=>({id:item.id,match_id:item.match_id,participant_a_id:item.participant_a_id,
+        participant_a_name:item.participant_a_name,participant_b_id:item.participant_b_id,participant_b_name:item.participant_b_name,
+        winner_id:item.winner_id,result:item.result_json?JSON.parse(item.result_json):null,played_at:item.played_at}));
+    const entries = db.prepare(`SELECT e.user_id, u.display_name, e.seed, e.points
+      FROM tournament_entries e JOIN users u ON u.id = e.user_id WHERE e.tournament_id = ? ORDER BY e.seed, u.display_name`).all(row.id);
+    const { config_json, ...tournament } = row;
+    const champion = tournament.champion_id ? db.prepare(`SELECT CASE WHEN winner_id=participant_a_id THEN participant_a_name ELSE participant_b_name END AS name
+      FROM tournament_match_history WHERE tournament_id=? AND winner_id=? ORDER BY played_at DESC LIMIT 1`).get(row.id,tournament.champion_id) : null;
+    return { ...tournament, champion:champion?{id:tournament.champion_id,name:champion.name}:null, config: JSON.parse(config_json), rounds, entries };
+  }
+
+  function createTournament({ id = randomUUID(), gameId, code, name, format, config = {}, startsAt = null }) {
+    gameId = requireText(gameId, 'gameId'); code = requireText(code, 'code').toUpperCase();
+    name = requireText(name, 'name');
+    if (!/^[A-Z0-9-]{3,24}$/.test(code) || name.length > 100 ||
+        !['single_elimination', 'round_robin', 'swiss'].includes(format) ||
+        !config || typeof config !== 'object' || Array.isArray(config)) {
+      throw new StorageError('INVALID_INPUT', 'Invalid tournament data');
+    }
+    const createdAt = new Date().toISOString();
+    const beginsAt = startsAt === null ? null : timestamp(startsAt);
+    try {
+      db.prepare(`INSERT INTO tournaments (id, game_id, code, name, format, status, config_json, starts_at, created_at)
+        VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)`).run(id, gameId, code, name, format, JSON.stringify(config), beginsAt, createdAt);
+    } catch (error) {
+      if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') throw new StorageError('GAME_NOT_FOUND', 'Game not found', 404);
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') throw new StorageError('TOURNAMENT_EXISTS', 'Tournament code already exists', 409);
+      throw error;
+    }
+    return getTournament(id);
+  }
+
+  function createTournamentRound(tournamentId, { id = randomUUID(), roundNo }) {
+    if (!Number.isSafeInteger(roundNo) || roundNo < 1) throw new StorageError('INVALID_INPUT', 'roundNo must be a positive integer');
+    try {
+      db.prepare('INSERT INTO tournament_rounds (id, tournament_id, round_no) VALUES (?, ?, ?)').run(id, tournamentId, roundNo);
+    } catch (error) {
+      if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') throw new StorageError('ROUND_EXISTS', 'Round number already exists', 409);
+      throw error;
+    }
+    return db.prepare('SELECT id, tournament_id, round_no, status FROM tournament_rounds WHERE id = ?').get(id);
+  }
+
+  function recordTournamentMatchInternal({id=randomUUID(),tournamentId,roundId,matchId=null,participantAId,participantAName,
+    participantBId,participantBName,winnerId=null,result=null,playedAt}) {
+    tournamentId=requireText(tournamentId,'tournamentId'); roundId=requireText(roundId,'roundId');
+    participantAId=requireText(participantAId,'participantAId'); participantBId=requireText(participantBId,'participantBId');
+    participantAName=requireText(participantAName??participantAId,'participantAName'); participantBName=requireText(participantBName??participantBId,'participantBName');
+    if(participantAId===participantBId||winnerId!==null&&![participantAId,participantBId].includes(winnerId)) throw new StorageError('INVALID_TOURNAMENT_RESULT','Invalid participants or winner');
+    if(!db.prepare('SELECT id FROM tournament_rounds WHERE id=? AND tournament_id=?').get(roundId,tournamentId)) throw new StorageError('ROUND_NOT_FOUND','Tournament round not found',404);
+    db.prepare(`INSERT INTO tournament_match_history(id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,
+      participant_b_id,participant_b_name,winner_id,result_json,played_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(match_id) DO UPDATE SET winner_id=excluded.winner_id,result_json=excluded.result_json,played_at=excluded.played_at`)
+      .run(id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,
+        result===null?null:JSON.stringify(result),timestamp(playedAt));
+    return db.prepare(`SELECT id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,
+      participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE (match_id IS ? AND ? IS NOT NULL) OR id=?`)
+      .get(matchId,matchId,id);
+  }
+  function recordTournamentMatch(input) { return transaction(()=>recordTournamentMatchInternal(input)); }
+
+  function addTournamentEntry(tournamentId, { userId, seed = null }) {
+    userId = requireText(userId, 'userId');
+    if (seed !== null && (!Number.isSafeInteger(seed) || seed < 1)) throw new StorageError('INVALID_INPUT', 'seed must be a positive integer');
+    const tournament = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(tournamentId);
+    if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    if (tournament.status !== 'open') throw new StorageError('TOURNAMENT_NOT_OPEN', 'Tournament is not accepting entries', 409);
+    try {
+      db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, seed) VALUES (?, ?, ?)').run(tournamentId, userId, seed);
+    } catch (error) {
+      if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') throw new StorageError('USER_OR_TOURNAMENT_NOT_FOUND', 'User or tournament not found', 404);
+      if (error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || error.code === 'SQLITE_CONSTRAINT_UNIQUE') throw new StorageError('ENTRY_EXISTS', 'User already joined this tournament', 409);
+      throw error;
+    }
+    return db.prepare('SELECT tournament_id, user_id, seed, points FROM tournament_entries WHERE tournament_id = ? AND user_id = ?').get(tournamentId, userId);
+  }
+
+  function updateTournamentStatus(id, status, championId = null) {
+    const transitions = { draft: ['open', 'cancelled'], open: ['in_progress', 'cancelled'],
+      in_progress: ['completed', 'cancelled'], completed: [], cancelled: [] };
+    const current = db.prepare('SELECT status FROM tournaments WHERE id = ?').get(id);
+    if (!current) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    if (!transitions[current.status]?.includes(status)) throw new StorageError('INVALID_STATUS_TRANSITION', 'Tournament status transition is not allowed', 409);
+    if(status==='completed') {
+      if(!championId) {
+        const round=db.prepare('SELECT id FROM tournament_rounds WHERE tournament_id=? ORDER BY round_no DESC LIMIT 1').get(id);
+        const winners=round?db.prepare('SELECT DISTINCT winner_id FROM tournament_match_history WHERE round_id=? AND winner_id IS NOT NULL').all(round.id):[];
+        if(winners.length===1) championId=winners[0].winner_id;
+      }
+      if(!championId) throw new StorageError('CHAMPION_REQUIRED','A completed tournament must have a champion');
+      if(!db.prepare('SELECT id FROM tournament_match_history WHERE tournament_id=? AND winner_id=?').get(id,championId)) throw new StorageError('INVALID_CHAMPION','Champion must have won a recorded tournament match');
+    } else if(championId) throw new StorageError('INVALID_INPUT','Champion can only be set when completing a tournament');
+    db.prepare('UPDATE tournaments SET status = ?, champion_id = ? WHERE id = ?').run(status,status==='completed'?championId:null,id);
+    return getTournament(id);
+  }
+
+  function saveBotSubmission({ id = randomUUID(), roomId, teamId, filename, source }) {
+    roomId = requireText(roomId, 'roomId'); teamId = requireText(teamId, 'teamId');
+    filename = requireText(filename, 'filename'); source = requireText(source, 'source');
+    const createdAt = new Date().toISOString();
+    const sourceSha256 = createHash('sha256').update(source, 'utf8').digest('hex');
+    db.prepare('INSERT INTO bot_submissions (id, room_id, team_id, filename, source, source_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, roomId, teamId, filename, source, sourceSha256, createdAt);
+    return { id, room_id: roomId, team_id: teamId, filename, source_sha256: sourceSha256, created_at: createdAt };
+  }
+
+  function listBotSubmissions({ roomId, teamId, limit, offset } = {}) {
+    limit = pageValue(limit, 20, 100); offset = pageValue(offset, 0, Number.MAX_SAFE_INTEGER);
+    if (limit === 0) throw new StorageError('INVALID_PAGINATION', 'limit must be positive');
+    const clauses = [], args = [];
+    if (roomId !== undefined) { clauses.push('room_id = ?'); args.push(roomId); }
+    if (teamId !== undefined) { clauses.push('team_id = ?'); args.push(teamId); }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const total = db.prepare(`SELECT COUNT(*) AS total FROM bot_submissions ${where}`).get(...args).total;
+    const items = db.prepare(`SELECT id, room_id, team_id, filename, source_sha256, created_at
+      FROM bot_submissions ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(...args, limit, offset);
+    return { items, total, limit, offset };
+  }
+
+  function getBotSubmission(id, roomId, teamId) {
+    const row = db.prepare(`SELECT id, room_id, team_id, filename, source, source_sha256, created_at
+      FROM bot_submissions WHERE id = ? AND room_id = ? AND team_id = ?`).get(id, roomId, teamId);
+    if (!row) throw new StorageError('SUBMISSION_NOT_FOUND', 'Bot submission not found', 404);
+    return row;
+  }
+
   function abortInterruptedMatches() {
     return db.prepare(`UPDATE matches SET status = 'aborted', reason = 'SERVER_RESTART',
       ended_at = ? WHERE status = 'playing'`).run(new Date().toISOString()).changes;
   }
 
   return { registerTeam, startMatch, appendTurn, finishMatch, getMatch, listMatches,
-    getReplay, getRankings, importReplay, abortInterruptedMatches, close: () => db.close() };
+    getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
+    getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
+    createTournamentRound, addTournamentEntry, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
+    listBotSubmissions, getBotSubmission, importReplay, abortInterruptedMatches, close: () => db.close() };
 }

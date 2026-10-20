@@ -64,21 +64,42 @@ test('finishing without a new snapshot retains the last accepted board state', t
   assert.deepEqual(store.getMatch('snapshot').final_state, [{ id: 'A1', pos: [1, 0] }]);
 });
 
-test('orchestrator saves accepted turns and results with stable team IDs', t => {
+test('orchestrator saves accepted turns and results with stable team IDs', async t => {
   const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
   const bots = [{ team: 'B', teamId: 'beta', teamName: 'Beta' }, { team: 'A', teamId: 'alpha', teamName: 'Alpha' }];
   const messages = [];
   const orchestrator = createOrchestrator({ listBots: () => bots }, { broadcastToRoom: (_, m) => { messages.push(m); return 1; } }, store);
-  assert.equal(orchestrator.startRoom('room', []).ok, true);
-  orchestrator.updateRoomState('room', ['moved'], 'B', { turn: 1, player: 'alpha' });
-  assert.equal(orchestrator.stopRoom('room', { winner: 'alpha' }), true);
-  assert.equal(orchestrator.stopRoom('room', { winner: 'beta' }), false);
+  assert.equal((await orchestrator.startRoom('room', [])).ok, true);
+  await orchestrator.updateRoomState('room', ['moved'], 'B', { turn: 1, player: 'alpha' });
+  assert.equal(await orchestrator.stopRoom('room', { winner: 'alpha' }), true);
+  assert.equal(await orchestrator.stopRoom('room', { winner: 'beta' }), false);
   const id = store.listMatches().items[0].id;
   assert.equal(store.getMatch(id).team_a_id, 'alpha');
   assert.equal(messages.at(-1).matchId, id);
   assert.equal(store.getReplay(id).turns.length, 1);
   assert.equal(store.getRankings()[0].points, 3);
   assert.equal(messages.at(-1).type, 'game_over');
+});
+
+test('games, tournaments and bot submission versions persist with validated state transitions', t => {
+  const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
+  assert.equal(store.listGames()[0].id, 'rps_chess');
+  const tournament = store.createTournament({ gameId: 'rps_chess', code: 'LTM-2026',
+    name: 'Autumn Cup', format: 'single_elimination', config: { maxTeams: 8 } });
+  assert.equal(tournament.status, 'draft');
+  store.createTournamentRound(tournament.id, { roundNo: 1 });
+  assert.equal(store.listTournaments().items[0].participant_count, 0);
+  assert.equal(store.getTournament('LTM-2026').rounds.length, 1);
+  store.updateTournamentStatus(tournament.id, 'open');
+  assert.throws(() => store.updateTournamentStatus(tournament.id, 'completed'), /not allowed/);
+
+  store.registerTeam({ id: 'room:team_a', name: 'Alpha' });
+  const first = store.saveBotSubmission({ roomId: 'ROOM', teamId: 'room:team_a', filename: 'bot.py', source: 'print(1)' });
+  const second = store.saveBotSubmission({ roomId: 'ROOM', teamId: 'room:team_a', filename: 'bot.py', source: 'print(2)' });
+  assert.notEqual(first.source_sha256, second.source_sha256);
+  assert.equal(store.listBotSubmissions({ roomId: 'ROOM', teamId: 'room:team_a' }).total, 2);
+  assert.equal(store.getBotSubmission(first.id, 'ROOM', 'room:team_a').source, 'print(1)');
+  assert.throws(() => store.getBotSubmission(first.id, 'ROOM', 'other-team'), /not found/);
 });
 
 test('teams with identical results share rank; draws must be explicit', t => {
@@ -95,12 +116,25 @@ test('teams with identical results share rank; draws must be explicit', t => {
 test('HTTP APIs support pagination, filters, replay, errors and reject public writes', async t => {
   const store = createMatchStore({ filename: ':memory:' });
   start(store, 'api'); store.finishMatch('api', { winner: 'alpha' }, []);
-  const server = createHttpServer({ matchStore: store });
+  const server = createHttpServer({ matchStore: store, authenticate: async request =>
+    request.headers.authorization === 'Bearer test-organizer'
+      ? { user: { id: 'organizer-1', role: 'organizer' } } : null });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => server.close(resolve)); store.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const rankings = await (await fetch(`${base}/api/rankings`)).json();
   assert.equal(rankings.items[0].points, 3);
+  assert.deepEqual(await (await fetch(`${base}/api/me`)).json(), { authenticated: false, user: null });
+  assert.equal((await (await fetch(`${base}/api/games`)).json()).items[0].id, 'rps_chess');
+  assert.equal((await (await fetch(`${base}/api/tournaments`)).json()).total, 0);
+  assert.equal((await fetch(`${base}/api/tournaments`, { method: 'POST', body: '{}' })).status, 401);
+  const createdResponse = await fetch(`${base}/api/tournaments`, {
+    method: 'POST', headers: { Authorization: 'Bearer test-organizer', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gameId: 'rps_chess', code: 'TEST-26', name: 'Test cup', format: 'swiss' }),
+  });
+  assert.equal(createdResponse.status, 201);
+  const created = await createdResponse.json();
+  assert.equal((await (await fetch(`${base}/api/tournaments/TEST-26`)).json()).id, created.id);
   const list = await (await fetch(`${base}/api/matches?teamId=alpha&status=finished&limit=1`)).json();
   assert.equal(list.total, 1); assert.equal(list.items.length, 1);
   const replay = await (await fetch(`${base}/api/matches/api/replay`)).json();

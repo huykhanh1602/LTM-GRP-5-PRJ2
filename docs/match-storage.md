@@ -2,9 +2,19 @@
 
 ## Quyết định hiện tại
 
-Dùng SQLite trong `data/game.sqlite`, không cần một dịch vụ database riêng.
-Yêu cầu Node.js >= 24; dùng `node:sqlite` tích hợp sẵn. Có thể đổi vị trí bằng
-biến môi trường `DB_PATH`. File database được bỏ qua bởi Git.
+Backend dùng PostgreSQL khi đặt `DATABASE_URL`; đây là cấu hình triển khai theo
+thiết kế nền tảng. Nếu không đặt biến này, môi trường local tiếp tục dùng SQLite
+ở `data/game.sqlite` (hoặc đường dẫn trong `DB_PATH`) để chạy mà không cần cài
+dịch vụ database. PostgreSQL schema tự áp dụng khi backend khởi động.
+
+Để đưa database SQLite hiện tại sang PostgreSQL, đặt `DATABASE_URL` trỏ tới
+database đích rồi chạy `pnpm run migrate:sqlite-to-postgres`. Lệnh sao chép dữ
+liệu theo transaction, giữ nguyên file SQLite nguồn và có thể chạy lại an toàn.
+Sau đó khởi động backend với cùng `DATABASE_URL`; chỉ bỏ SQLite sau khi đã xác
+nhận dữ liệu trên PostgreSQL. Cấu hình mẫu nằm trong `.env.example`.
+
+Node.js >= 24 là bắt buộc. Bản deploy dùng `pnpm-lock.yaml`; Docker cài đúng
+phiên bản lock.
 
 Đây là phương án triển khai dựa trên repository hiện tại, chưa phải quyết định
 đã được xác nhận qua chat nhóm. Quy tắc mặc định: thắng 3, hòa 1, thua 0.
@@ -15,13 +25,18 @@ ID đội chỉ dùng để sắp xếp ổn định khi đồng hạng. Đội 
 
 ## Database
 
-Schema thực thi: `net/storage/schema.sql`.
+Schema SQLite: `net/storage/schema.sql`. Schema PostgreSQL:
+`net/storage/postgres-schema.sql`.
 
 | Bảng        | Nội dung                                                                  | Khóa / quan hệ                                     |
 | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
 | teams       | ID ổn định, tên đội, thời gian tạo                                        | PK id                                              |
 | matches     | Phòng, hai đội, trạng thái, kết quả, thời gian, cấu hình, bàn cờ đầu/cuối | PK id; FK team_a_id, team_b_id, winner_id -> teams |
 | match_turns | Số lượt, đội chơi, hành động, sự kiện, trạng thái sau lượt                | PK (match_id, turn); FK match_id -> matches        |
+| users, auth_identities | Hồ sơ và ID từ nhà cung cấp đăng nhập | FK identity -> users; unique provider ID |
+| games | Danh mục game và cấu hình mặc định | PK id |
+| tournaments, tournament_rounds, tournament_entries | Giải đấu, vòng và người tham gia | FK tới games, users, tournaments |
+| bot_submissions | Từng phiên bản mã bot, SHA-256 và thời điểm nộp | FK team_id -> teams |
 
 Trường bàn cờ/cấu hình/hành động/sự kiện lưu JSON để không chốt luật chơi khi nhóm
 chưa triển khai game engine. Mốc thời gian là ISO 8601 UTC.
@@ -45,14 +60,31 @@ Chạy `npm run server`, sau đó `npm run dev`. Vite chuyển tiếp `/api` san
 | GET    | /api/matches?teamId=A&status=finished&limit=20&offset=0 | `{ items, total, limit, offset }`                                |
 | GET    | /api/matches/:id                                        | Chi tiết trận, cấu hình, bàn cờ đầu/cuối, kết quả                |
 | GET    | /api/matches/:id/replay                                 | `{ match_info, game_config, initial_state, turns, final_state }` |
+| GET    | /api/me                                                  | `{ authenticated, user }`; user null nếu guest |
+| GET    | /api/games                                               | `{ items }` danh mục game đang hoạt động |
+| GET    | /api/tournaments?status=open&limit=20&offset=0            | `{ items, total, limit, offset }` |
+| GET    | /api/tournaments/:id-or-code                             | Chi tiết giải, vòng và người tham gia |
+| POST   | /api/tournaments                                         | Tạo giải; yêu cầu role organizer/admin |
+| POST   | /api/tournaments/:id/entries                             | Tài khoản đã đăng nhập tự tham gia |
+| POST   | /api/tournaments/:id/rounds                              | Tạo vòng; organizer/admin |
+| PATCH  | /api/tournaments/:id/status                              | Đổi trạng thái theo luồng hợp lệ; organizer/admin |
+| POST   | /api/rooms/:code/submissions?filename=bot.py             | Lưu phiên bản bot; yêu cầu bearer token của đội |
+| GET    | /api/rooms/:code/submissions?limit=20&offset=0           | Lịch sử metadata; token phải còn hiệu lực |
+| GET    | /api/rooms/:code/submissions/:id                          | Đọc mã nguồn; chỉ đúng đội mới có quyền |
 
 Các bộ lọc không bắt buộc. Status: `playing`, `finished`, `aborted`.
 Limit từ 1 đến 100, mặc định 20; offset là số nguyên không âm, mặc định 0.
 Lịch sử sắp theo thời gian bắt đầu mới nhất. `win_rate` là tỷ lệ 0..1.
 Replay dùng team_a/team_b cho owner, player và winner giống engine Python và renderer;
 `team_ids` ánh xạ hai vị trí tới ID đội thực. API chi tiết và bảng xếp hạng vẫn dùng ID đội thực.
-API lỗi trả `{ error, message }`: 400 cho tham số sai, 404 khi không có trận,
-405 khi gọi phương thức ghi. UI chỉ đọc; kết quả do game server ghi.
+API lỗi trả `{ error, message }`. Route ghi tournament yêu cầu middleware xác
+thực cấp role; lịch sử submission ràng buộc theo player token và không trả mã
+nguồn trong danh sách. Kết quả trận và xếp hạng chỉ ghi từ backend/engine.
+
+`createHttpServer` nhận hàm `authenticate(request)` trả
+`{ user: { id, role, ... } }`. Repository chưa tích hợp OAuth; tới khi phần xác
+thực của Vinh nối middleware này, `/api/me` trả guest và thao tác tournament cần
+đăng nhập sẽ trả 401. Không dùng header tự khai báo role để mở quyền ghi.
 
 Hàm gọi đã có trong `src/api.js`:
 
@@ -86,20 +118,20 @@ Store cung cấp `registerTeam`, `startMatch`, `appendTurn`, `finishMatch`,
 Đã tích hợp vào ba hàm orchestrator hiện có:
 
 ```js
-orchestrator.startRoom("room-01", initialState, {
+await orchestrator.startRoom("room-01", initialState, {
     config: { board: { width: 8, height: 8 }, max_turns: 100 },
     ranked: true,
 });
 
 // Chỉ gọi sau khi game engine xác nhận nước đi hợp lệ và áp dụng thành công.
-orchestrator.updateRoomState("room-01", nextState, "B", {
+await orchestrator.updateRoomState("room-01", nextState, "B", {
     turn: 1,
     player: "A", // ID đội ổn định, không phải botId
     actions: [{ piece_id: "A1", action_type: "MOVE", from: [0, 0], to: [1, 0] }],
     events: [{ type: "PIECE_MOVED", piece_id: "A1", from: [0, 0], to: [1, 0] }],
 });
 
-orchestrator.stopRoom("room-01", { winner: "A", reason: "BASE_CAPTURED" });
+await orchestrator.stopRoom("room-01", { winner: "A", reason: "BASE_CAPTURED" });
 // Hòa: { draw: true, reason: 'MAX_TURNS' }
 // Hủy/dừng: null hoặc { reason: 'CANCELLED' }
 ```

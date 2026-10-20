@@ -20,6 +20,7 @@ export default function ProfilePage({
   onLogout,
   onUpdateProfile,
   onChangePassword,
+  onLinkAccount,
   onAddTournament,
   onBack,
 }) {
@@ -33,6 +34,8 @@ export default function ProfilePage({
   const [prize, setPrize] = useState("");
   const [description, setDescription] = useState("");
   const [msg, setMsg] = useState("");
+  const [linkMessage, setLinkMessage] = useState("");
+  const [linkingProvider, setLinkingProvider] = useState("");
 
   // State chỉnh sửa tên
   const [isEditing, setIsEditing] = useState(false);
@@ -493,6 +496,25 @@ export default function ProfilePage({
               </div>
             ) : (
               <>
+                <section style={{ margin:"0 0 22px",padding:"16px",border:"1px solid var(--border, #e2e8f0)",borderRadius:12 }}>
+                  <h3 style={{ margin:"0 0 8px" }}>Tài khoản đã liên kết</h3>
+                  <p style={{ margin:"0 0 10px",fontSize:13,color:"var(--muted)" }}>
+                    Email hoặc số điện thoại và Google/Facebook giúp bạn đăng nhập lại vào cùng hồ sơ người chơi.
+                  </p>
+                  <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
+                    {["google","facebook"].map(provider=>{
+                      const linked=(user?.linked_accounts??[]).some(item=>item.provider===provider);
+                      return <button key={provider} type="button" className="btn secondary" disabled={linked||!!linkingProvider} onClick={async()=>{
+                        setLinkMessage("");setLinkingProvider(provider);
+                        try { await onLinkAccount?.(provider); setLinkMessage(`${provider==="google"?"Google":"Facebook"} đã liên kết.`); }
+                        catch(error){ setLinkMessage(error.message||"Không liên kết được tài khoản."); }
+                        finally { setLinkingProvider(""); }
+                      }}>{linkingProvider===provider?"Đang kết nối…":linked?`${provider==="google"?"Google":"Facebook"} đã liên kết`:`Liên kết ${provider==="google"?"Google":"Facebook"}`}</button>;
+                    })}
+                    <span className="btn secondary" aria-disabled="true">Số điện thoại: {user?.phone?"đã có":"cần xác minh SMS"}</span>
+                  </div>
+                  {linkMessage&&<p role="status" style={{margin:"10px 0 0",fontSize:13}}>{linkMessage}</p>}
+                </section>
                 <p style={{ margin: "0 0 18px", fontSize: "13.5px", color: "var(--muted)" }}>
                   Hãy chọn mật khẩu mạnh từ 6 ký tự trở lên để bảo vệ tài khoản bot và lịch sử thi đấu của bạn.
                 </p>

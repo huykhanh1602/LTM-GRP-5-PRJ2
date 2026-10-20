@@ -11,9 +11,11 @@
         "build": "vite build",
         "preview": "vite preview",
         "server": "node net/index.js",
+        "migrate:sqlite-to-postgres": "node net/storage/migrateSqliteToPostgres.js",
         "test": "node --test"
     },
     "dependencies": {
+        "pg": "^8.23.1",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
         "ws": "^8.22.0"

@@ -59,6 +59,7 @@ export default function App() {
         }}
         onUpdateProfile={auth.updateProfile}
         onChangePassword={auth.changePassword}
+        onLinkAccount={auth.linkAccount}
         onAddTournament={auth.addTournament}
         onBack={goHome}
       />
@@ -238,6 +239,7 @@ export default function App() {
         onLogin={auth.login}
         onRegister={auth.register}
         onLoginGoogle={auth.loginGoogle}
+        onLoginFacebook={auth.loginFacebook}
       />
     </div>
   );

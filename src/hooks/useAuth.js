@@ -20,6 +20,35 @@ function getApiBase() {
   return import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 }
 
+function loadScript(src, ready) {
+  return new Promise((resolve, reject) => {
+    if (ready()) return resolve();
+    const existing = document.querySelector(`script[src="${src}"]`);
+    const script = existing || Object.assign(document.createElement("script"), { src, async: true });
+    if (!existing) document.head.appendChild(script);
+    script.addEventListener("load", resolve, { once: true });
+    script.addEventListener("error", () => reject(new Error("Không tải được thư viện đăng nhập.")), { once: true });
+  });
+}
+
+async function googleCredential() {
+  const clientId=import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) throw new Error("Google chưa được cấu hình trên giao diện.");
+  await loadScript("https://accounts.google.com/gsi/client",()=>!!window.google?.accounts?.id);
+  return new Promise((resolve,reject)=>{
+    window.google.accounts.id.initialize({client_id:clientId,callback:result=>result.credential?resolve(result.credential):reject(new Error("Google không trả thông tin đăng nhập."))});
+    window.google.accounts.id.prompt(notification=>{if(notification.isNotDisplayed?.()||notification.isSkippedMoment?.())reject(new Error("Không mở được cửa sổ Google. Hãy thử lại."));});
+  });
+}
+
+async function facebookCredential() {
+  const appId=import.meta.env.VITE_FACEBOOK_APP_ID;
+  if (!appId) throw new Error("Facebook chưa được cấu hình trên giao diện.");
+  await loadScript("https://connect.facebook.net/vi_VN/sdk.js",()=>!!window.FB);
+  window.FB.init({appId,cookie:true,xfbml:false,version:"v23.0"});
+  return new Promise((resolve,reject)=>window.FB.login(result=>result.authResponse?.accessToken?resolve(result.authResponse.accessToken):reject(new Error("Bạn chưa cấp quyền đăng nhập Facebook.")),{scope:"public_profile,email"}));
+}
+
 export function useAuth() {
   const [session, setSession] = useState(loadSession);
 
@@ -34,9 +63,10 @@ export function useAuth() {
 
   // Đăng xuất
   const logout = useCallback(() => {
+    if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
     setSession(null);
-  }, []);
+  }, [token]);
 
   // Đăng nhập bằng Email / SĐT + mật khẩu
   const login = useCallback(async (identifier, password) => {
@@ -51,35 +81,11 @@ export function useAuth() {
         persist(json);
         return json;
       }
-    } catch {
-      // Fallback mock nếu backend chưa chạy
+      throw new Error(json.message || (json.error === "INVALID_CREDENTIALS" ? "Thông tin đăng nhập không chính xác." : "Đăng nhập thất bại."));
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập. Hãy kiểm tra backend đang chạy.");
     }
-
-    const mockUser = {
-      id: "u_" + Math.random().toString(36).slice(2, 8),
-      display_name: identifier.split("@")[0] || identifier,
-      identifier,
-      email: identifier.includes("@") ? identifier : null,
-      phone: !identifier.includes("@") ? identifier : null,
-      avatar: "/icons.png",
-      elo: 1250,
-      matches_played: 14,
-      wins: 9,
-      role: "player",
-      created_tournaments: [
-        {
-          id: "tour_demo_1",
-          name: "Giải Tân Binh Kéo Búa Bao v1",
-          game_id: "rps_chess",
-          participants: 8,
-          status: "pending",
-          start_time: "2026-10-25 19:30",
-        }
-      ]
-    };
-    const mockSession = { token: "mock_jwt_token_" + Date.now(), user: mockUser };
-    persist(mockSession);
-    return mockSession;
   }, []);
 
   // Đăng ký tài khoản
@@ -95,61 +101,58 @@ export function useAuth() {
         persist(json);
         return json;
       }
-    } catch {
-      // Fallback mock
+      throw new Error(json.message || (json.error === "ACCOUNT_EXISTS" ? "Email hoặc số điện thoại đã được đăng ký." : "Đăng ký thất bại."));
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập. Hãy kiểm tra backend đang chạy.");
     }
-
-    const mockUser = {
-      id: "u_" + Math.random().toString(36).slice(2, 8),
-      display_name: displayName || identifier.split("@")[0] || identifier,
-      identifier,
-      email: identifier.includes("@") ? identifier : null,
-      phone: !identifier.includes("@") ? identifier : null,
-      avatar: "/icons.png",
-      elo: 1000,
-      matches_played: 0,
-      wins: 0,
-      role: "player",
-      created_tournaments: []
-    };
-    const mockSession = { token: "mock_jwt_token_" + Date.now(), user: mockUser };
-    persist(mockSession);
-    return mockSession;
   }, []);
 
   // Đăng nhập nhanh bằng Google
   const loginGoogle = useCallback(async (idToken) => {
     try {
+      if (!idToken) {
+        idToken=await googleCredential();
+      }
       const res = await fetch(`${getApiBase()}/api/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_token: idToken || "mock_google_id_token" }),
+        body: JSON.stringify({ id_token: idToken }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.token) {
         persist(json);
         return json;
       }
-    } catch {
-      // Fallback mock nếu chưa cấu hình Google Client ID hoặc backend chưa bật
+      throw new Error(json.error === "GOOGLE_NOT_CONFIGURED" ? "Đăng nhập Google chưa được cấu hình trên máy chủ." : "Google chưa xác minh được tài khoản.");
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập Google.");
     }
-
-    const mockGoogleUser = {
-      id: "g_" + Math.random().toString(36).slice(2, 8),
-      display_name: "Google Player",
-      identifier: "player.google@gmail.com",
-      email: "player.google@gmail.com",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=GoogleBot",
-      elo: 1200,
-      matches_played: 6,
-      wins: 4,
-      role: "player",
-      created_tournaments: []
-    };
-    const mockSession = { token: "google_jwt_token_" + Date.now(), user: mockGoogleUser };
-    persist(mockSession);
-    return mockSession;
   }, []);
+
+  const loginFacebook = useCallback(async () => {
+    const accessToken=await facebookCredential();
+    const res = await fetch(`${getApiBase()}/api/auth/facebook`, { method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({access_token:accessToken}) });
+    const json=await res.json().catch(()=>({}));
+    if (!res.ok||!json.token) throw new Error(json.error==="FACEBOOK_NOT_CONFIGURED"?"Facebook chưa được cấu hình trên máy chủ.":"Facebook chưa xác minh được tài khoản.");
+    persist(json); return json;
+  }, []);
+
+  const linkAccount = useCallback(async (provider, credentials) => {
+    if (!credentials) credentials=provider==="google"?{id_token:await googleCredential()}:provider==="facebook"?{access_token:await facebookCredential()}:null;
+    if (!credentials) throw new Error("Liên kết số điện thoại cần xác minh OTP.");
+    const res = await fetch(`${getApiBase()}/api/auth/link/${provider}`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(credentials),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error === "IDENTITY_ALREADY_LINKED" ? "Tài khoản này đã được liên kết với một người chơi khác." : "Không thể liên kết tài khoản.");
+    const next = { ...session, user: json.user };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setSession(next);
+    return json.user;
+  }, [token, session]);
 
   // Cập nhật thông tin profile (tên, avatar...)
   const updateProfile = useCallback((patch) => {
@@ -212,6 +215,8 @@ export function useAuth() {
     login,
     register,
     loginGoogle,
+    loginFacebook,
+    linkAccount,
     logout,
     updateProfile,
     changePassword,

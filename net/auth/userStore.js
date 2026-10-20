@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-// Kho người dùng TRONG BỘ NHỚ. Hoàng thay bằng bảng `users` + `auth_identities`
-// (PostgreSQL) mà giữ nguyên các hàm bên dưới thì phần còn lại không phải sửa.
+// Bộ nhớ chỉ dùng cho các bài test/luồng khách không nối database; server thật dùng
+// users + auth_identities + auth_sessions trong storage.
 export function createUserStore() {
     const users = new Map();
     const byIdentity = new Map();
@@ -11,6 +11,7 @@ export function createUserStore() {
         display_name: user.display_name,
         avatar_url: user.avatar_url,
         guest: user.guest,
+        role: user.role ?? "player",
     });
 
     function cleanName(name) {
@@ -34,6 +35,7 @@ export function createUserStore() {
                     avatar_url: avatarUrl,
                     email,
                     guest: false,
+                    role: "player",
                 };
                 users.set(user.id, user);
                 byIdentity.set(key, user.id);
@@ -45,7 +47,7 @@ export function createUserStore() {
         createGuest(displayName) {
             const name = cleanName(displayName);
             if (!name) return null;
-            const user = { id: randomUUID(), display_name: name, avatar_url: null, email: null, guest: true };
+            const user = { id: randomUUID(), display_name: name, avatar_url: null, email: null, guest: true, role: "player" };
             users.set(user.id, user);
             return user;
         },

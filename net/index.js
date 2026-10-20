@@ -4,16 +4,16 @@ import { createRegistry } from "./registry.js";
 import { createBotGateway } from "./botGateway.js";
 import { createSpectatorGateway } from "./spectatorGateway.js";
 import { createOrchestrator } from "./orchestrator.js";
-import { createMatchStore } from './storage/matchStore.js';
+import { createStorage } from './storage/index.js';
 import { createRoomGateway } from "./roomGateway.js";
 import { createAuthService } from "./auth/authService.js";
 import { createWsGateway } from "./wsGateway.js";
 
-const matchStore = createMatchStore();
-matchStore.abortInterruptedMatches();
+const matchStore = await createStorage();
+await matchStore.abortInterruptedMatches();
 const registry = createRegistry();
 const roomGateway = createRoomGateway({ matchStore });
-const authService = createAuthService();
+const authService = createAuthService({ storage: matchStore });
 const wsGateway = createWsGateway({
     sessions: authService.sessions,
     users: authService.users,

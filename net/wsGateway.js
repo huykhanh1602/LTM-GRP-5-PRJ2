@@ -423,10 +423,10 @@ export function createWsGateway({
             send(conn, { type: "pong" });
         },
 
-        auth(conn, message) {
+        async auth(conn, message) {
             if (conn.user) return sendError(conn, "INVALID_MESSAGE", "Đã đăng nhập rồi.");
-            const userId = typeof message.token === "string" ? sessions.resolve(message.token) : null;
-            const user = userId ? users.get(userId) : null;
+            const userId = typeof message.token === "string" ? await sessions.resolve(message.token) : null;
+            const user = userId ? await users.get(userId) : null;
             if (!user) {
                 sendError(conn, "INVALID_TOKEN", "Token không hợp lệ hoặc đã hết hạn.");
                 conn.socket.close(1008, "invalid token");
