@@ -5,11 +5,13 @@ import ReplayPage from "./pages/ReplayPage.jsx";
 import Room from "./pages/Room.jsx";
 import DatabasePage from './pages/DatabasePage.jsx';
 import { useRoom } from "./hooks/useRoom.js";
+import { useGoogleSession } from "./hooks/useGoogleSession.js";
 import "./styles/pages.css";
 
 export default function App() {
   const [tab, setTab] = useState("play"); // play | replay
   const room = useRoom();
+  const google = useGoogleSession();
   const [databaseReplay, setDatabaseReplay] = useState(null);
 
   let page;
@@ -30,11 +32,13 @@ export default function App() {
     page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} />;
   } else {
     page = <Lobby
-        onJoin={room.join}
+        onJoin={(params) => room.join({ ...params, token: google.session?.token })}
+        user={google.session?.user ?? null}
+        onSignOut={google.signOut}
         onCancel={room.leave}
         connecting={room.phase === "connecting" || room.phase === "queue"}
         queue={room.phase === "queue" ? room.queue : null}
-        error={room.error}
+        error={room.error || google.error}
       />;
   }
 

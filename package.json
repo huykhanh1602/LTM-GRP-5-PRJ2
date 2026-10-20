@@ -10,7 +10,7 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "server": "node net/index.js",
+        "server": "node --env-file-if-exists=.env net/index.js",
         "test": "node --test"
     },
     "dependencies": {
