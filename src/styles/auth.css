@@ -1,0 +1,467 @@
+/* =========================================================
+   auth.css — Auth Modal (Đăng nhập / Đăng ký) & Profile Page
+   ========================================================= */
+
+/* ── Modal Overlay ── */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Modal Card (dựa theo mẫu GameVui) ── */
+.auth-card {
+  position: relative;
+  background: #ffffff;
+  color: #1e293b;
+  width: 100%;
+  max-width: 440px;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  padding: 32px 28px 24px;
+  box-sizing: border-box;
+  animation: popUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popUp {
+  from { transform: scale(0.92) translateY(12px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.auth-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+.auth-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.auth-title {
+  font-family: var(--font-display, inherit);
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  color: #334155;
+  margin: 0 0 16px;
+}
+
+.auth-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin-bottom: 16px;
+}
+
+/* Nút Google */
+.auth-google-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+.auth-google-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.auth-google-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-social-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 14px 0 10px;
+  color: #94a3b8;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.auth-social-divider::before,
+.auth-social-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+.auth-social-divider span {
+  padding: 0 10px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-field-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: -4px;
+}
+
+.auth-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1e293b;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.auth-input:focus {
+  outline: none;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.auth-error {
+  color: #dc2626;
+  font-size: 13px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+/* Nút đỏ đặc trưng kiểu GameVui */
+.auth-btn-submit {
+  width: 100%;
+  margin-top: 6px;
+  background: #dc2626;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.auth-btn-submit:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.auth-btn-submit:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.auth-btn-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-footer-links {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: #475569;
+}
+.auth-footer-links p {
+  margin: 6px 0;
+}
+
+.auth-link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0 4px;
+}
+.auth-link-btn:hover {
+  color: #1d4ed8;
+}
+
+.auth-link-secondary {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: 4px;
+}
+.auth-link-secondary:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   Profile Page — Quản lý cá nhân, Đổi Avatar & Mở giải đấu
+   ========================================================= */
+.profile-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 10px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-card {
+  background: var(--panel, #ffffff);
+  border: 1.5px solid var(--line, #e2e8f0);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(148, 163, 184, 0.12);
+}
+
+/* Header cá nhân */
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Container avatar có nút đổi */
+.profile-avatar-container {
+  position: relative;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.profile-avatar-container:hover .profile-avatar-overlay {
+  opacity: 1;
+}
+
+.profile-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 3px solid var(--accent, #ff4d6d);
+  background: #f1f5f9;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.profile-name {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text, #0f172a);
+}
+
+.profile-identifier {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+}
+
+/* Thẻ thống kê */
+.profile-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.profile-stat-box {
+  background: var(--panel-solid, #f8fafc);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.profile-stat-val {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--accent, #ef4444);
+  line-height: 1.2;
+}
+
+.profile-stat-lbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  margin-top: 4px;
+}
+
+/* Tabs trang cá nhân */
+.profile-nav-tabs {
+  display: flex;
+  gap: 10px;
+  border-bottom: 2px solid var(--line, #e2e8f0);
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-tab-btn {
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.profile-tab-btn.active {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* Form đăng ký giải đấu & Đổi mật khẩu */
+.tournament-reg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+}
+
+.reg-input, .reg-select, .reg-textarea {
+  padding: 10px 14px;
+  border: 1.5px solid var(--line, #cbd5e1);
+  border-radius: 10px;
+  background: var(--panel-solid, #fff);
+  color: var(--text, #0f172a);
+  font-size: 14px;
+}
+
+.reg-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.tour-item-card {
+  border: 1px solid var(--line, #e2e8f0);
+  background: var(--panel-solid, #f8fafc);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tour-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.tour-status-badge.pending {
+  background: rgba(234, 179, 8, 0.2);
+  color: #b45309;
+}
+.tour-status-badge.active {
+  background: rgba(34, 197, 94, 0.2);
+  color: #15803d;
+}
+
+/* ── Modal Đổi Avatar ── */
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.avatar-option {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s, border-color 0.2s;
+  padding: 0;
+  background: #f1f5f9;
+}
+.avatar-option:hover {
+  transform: scale(1.08);
+  border-color: #ef4444;
+}
+.avatar-option.selected {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+}
+.avatar-option img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

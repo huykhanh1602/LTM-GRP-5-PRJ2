@@ -36,22 +36,45 @@
   font-display: swap;
 }
 :root {
-  --bg: #f8fafc;
-  --bg-glow-1: rgba(195, 230, 237, 0.7); /* Xanh pastel ngọc bích */
-  --bg-glow-2: rgba(252, 202, 226, 0.7); /* Hồng phấn kẹo ngọt */
-  --panel: rgba(255, 255, 255, 0.72);   /* Kính mờ trắng ngọc trai */
-  --panel-solid: rgba(255, 255, 255, 0.92);
-  --line: rgba(255, 255, 255, 0.85);   /* Viền sáng bóng */
-  --text: #1e293b;                      /* Xanh đen thanh lịch, dễ đọc */
-  --muted: #64748b;                     /* Xám xanh êm mắt */
-  --accent: #ff6584;                    /* Hồng dâu san hô ngọt ngào */
-  --accent-2: #38bdf8;                  /* Xanh mây bồng bềnh */
-  --gold: #d97706;                      /* Vàng caramel ấm áp */
+  /* Bảng màu chuẩn BotVui theo yêu cầu */
+  --c-pink-pastel: #FDA3D3;
+  --c-pink-soft: #FEDEE9;
+  --c-pink-deep: #F27FBA;
+  --c-purple-lavender: #D4B8F5;
+  --c-purple-light: #EEE4FF;
+  --c-purple-deep: #A987D9;
+  --c-yellow-pastel: #FFE6A3;
+  --c-yellow-cream: #FFF3D4;
+  --c-yellow-honey: #F7CF72;
+  --c-blue-pastel: #A9D9FF;
+  --c-blue-sky: #D9EEFF;
+  --c-blue-deep: #83BDEB;
+  --c-green-pastel: #B8E8D0;
+  --c-green-mint: #DDF5E7;
+  --c-green-deep: #8FD0B0;
+  --c-bg-pink: #FFFAFC;
+  --c-bg-purple: #FAF7FF;
+  --c-bg-blue: #F2FAFF;
+  --c-text-main: #574568;
+  --c-text-sub: #8B7B9A;
 
-  --cell-a: rgba(255, 241, 242, 0.6);  /* Ô hồng dâu sữa trong suốt */
-  --cell-b: rgba(240, 249, 255, 0.6);  /* Ô xanh mây sữa trong suốt */
-  --stone: #94a3b8;
-  --danger: #f43f5e;
+  /* Áp dụng vào hệ thống giao diện */
+  --bg: #FFFAFC;
+  --bg-glow-1: #D9EEFF;
+  --bg-glow-2: #FEDEE9;
+  --panel: rgba(255, 250, 252, 0.85);
+  --panel-solid: #FFFAFC;
+  --line: #FEDEE9;
+  --text: #574568;
+  --muted: #8B7B9A;
+  --accent: #F27FBA;
+  --accent-2: #A987D9;
+  --gold: #F7CF72;
+
+  --cell-a: #FEDEE9;
+  --cell-b: #EEE4FF;
+  --stone: #8B7B9A;
+  --danger: #F27FBA;
 
   --move-ms: 450ms;
   --font-display: "Baloo 2", "Segoe UI", system-ui, sans-serif;

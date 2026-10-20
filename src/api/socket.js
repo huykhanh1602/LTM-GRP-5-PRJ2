@@ -79,7 +79,8 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, crea
         if (role === "spectator") ws.send(JSON.stringify({ type: "watch_room", code }));
         else if (find) ws.send(JSON.stringify({ type: "find_match", game_id: gameId, mode }));
         else if (create) ws.send(JSON.stringify({ type: "create_room", game_id: gameId, mode: "casual" }));
-        else ws.send(JSON.stringify({ type: "join_room", game_id: gameId, mode: "casual", code }));
+        // join_room dùng mode được truyền vào (thường là "casual" khi nhập mã phòng tay)
+        else ws.send(JSON.stringify({ type: "join_room", game_id: gameId, mode, code }));
     }
 
     function handle(msg) {
