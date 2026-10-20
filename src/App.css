@@ -100,7 +100,12 @@ body {
 }
 button, select { font: inherit; color: inherit; }
 
-.app { max-width: 1180px; margin: 0 auto; padding: 14px 16px 20px; }
+.app {
+  width: 100%;
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 14px 24px 28px;
+}
 
 /* ---------- Top bar ---------- */
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }

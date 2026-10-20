@@ -74,13 +74,13 @@ export default function ProfilePage({
     };
 
     onAddTournament(tourData);
-    setMsg("✅ Đã tạo giải đấu thành công! Đang chờ duyệt từ hệ thống.");
+    setMsg("🎉 Tạo giải đấu thành công! Giải đấu đã được đưa vào danh sách giải.");
     setTourName("");
     setDescription("");
     setTimeout(() => {
       setMsg("");
       setActiveTab("tournaments");
-    }, 1500);
+    }, 1200);
   }
 
   // Xử lý lưu tên
@@ -320,8 +320,8 @@ export default function ProfilePage({
                       <span>⏰ Khởi tranh: {t.start_time}</span>
                     </div>
                   </div>
-                  <span className={`tour-status-badge ${t.status || "pending"}`}>
-                    {t.status === "active" ? "Đang diễn ra" : "Chờ duyệt / Sắp mở"}
+                  <span className={`tour-status-badge ${t.status === "ongoing" || t.status === "active" ? "active" : "upcoming"}`}>
+                    {t.status === "ongoing" || t.status === "active" ? "Đang diễn ra" : t.status === "completed" ? "Đã kết thúc" : "Sắp khởi tranh"}
                   </span>
                 </div>
               ))

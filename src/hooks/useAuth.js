@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { saveNewTournament } from "../utils/tournaments.js";
 
 // ─────────────────────────────────────────────────────────────
 // useAuth — Quản lý trạng thái đăng nhập, profile & bảo mật
@@ -185,22 +186,18 @@ export function useAuth() {
     }
   }, [token]);
 
-  // Thêm giải đấu cá nhân tạo
+  // Thêm giải đấu cá nhân tạo (không cần duyệt, có hiệu lực ngay)
   const addTournament = useCallback((tournamentData) => {
     setSession((prev) => {
-      if (!prev || !prev.user) return prev;
-      const list = prev.user.created_tournaments || [];
-      const newTour = {
-        id: "tour_" + Date.now(),
-        ...tournamentData,
-        status: "pending",
-        created_at: new Date().toISOString()
-      };
+      const currentUser = prev?.user;
+      const createdTour = saveNewTournament(tournamentData, currentUser);
+      if (!currentUser) return prev;
+      const list = currentUser.created_tournaments || [];
       const updated = {
         ...prev,
         user: {
-          ...prev.user,
-          created_tournaments: [newTour, ...list]
+          ...currentUser,
+          created_tournaments: [createdTour, ...list]
         }
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
