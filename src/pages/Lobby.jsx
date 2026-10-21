@@ -10,23 +10,31 @@ function randomCode() {
 }
 
 // Trang đầu: nhập tên đội + tạo phòng / vào phòng bằng mã / chỉ xem.
-export default function Lobby({ onJoin, onCancel, connecting, queue, error }) {
+export default function Lobby({ onJoin, onCancel, onSignOut, user, connecting, queue, error }) {
   const [teamName, setTeamName] = useState("");
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState("");
+  // Đã đăng nhập Google thì dùng tên Google làm tên đội.
+  const name = user ? user.display_name : teamName.trim();
 
   function go(roomCode, role, create = false) {
-    if (role === "player" && !teamName.trim()) return setProblem("Hãy nhập tên đội.");
+    if (role === "player" && !name) return setProblem("Hãy nhập tên đội.");
     if (!roomCode.trim()) return setProblem("Hãy nhập mã phòng.");
     setProblem("");
-    onJoin({ code: roomCode.trim().toUpperCase(), teamName: teamName.trim(), role, create });
+    onJoin({ code: roomCode.trim().toUpperCase(), teamName: name, role, create });
   }
 
   // Ghép trận tự động: server tự tạo phòng khi tìm được đối thủ.
   function findMatch() {
-    if (!teamName.trim()) return setProblem("Hãy nhập tên đội.");
+    if (!name) return setProblem("Hãy nhập tên đội.");
     setProblem("");
-    onJoin({ find: true, mode: "casual", code: randomCode(), teamName: teamName.trim(), role: "player" });
+    onJoin({ find: true, mode: "casual", code: randomCode(), teamName: name, role: "player" });
+  }
+
+  // Xếp hạng chỉ dành cho tài khoản Google (server từ chối khách).
+  function findRanked() {
+    setProblem("");
+    onJoin({ find: true, mode: "ranked", code: randomCode(), teamName: name, role: "player" });
   }
 
   return (
@@ -34,21 +42,33 @@ export default function Lobby({ onJoin, onCancel, connecting, queue, error }) {
       <div className="card lobby-card">
         <h2>Vào phòng đấu</h2>
 
-        <label className="field">
-          Tên đội
-          <input
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            maxLength={30}
-            placeholder="Ví dụ: Naruto Team"
-            disabled={connecting}
-          />
-        </label>
+        {user ? (
+          <p className="hint">
+            Đã đăng nhập: <b>{user.display_name}</b>{" "}
+            <button className="btn small" onClick={onSignOut} disabled={connecting}>Đăng xuất</button>
+          </p>
+        ) : (
+          <label className="field">
+            Tên đội
+            <input
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              maxLength={30}
+              placeholder="Ví dụ: Naruto Team"
+              disabled={connecting}
+            />
+          </label>
+        )}
 
         <div className="lobby-actions">
           <button className="btn primary" disabled={connecting} onClick={findMatch}>
             Tìm trận nhanh
           </button>
+          {user && (
+            <button className="btn" disabled={connecting} onClick={findRanked}>
+              Tìm trận xếp hạng
+            </button>
+          )}
           <button className="btn" disabled={connecting} onClick={() => go(randomCode(), "player", true)}>
             Tạo phòng mới
           </button>

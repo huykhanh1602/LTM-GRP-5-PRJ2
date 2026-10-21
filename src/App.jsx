@@ -8,6 +8,7 @@ import DatabasePage from "./pages/DatabasePage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import { useRoom } from "./hooks/useRoom.js";
+import { useGoogleSession } from "./hooks/useGoogleSession.js";
 import { useAuth } from "./hooks/useAuth.js";
 import "./styles/pages.css";
 import "./styles/home.css";
@@ -20,8 +21,8 @@ import "./styles/auth.css";
 //   "profile"   → ProfilePage (Quản lý hồ sơ, Elo, Đổi mật khẩu, Mở giải đấu)
 // ─────────────────────────────────────────────────────────────
 export default function App() {
-  const [view, setView] = useState("home");
-  const [selectedGameId, setSelectedGameId] = useState(null);
+  const [tab, setTab] = useState("play"); // play | replay
+  const room = useRoom();
   const [databaseReplay, setDatabaseReplay] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,85 +47,30 @@ export default function App() {
 
   // ── Xác định trang hiện tại ──────────────────────────────
   let page;
-
-  if (view === "profile") {
+  if (tab === "replay") {
+    page = <ReplayPage key={databaseReplay?.match_info.match_id ?? 'list'} initialReplay={databaseReplay} onBack={() => setTab("play")} />;
+  } else if (tab === 'history' || tab === 'rankings') {
+    page = <DatabasePage key={tab} view={tab} onReplay={replay => { setDatabaseReplay(replay); setTab('replay'); }} />;
+  } else if (room.phase === "match") {
     page = (
-      <ProfilePage
-        user={auth.user}
-        isLoggedIn={auth.isLoggedIn}
-        onOpenLogin={() => setIsAuthOpen(true)}
-        onLogout={() => {
-          auth.logout();
-          goHome();
-        }}
-        onUpdateProfile={auth.updateProfile}
-        onChangePassword={auth.changePassword}
-        onLinkAccount={auth.linkAccount}
-        onAddTournament={auth.addTournament}
-        onBack={goHome}
+      <Match
+        key={room.matchKey}
+        state={room}
+        onReturnToRoom={room.returnToRoom}
+        onLeave={room.leave}
       />
     );
-  } else if (view === "replay") {
-    page = (
-      <ReplayPage
-        key={databaseReplay?.match_info?.match_id ?? "list"}
-        initialReplay={databaseReplay}
-        onBack={() => setView(selectedGameId ? "lobby" : "home")}
-      />
-    );
-  } else if (view === "history" || view === "rankings") {
-    page = (
-      <DatabasePage
-        key={view}
-        view={view}
-        onReplay={(replay) => {
-          setDatabaseReplay(replay);
-          setView("replay");
-        }}
-      />
-    );
-  } else if (view === "home") {
-    page = <HomePage onSelectGame={selectGame} searchQuery={searchQuery} />;
+  } else if (room.phase === "room") {
+    page = <Room state={room} onSubmit={room.submit} onReady={room.setReady} onLeave={room.leave} />;
   } else {
-    // view === "lobby" — hiển thị tuỳ theo room.phase
-    if (room.phase === "match") {
-      page = (
-        <Match
-          key={room.matchKey}
-          state={room}
-          onReturnToRoom={room.returnToRoom}
-          onLeave={room.leave}
-        />
-      );
-    } else if (room.phase === "room") {
-      page = (
-        <Room
-          state={room}
-          onSubmit={room.submit}
-          onReady={room.setReady}
-          onLeave={room.leave}
-        />
-      );
-    } else {
-      // idle | connecting | queue → GameLobby
-      page = (
-        <GameLobby
-          gameId={selectedGameId}
-          onJoin={room.join}
-          onCancel={room.leave}
-          onBack={goHome}
-          connecting={room.phase === "connecting" || room.phase === "queue"}
-          queue={room.phase === "queue" ? room.queue : null}
-          error={room.error}
-          user={auth.user}
-          onOpenLogin={() => setIsAuthOpen(true)}
-          onGoProfile={() => setView("profile")}
-        />
-      );
-    }
+    page = <Lobby
+        onJoin={room.join}
+        onCancel={room.leave}
+        connecting={room.phase === "connecting" || room.phase === "queue"}
+        queue={room.phase === "queue" ? room.queue : null}
+        error={room.error}
+      />;
   }
-
-  const inGame = room.phase === "room" || room.phase === "match";
 
   return (
     <div className="app">
