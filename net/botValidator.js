@@ -29,7 +29,8 @@ export function validateBotSource(source, { python = defaultPython(), timeoutMs 
             clearTimeout(timer);
             resolve(result);
         };
-        const child = spawn(python, ["-I", "-c", SCRIPT], { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+        // -X utf8 để stdout/stderr không lỗi encoding trên Windows khi in tiếng Việt.
+        const child = spawn(python, ["-X", "utf8", "-I", "-c", SCRIPT], { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
         const timer = setTimeout(() => {
             child.kill();
             done({ ok: false, message: "Quá thời gian kiểm tra bot." });
