@@ -98,38 +98,3 @@ test("the channel reports an error when login fails", async () => {
   assert.match(error.message, /đăng nhập/);
   channel.close();
 });
-
-test("exchangeGoogleCredential trades a Google id_token for a server session, and a channel can reuse that token", async (t) => {
-  const { exchangeGoogleCredential } = await import("../src/api/googleAuth.js");
-  const authService = createAuthService({
-    googleClientId: "client-123",
-    verifyGoogle: async (idToken, { clientId }) =>
-      idToken === "valid-google-credential-xxxxxxxx" && clientId === "client-123"
-        ? { sub: "g-42", email: "vinh@example.com", name: "Vinh Google", picture: null }
-        : null,
-  });
-  const gateway = createWsGateway({
-    sessions: authService.sessions, users: authService.users, countdownMs: 1, sweepMs: 10,
-    validateBot: async () => ({ ok: true }),
-  });
-  const server = createHttpServer({ authService });
-  server.on("upgrade", (req, socket, head) => { if (!gateway.handleUpgrade(req, socket, head)) socket.destroy(); });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => { gateway.close(); await new Promise((resolve) => server.close(resolve)); });
-  const port = server.address().port;
-  const apiUrl = `http://127.0.0.1:${port}`;
-
-  await assert.rejects(exchangeGoogleCredential("forged", { apiUrl }), /INVALID_ID_TOKEN/);
-  const session = await exchangeGoogleCredential("valid-google-credential-xxxxxxxx", { apiUrl });
-  assert.equal(session.user.display_name, "Vinh Google");
-  assert.equal(session.user.guest, false);
-
-  // Kênh dùng token Google: tên trong phòng là tên Google, không phải teamName gõ tay, và không đăng nhập khách.
-  const channel = createSocketChannel({
-    wsUrl: `ws://127.0.0.1:${port}`, httpUrl: apiUrl, teamName: "Tên gõ tay", role: "player", create: true, token: session.token,
-  });
-  t.after(() => channel.close());
-  const wait = collector(channel);
-  const room = await wait((m) => m.type === "room_state");
-  assert.deepEqual([room.room.teams[0].name, room.room.teams[0].isMe], ["Vinh Google", true]);
-});

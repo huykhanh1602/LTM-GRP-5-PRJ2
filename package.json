@@ -10,7 +10,8 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "server": "node --env-file-if-exists=.env net/index.js",
+        "server": "node net/index.js",
+        "migrate:sqlite-to-postgres": "node net/storage/migrateSqliteToPostgres.js",
         "test": "node --test"
     },
     "dependencies": {

@@ -63,7 +63,7 @@ const SUBMIT_ERRORS = new Set([
     "INVALID_BOT", "BOT_TOO_LARGE", "UNSUPPORTED_LANGUAGE", "WRONG_STATE", "NOT_IN_ROOM", "INVALID_MESSAGE", "RATE_LIMITED",
 ]);
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, create, find, mode = "casual", gameId = "rps_chess", token: givenToken = null }) {
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, create, find, mode = "casual", gameId = "rps_chess" }) {
     const listeners = new Set();
     const emit = (m) => listeners.forEach((l) => l(m));
     let ws = null;
@@ -106,22 +106,19 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, crea
     }
 
     async function start() {
-        // Đã đăng nhập Google thì dùng token có sẵn; chưa thì đăng nhập khách bằng tên đội.
-        let token = givenToken;
-        if (!token) {
-            try {
-                const res = await fetch(apiUrl("/api/auth/guest"), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ display_name: teamName }),
-                });
-                const body = await res.json();
-                if (!res.ok) throw new Error(body.message || body.error || `Lỗi ${res.status}`);
-                token = body.token;
-            } catch (e) {
-                if (!closed) fail(`Không đăng nhập được: ${e.message}`);
-                return;
-            }
+        let token;
+        try {
+            const res = await fetch(apiUrl("/api/auth/guest"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ display_name: teamName }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.message || body.error || `Lỗi ${res.status}`);
+            token = body.token;
+        } catch (e) {
+            if (!closed) fail(`Không đăng nhập được: ${e.message}`);
+            return;
         }
         if (closed) return;
 
