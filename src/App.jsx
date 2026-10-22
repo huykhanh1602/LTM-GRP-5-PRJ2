@@ -222,18 +222,8 @@ export default function App() {
           </nav>
         )}
 
-        {/* ── Khu vực Phải: nút Giải đấu + nút tài khoản ── */}
+        {/* ── Khu vực Phải: nút tài khoản ── */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            className="quick-auth-btn"
-            onClick={() => openTournament()}
-            style={{
-              background:
-                "linear-gradient(135deg, var(--c-purple-deep), var(--c-pink-deep))",
-            }}
-          >
-            🏆 Giải đấu
-          </button>
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */
             <button
