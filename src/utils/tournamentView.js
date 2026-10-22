@@ -41,12 +41,7 @@ const COUNTDOWN_LABELS = {
   cancelled: null,
 };
 
-export const DEFAULT_RULES = [
-  "Bot phải viết bằng Python 3.11, Node.js 20 hoặc C++17.",
-  "Thời gian suy nghĩ tối đa 500ms mỗi nước đi.",
-  "Không được đọc file hệ thống hoặc gọi mạng trong lúc thi đấu.",
-  "Kết quả do server chấm, BTC là trọng tài cuối cùng.",
-];
+export const DEFAULT_RULES = [];
 
 const SLOT_STATUS_MAP = {
   live: "running",
@@ -203,6 +198,7 @@ export function normalizeSlot(raw = {}, roundIndex = 0, matchIndex = 0) {
       pickId(raw.matchKey, raw.match_key, raw.slotKey, raw.slot_key) ??
       `r${roundIndex}m${matchIndex}`,
     roundIndex: toNumber(firstDefined(raw.roundIndex, raw.round_index), roundIndex),
+    roundNo: toNumber(firstDefined(raw.roundNo, raw.round_no), roundIndex + 1),
     matchIndex: toNumber(firstDefined(raw.matchIndex, raw.match_index), matchIndex),
     participantAId,
     participantBId,

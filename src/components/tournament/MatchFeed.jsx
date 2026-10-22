@@ -1,4 +1,3 @@
-import { getEntry } from "../../mock/tournamentLobby.mock.js";
 import { resolveEntry } from "../../utils/tournamentView.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -24,8 +23,8 @@ export default function MatchFeed({
   return (
     <ul className="tl-feed">
       {feed.map((match) => {
-        const a = resolveEntry(entryMap, match.a) ?? getEntry(match.a);
-        const b = resolveEntry(entryMap, match.b) ?? getEntry(match.b);
+        const a = resolveEntry(entryMap, match.a);
+        const b = resolveEntry(entryMap, match.b);
         const isLive = match.status === "live";
         const isUpcoming = match.status === "upcoming";
         const winnerIsA = Boolean(match.winnerId) && match.winnerId === match.a;
@@ -83,9 +82,9 @@ export default function MatchFeed({
                   type="button"
                   className="btn small"
                   onClick={() => onReplay?.(match)}
-                  disabled={isUpcoming || !match.replayId}
+                  disabled={isUpcoming || (!match.replayId && !match.matchId)}
                 >
-                  ⟲ Replay
+                  ⟲ Xem trận
                 </button>
               )}
               <code>{String(match.matchId ?? match.id ?? "").replace("M-KBB-", "")}</code>

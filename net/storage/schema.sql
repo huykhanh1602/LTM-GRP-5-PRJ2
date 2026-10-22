@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round_id TEXT NOT NULL REFERENCES tournament_rounds(id) ON DELETE CASCADE,
   match_id TEXT UNIQUE REFERENCES matches(id) ON DELETE SET NULL,
+  slot_index INTEGER NOT NULL DEFAULT 0,
   participant_a_id TEXT NOT NULL,
   participant_a_name TEXT NOT NULL,
   participant_b_id TEXT NOT NULL,

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 import { StorageError } from './matchStore.js';
+import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, slotCount } from './tournamentBracket.js';
 
 const required = (value, field) => {
   if (typeof value !== 'string' || !value.trim()) throw new StorageError('INVALID_INPUT', `${field} must be a non-empty string`);
@@ -195,21 +196,32 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       LIMIT $${args.length+1} OFFSET $${args.length+2}`,[...args,limit,offset])).rows;
     return { items:rows.map(r=>({...r,starts_at:r.starts_at?.toISOString()??null,created_at:r.created_at.toISOString()})),total,limit,offset };
   }
+  async function listTournamentEntries(tournamentId, client = pool) {
+    return (await query(`SELECT e.user_id,u.display_name,u.avatar_url,u.role,e.seed,e.points
+      FROM tournament_entries e JOIN users u ON u.id=e.user_id WHERE e.tournament_id=$1
+      ORDER BY e.seed IS NULL,e.seed,u.display_name`,[tournamentId],client)).rows;
+  }
+  async function listTournamentRounds(tournamentId, client = pool) {
+    const rounds=(await query('SELECT id,round_no,status FROM tournament_rounds WHERE tournament_id=$1 ORDER BY round_no',[tournamentId],client)).rows;
+    for(const round of rounds) round.matches=(await query(`SELECT id,match_id,slot_index,round_id,participant_a_id,participant_a_name,participant_b_id,
+      participant_b_name,winner_id,result,played_at FROM tournament_match_history WHERE round_id=$1 ORDER BY slot_index,id`,[round.id],client)).rows
+      .map(row=>({...row,played_at:row.played_at instanceof Date?row.played_at.toISOString():row.played_at}));
+    return rounds;
+  }
   async function getTournament(id) {
     const row=(await query(`SELECT t.id,t.game_id,g.name AS game_name,t.code,t.name,t.format,t.status,t.config,t.starts_at,t.champion_id,t.created_at FROM tournaments t JOIN games g ON g.id=t.game_id WHERE t.id=$1 OR t.code=$1`,[id])).rows[0];
     if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
-    const rounds=(await query('SELECT id,round_no,status FROM tournament_rounds WHERE tournament_id=$1 ORDER BY round_no',[row.id])).rows;
-    for(const round of rounds) round.matches=(await query(`SELECT id,match_id,participant_a_id,participant_a_name,participant_b_id,
-      participant_b_name,winner_id,result,played_at FROM tournament_match_history WHERE round_id=$1 ORDER BY played_at,id`,[round.id])).rows;
-    const entries=(await query('SELECT e.user_id,u.display_name,e.seed,e.points FROM tournament_entries e JOIN users u ON u.id=e.user_id WHERE e.tournament_id=$1 ORDER BY e.seed,u.display_name',[row.id])).rows;
+    const rounds=await listTournamentRounds(row.id);
+    const entries=await listTournamentEntries(row.id);
     const champion=row.champion_id?(await query(`SELECT CASE WHEN winner_id=participant_a_id THEN participant_a_name ELSE participant_b_name END AS name
       FROM tournament_match_history WHERE tournament_id=$1 AND winner_id=$2 ORDER BY played_at DESC LIMIT 1`,[row.id,row.champion_id])).rows[0]:null;
-    return {...row,starts_at:row.starts_at?.toISOString()??null,created_at:row.created_at.toISOString(),champion:champion?{id:row.champion_id,name:champion.name}:null,rounds,entries};
+    return {...row,starts_at:row.starts_at?.toISOString()??null,created_at:row.created_at.toISOString(),champion:champion?{id:row.champion_id,name:champion.name}:null,
+      participant_count:entries.length,rounds,entries,bracket:row.format==='single_elimination'?buildBracket({rounds,entryCount:entries.length}):null};
   }
-  async function createTournament({ id=randomUUID(),gameId,code,name,format,config={},startsAt=null }) {
+  async function createTournament({ id=randomUUID(),gameId,code,name,format,config={},startsAt=null,status='open' }) {
     gameId=required(gameId,'gameId'); code=required(code,'code').toUpperCase(); name=required(name,'name');
-    if (!/^[A-Z0-9-]{3,24}$/.test(code)||name.length>100||!['single_elimination','round_robin','swiss'].includes(format)||!config||typeof config!=='object'||Array.isArray(config)) throw new StorageError('INVALID_INPUT','Invalid tournament data');
-    try { await query(`INSERT INTO tournaments(id,game_id,code,name,format,config,starts_at) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)`,[id,gameId,code,name,format,JSON.stringify(config),startsAt===null?null:iso(startsAt)]); }
+    if (!/^[A-Z0-9-]{3,24}$/.test(code)||name.length>100||!['single_elimination','round_robin','swiss'].includes(format)||!['draft','open'].includes(status)||!config||typeof config!=='object'||Array.isArray(config)) throw new StorageError('INVALID_INPUT','Invalid tournament data');
+    try { await query(`INSERT INTO tournaments(id,game_id,code,name,format,status,config,starts_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,[id,gameId,code,name,format,status,JSON.stringify(config),startsAt===null?null:iso(startsAt)]); }
     catch(error){ if(error.code==='23503') throw new StorageError('GAME_NOT_FOUND','Game not found',404); if(error.code==='23505') throw new StorageError('TOURNAMENT_EXISTS','Tournament code already exists',409); throw error; }
     return getTournament(id);
   }
@@ -237,6 +249,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       const tournament=(await query('SELECT status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.status!=='open')throw new StorageError('TOURNAMENT_NOT_OPEN','Tournament is not accepting entries',409);
+      // Seed mặc định = thứ tự đăng ký, dùng để xếp nhánh đấu.
+      seed ??= Number((await query('SELECT COUNT(*)::int AS total FROM tournament_entries WHERE tournament_id=$1',[tournamentId],client)).rows[0].total)+1;
       try{return (await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',[tournamentId,userId,seed],client)).rows[0];}
       catch(error){if(error.code==='23503')throw new StorageError('USER_NOT_FOUND','User not found',404);if(error.code==='23505')throw new StorageError('ENTRY_EXISTS','User already joined this tournament',409);throw error;}
     });
@@ -308,9 +322,125 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     await query('UPDATE matches SET status=$1,winner_id=$2,reason=$3,ended_at=$4,result=$5::jsonb,final_state=$6::jsonb WHERE id=$7',[status,winner,result?.reason??null,iso(endedAt),JSON.stringify(result),JSON.stringify(finalState===undefined?match.final_state:finalState),id],client);
     return getMatch(id,client);
   }
+  async function insertHistorySlot({tournamentId,roundId,slotIndex,a,b,winnerId=null,result=null,matchId=null,playedAt},client=pool) {
+    return (await query(`INSERT INTO tournament_match_history(id,tournament_id,round_id,match_id,slot_index,participant_a_id,participant_a_name,
+      participant_b_id,participant_b_name,winner_id,result,played_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)
+      RETURNING id,tournament_id,round_id,match_id,slot_index,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at`,
+      [randomUUID(),tournamentId,roundId,matchId,slotIndex,a.id,a.name,b.id,b.name,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
+  }
+  async function promoteWinner({tournamentId,roundIds,totalRounds,roundNo,slotIndex,winner},client=pool) {
+    if(roundNo>=totalRounds) return;
+    const next=nextSlotOf(roundNo,slotIndex);
+    const siblingIndex=next.slotIndex*2+(next.side==='a'?1:0);
+    const sibling=(await query('SELECT winner_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name FROM tournament_match_history WHERE round_id=$1 AND slot_index=$2',[roundIds[roundNo-1],siblingIndex],client)).rows[0];
+    if(!sibling?.winner_id) return;
+    const exists=(await query('SELECT id FROM tournament_match_history WHERE round_id=$1 AND slot_index=$2',[roundIds[next.roundNo-1],next.slotIndex],client)).rows[0];
+    if(exists) return;
+    const other={id:sibling.winner_id,name:sibling.winner_id===sibling.participant_a_id?sibling.participant_a_name:sibling.participant_b_name};
+    if(other.id===winner.id) return;
+    await insertHistorySlot({tournamentId,roundId:roundIds[next.roundNo-1],slotIndex:next.slotIndex,
+      a:next.side==='a'?winner:other,b:next.side==='b'?winner:other,playedAt:new Date().toISOString()},client);
+  }
+  async function refreshRoundStatuses({tournamentId,totalRounds,entryCount},client=pool) {
+    for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
+      const round=(await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournamentId,roundNo],client)).rows[0];
+      if(!round) continue;
+      const rows=(await query('SELECT winner_id FROM tournament_match_history WHERE round_id=$1',[round.id],client)).rows;
+      const expected=slotCount(entryCount,roundNo);
+      const decided=rows.filter(row=>row.winner_id).length;
+      const status=rows.length>=expected&&decided>=expected?'completed':rows.length>0?'in_progress':'pending';
+      await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[status,round.id],client);
+    }
+  }
+  async function generateTournamentBracket(tournamentId) {
+    return transaction(async client=>{
+      const tournament=(await query('SELECT id,format,status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
+      if(tournament.format!=='single_elimination') throw new StorageError('FORMAT_NOT_SUPPORTED','Chỉ thể thức loại trực tiếp mới tạo được nhánh đấu',409);
+      if(!['open','in_progress'].includes(tournament.status)) throw new StorageError('INVALID_STATUS_TRANSITION','Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra',409);
+      if((await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 LIMIT 1',[tournamentId],client)).rows[0]) throw new StorageError('BRACKET_EXISTS','Sơ đồ nhánh của giải đã được tạo trước đó',409);
+      const entries=(await listTournamentEntries(tournamentId,client)).map((entry,index)=>({id:entry.user_id,name:entry.display_name,seed:entry.seed??index+1}));
+      if(entries.length<2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS','Cần ít nhất 2 người đăng ký để tạo nhánh đấu',409);
+      const {totalRounds}=planSize(entries.length);
+      const roundIds=[];
+      for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
+        const roundId=randomUUID();
+        await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,status) VALUES($1,$2,$3,$4)',[roundId,tournamentId,roundNo,roundNo===1?'in_progress':'pending'],client);
+        roundIds.push(roundId);
+      }
+      const startedAt=new Date().toISOString();
+      for(const [slotIndex,pair] of pairFirstRound(entries).entries()){
+        const bye=!pair.a||!pair.b;
+        const a=pair.a??{id:BYE_ID,name:BYE_NAME};
+        const b=pair.b??{id:BYE_ID,name:BYE_NAME};
+        const winner=bye?pair.a??pair.b:null;
+        await insertHistorySlot({tournamentId,roundId:roundIds[0],slotIndex,a,b,winnerId:winner?.id??null,result:bye?{bye:true}:null,playedAt:startedAt},client);
+        if(winner) await promoteWinner({tournamentId,roundIds,totalRounds,roundNo:1,slotIndex,winner},client);
+      }
+      await refreshRoundStatuses({tournamentId,totalRounds,entryCount:entries.length},client);
+      if(tournament.status==='open') await query("UPDATE tournaments SET status='in_progress' WHERE id=$1",[tournamentId],client);
+      return getTournament(tournamentId);
+    });
+  }
+  async function attachSlotResult(tournamentId,{roundNo,slotIndex,matchId}) {
+    matchId=required(matchId,'matchId');
+    if(!Number.isSafeInteger(roundNo)||roundNo<1) throw new StorageError('INVALID_INPUT','roundNo must be a positive integer');
+    if(!Number.isSafeInteger(slotIndex)||slotIndex<0) throw new StorageError('INVALID_INPUT','slotIndex must not be negative');
+    return transaction(async client=>{
+      const tournament=(await query('SELECT id,status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
+      if(tournament.status!=='in_progress') throw new StorageError('TOURNAMENT_NOT_RUNNING','Chỉ gắn được kết quả khi giải đang diễn ra',409);
+      const match=await getMatch(matchId,client);
+      if(match.status!=='finished') throw new StorageError('MATCH_NOT_FINISHED','Trận đấu chưa kết thúc nên chưa có kết quả',409);
+      const entries=await listTournamentEntries(tournamentId,client);
+      const rounds=await listTournamentRounds(tournamentId,client);
+      const bracket=buildBracket({rounds,entryCount:entries.length});
+      const slot=bracket.rounds[roundNo-1]?.[slotIndex];
+      if(!slot) throw new StorageError('SLOT_NOT_FOUND','Không tìm thấy trận này trong nhánh đấu',404);
+      if(slot.status==='bye') throw new StorageError('SLOT_IS_BYE','Trận này là bye, không cần kết quả',409);
+      if(!slot.participantAId||!slot.participantBId) throw new StorageError('SLOT_NOT_READY','Chưa xác định đủ hai đấu thủ cho trận này',409);
+      const players=[match.team_a_id,match.team_b_id];
+      if(!players.includes(slot.participantAId)||!players.includes(slot.participantBId)) throw new StorageError('MATCH_MISMATCH','Trận đấu không diễn ra giữa hai đấu thủ của nhánh này',409);
+      const round=rounds.find(item=>Number(item.round_no)===Number(roundNo));
+      if(!round) throw new StorageError('ROUND_NOT_FOUND','Tournament round not found',404);
+      const winnerId=match.winner_id??null;
+      const result={draw:winnerId===null,reason:match.reason??null,source_match_id:match.id};
+      const playedAt=match.ended_at??new Date().toISOString();
+      const existing=(await query('SELECT id FROM tournament_match_history WHERE round_id=$1 AND slot_index=$2',[round.id,slotIndex],client)).rows[0];
+      if(existing){
+        await query(`UPDATE tournament_match_history SET match_id=$1,participant_a_id=$2,participant_a_name=$3,participant_b_id=$4,
+          participant_b_name=$5,winner_id=$6,result=$7::jsonb,played_at=$8 WHERE id=$9`,
+          [matchId,slot.participantAId,slot.participantAName,slot.participantBId,slot.participantBName,winnerId,JSON.stringify(result),iso(playedAt),existing.id],client);
+      } else {
+        await insertHistorySlot({tournamentId,roundId:round.id,slotIndex,matchId,playedAt,winnerId,result,
+          a:{id:slot.participantAId,name:slot.participantAName},b:{id:slot.participantBId,name:slot.participantBName}},client);
+      }
+      if(winnerId){
+        await promoteWinner({tournamentId,roundIds:rounds.map(item=>item.id),totalRounds:bracket.totalRounds,roundNo,slotIndex,
+          winner:{id:winnerId,name:winnerId===slot.participantAId?slot.participantAName:slot.participantBName}},client);
+      }
+      await refreshRoundStatuses({tournamentId,totalRounds:bracket.totalRounds,entryCount:entries.length},client);
+      if(winnerId&&roundNo===bracket.totalRounds) await query("UPDATE tournaments SET status='completed',champion_id=$1 WHERE id=$2",[winnerId,tournamentId],client);
+      return getTournament(tournamentId);
+    });
+  }
+  async function getUserPublicProfile(id) {
+    const user=(await query('SELECT id,display_name,avatar_url,role,created_at FROM users WHERE id=$1',[id])).rows[0];
+    if(!user) throw new StorageError('USER_NOT_FOUND','User not found',404);
+    const stats=(await query(`SELECT COUNT(*)::int AS played,
+      COALESCE(SUM(CASE WHEN winner_id=$1 THEN 1 ELSE 0 END),0)::int AS wins,
+      COALESCE(SUM(CASE WHEN winner_id IS NULL THEN 1 ELSE 0 END),0)::int AS draws
+      FROM matches WHERE status='finished' AND (team_a_id=$1 OR team_b_id=$1)`,[id])).rows[0];
+    const tournaments=(await query(`SELECT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
+      JOIN tournaments t ON t.id=e.tournament_id WHERE e.user_id=$1 ORDER BY t.starts_at NULLS LAST,t.created_at DESC`,[id])).rows
+      .map(row=>({...row,starts_at:row.starts_at?.toISOString()??null}));
+    return {...user,created_at:user.created_at instanceof Date?user.created_at.toISOString():user.created_at,
+      stats:{played:stats.played,wins:stats.wins,draws:stats.draws,losses:stats.played-stats.wins-stats.draws},tournaments};
+  }
   return { initialize, registerTeam, startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, importReplay,
+    generateTournamentBracket, attachSlotResult, getUserPublicProfile,
     abortInterruptedMatches, close:()=>pool.end() };
 }

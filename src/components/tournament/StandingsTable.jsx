@@ -1,4 +1,3 @@
-import { getEntry } from "../../mock/tournamentLobby.mock.js";
 import { resolveEntry } from "../../utils/tournamentView.js";
 
 const RANK_MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
@@ -44,7 +43,7 @@ export default function StandingsTable({
         <tbody>
           {standings.map((row, index) => {
             const entry =
-              resolveEntry(entryMap, row.entryId) ?? getEntry(row.entryId) ?? {
+              resolveEntry(entryMap, row.entryId) ?? {
                 id: row.entryId,
                 teamName: row.displayName ?? String(row.entryId),
                 owner: "",

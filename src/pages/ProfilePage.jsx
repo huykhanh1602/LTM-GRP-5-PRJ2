@@ -1,6 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
+import { BOT_LANGUAGES, languageLabels } from "../utils/botLanguages.js";
+import { createTournament, getTournaments } from "../api.js";
+import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
 import "../styles/auth.css";
+
+const pad2 = (value) => String(value).padStart(2, "0");
+
+function todayInputValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+const TOUR_STATUS = {
+  draft: { className: "upcoming", label: "Bản nháp" },
+  open: { className: "upcoming", label: "Sắp khởi tranh" },
+  in_progress: { className: "active", label: "Đang diễn ra" },
+  completed: { className: "completed", label: "Đã kết thúc" },
+  cancelled: { className: "completed", label: "Đã hủy" },
+};
 
 const PRESET_AVATARS = [
   "/icons.png",
@@ -16,23 +34,30 @@ const PRESET_AVATARS = [
 export default function ProfilePage({
   user,
   isLoggedIn,
+  token,
   onOpenLogin,
   onLogout,
   onUpdateProfile,
   onChangePassword,
   onLinkAccount,
-  onAddTournament,
+  onOpenTournament,
   onBack,
 }) {
   const [activeTab, setActiveTab] = useState("tournaments"); // "tournaments" | "create_tour" | "security"
 
-  // State mở giải đấu — số lượng đội lên tới 1000
+  // State mở giải đấu
   const [tourName, setTourName] = useState("");
   const [selectedGame, setSelectedGame] = useState(GAME_CATALOG[0]?.id || "rps_chess");
   const [maxTeams, setMaxTeams] = useState(16);
-  const [startTime, setStartTime] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [startClock, setStartClock] = useState("");
+  const [languages, setLanguages] = useState(["python"]);
+  const [rules, setRules] = useState("");
+  const [formError, setFormError] = useState("");
+  const [creating, setCreating] = useState(false);
   const [prize, setPrize] = useState("");
   const [description, setDescription] = useState("");
+  const [myTournaments, setMyTournaments] = useState([]);
   const [msg, setMsg] = useState("");
   const [linkMessage, setLinkMessage] = useState("");
   const [linkingProvider, setLinkingProvider] = useState("");
@@ -57,33 +82,90 @@ export default function ProfilePage({
     ? Math.round(((user?.wins || 0) / user.matches_played) * 100)
     : 0;
 
-  // Xử lý tạo giải
-  function handleCreateTour(e) {
-    e.preventDefault();
-    if (!tourName.trim()) {
-      setMsg("Vui lòng nhập tên giải đấu.");
-      return;
+  // Danh sách giải đấu do chính người này tổ chức (lọc từ API thật)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setMyTournaments([]);
+      return undefined;
     }
-    const teamsCount = Math.min(Math.max(Number(maxTeams) || 2, 2), 1000);
-
-    const tourData = {
-      name: tourName.trim(),
-      game_id: selectedGame,
-      game_name: GAME_CATALOG.find((g) => g.id === selectedGame)?.name || selectedGame,
-      participants: teamsCount,
-      start_time: startTime || "Cuối tuần này",
-      prize: prize || "Cúp lưu niệm & Vinh danh BXH",
-      description: description.trim(),
+    let active = true;
+    getTournaments({ limit: 100 })
+      .then((data) => {
+        if (!active) return;
+        setMyTournaments(
+          data.items.map(toTournamentCard).filter((item) => item.organizerId === user?.id),
+        );
+      })
+      .catch((error) => active && setFormError(apiErrorText(error)));
+    return () => {
+      active = false;
     };
+  }, [isLoggedIn, user?.id, msg]);
 
-    onAddTournament(tourData);
-    setMsg("🎉 Tạo giải đấu thành công! Giải đấu đã được đưa vào danh sách giải.");
-    setTourName("");
-    setDescription("");
-    setTimeout(() => {
-      setMsg("");
-      setActiveTab("tournaments");
-    }, 1200);
+  function toggleLanguage(id) {
+    setLanguages((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  }
+
+  // Tạo giải đấu thật qua API
+  async function handleCreateTour(e) {
+    e.preventDefault();
+    setFormError("");
+
+    if (!token) return setFormError("Bạn cần đăng nhập để mở giải đấu.");
+    if (!tourName.trim()) return setFormError("Vui lòng nhập tên giải đấu.");
+    if (!startDate || !startClock) {
+      return setFormError("Vui lòng chọn chính xác ngày và giờ bắt đầu.");
+    }
+    const startsAt = new Date(`${startDate}T${startClock}`);
+    if (Number.isNaN(startsAt.getTime())) {
+      return setFormError("Ngày hoặc giờ bắt đầu không hợp lệ.");
+    }
+    if (startsAt.getTime() <= Date.now()) {
+      return setFormError("Thời gian bắt đầu phải ở tương lai.");
+    }
+    if (languages.length === 0) {
+      return setFormError("Hãy chọn ít nhất một ngôn ngữ cho bot dự thi.");
+    }
+
+    const ruleLines = rules
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    setCreating(true);
+    try {
+      const created = await createTournament(
+        {
+          name: tourName.trim(),
+          gameId: selectedGame,
+          startsAt: startsAt.toISOString(),
+          maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
+          languages,
+          rules: ruleLines,
+          prize: prize.trim(),
+          description: description.trim(),
+        },
+        token,
+      );
+      setMsg(`🎉 Đã mở giải đấu "${created.name}" (mã ${created.code}).`);
+      setTourName("");
+      setStartDate("");
+      setStartClock("");
+      setLanguages(["python"]);
+      setRules("");
+      setPrize("");
+      setDescription("");
+      setTimeout(() => {
+        setMsg("");
+        onOpenTournament?.(created.id);
+      }, 900);
+    } catch (error) {
+      setFormError(apiErrorText(error));
+    } finally {
+      setCreating(false);
+    }
   }
 
   // Xử lý lưu tên
@@ -156,8 +238,6 @@ export default function ProfilePage({
       setIsChangingPass(false);
     }
   }
-
-  const createdTournaments = user?.created_tournaments || [];
 
   return (
     <div className="profile-page">
@@ -267,7 +347,7 @@ export default function ProfilePage({
           className={`profile-tab-btn ${activeTab === "tournaments" ? "active" : ""}`}
           onClick={() => setActiveTab("tournaments")}
         >
-          🏆 Giải đấu của tôi ({createdTournaments.length})
+          🏆 Giải đấu của tôi ({myTournaments.length})
         </button>
         <button
           className={`profile-tab-btn ${activeTab === "create_tour" ? "active" : ""}`}
@@ -302,7 +382,7 @@ export default function ProfilePage({
               </button>
             </div>
 
-            {createdTournaments.length === 0 ? (
+            {myTournaments.length === 0 ? (
               <div style={{ textAlign: "center", padding: "30px 0", color: "var(--muted)" }}>
                 <div style={{ fontSize: "40px", marginBottom: "8px" }}>📜</div>
                 <p>Bạn chưa mở giải đấu nào.</p>
@@ -311,33 +391,46 @@ export default function ProfilePage({
                 </button>
               </div>
             ) : (
-              createdTournaments.map((t) => (
+              myTournaments.map((t) => (
                 <div key={t.id} className="tour-item-card">
                   <div>
                     <h4 style={{ margin: "0 0 6px", fontSize: "16px", color: "var(--text)" }}>
                       {t.name}
+                      <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>
+                        {t.code}
+                      </span>
                     </h4>
                     <div style={{ fontSize: "13px", color: "var(--muted)", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                      <span>🎮 Game: {t.game_name || t.game_id}</span>
-                      <span>👥 Tối đa: {t.participants} đội</span>
-                      <span>⏰ Khởi tranh: {t.start_time}</span>
+                      <span>🎮 Game: {t.gameName}</span>
+                      <span>
+                        👥 {t.registered}
+                        {t.capacity ? `/${t.capacity}` : ""} người
+                      </span>
+                      <span>⏰ Khởi tranh: {formatStartsAt(t.startsAt)}</span>
+                      {t.languages?.length > 0 && <span>🌐 {languageLabels(t.languages)}</span>}
                     </div>
                   </div>
-                  <span className={`tour-status-badge ${t.status === "ongoing" || t.status === "active" ? "active" : "upcoming"}`}>
-                    {t.status === "ongoing" || t.status === "active" ? "Đang diễn ra" : t.status === "completed" ? "Đã kết thúc" : "Sắp khởi tranh"}
-                  </span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span className={`tour-status-badge ${TOUR_STATUS[t.status]?.className ?? "upcoming"}`}>
+                      {TOUR_STATUS[t.status]?.label ?? t.status}
+                    </span>
+                    <button className="btn small" onClick={() => onOpenTournament?.(t.id)}>
+                      Vào phòng chờ
+                    </button>
+                  </div>
                 </div>
               ))
             )}
           </div>
         )}
 
-        {/* TAB 2: Đăng ký mở giải đấu mới — Số lượng đội lên tới 1000 */}
+        {/* TAB 2: Mở giải đấu mới (ghi thẳng vào server) */}
         {activeTab === "create_tour" && (
           <div>
-            <h3 style={{ margin: "0 0 8px" }}>Đăng ký tổ chức giải đấu cá nhân / cộng đồng</h3>
+            <h3 style={{ margin: "0 0 8px" }}>Mở giải đấu cá nhân / cộng đồng</h3>
             <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "var(--muted)" }}>
-              Hỗ trợ quy mô giải đấu lên tới <strong>1.000 đội</strong> tham gia thi đấu cùng lúc.
+              Giải đấu có hiệu lực ngay sau khi tạo. Luật chơi bạn điền ở đây sẽ hiện trong phòng
+              chờ của giải cho người tham gia đọc.
             </p>
 
             {msg && (
@@ -346,6 +439,11 @@ export default function ProfilePage({
                 style={{ background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534", marginBottom: "14px" }}
               >
                 {msg}
+              </div>
+            )}
+            {formError && (
+              <div className="auth-error" style={{ marginBottom: "14px" }}>
+                {formError}
               </div>
             )}
 
@@ -378,27 +476,26 @@ export default function ProfilePage({
                   </select>
                 </div>
 
-                {/* SỐ LƯỢNG ĐỘI LÊN TỚI 1000 */}
                 <div className="reg-field">
                   <label>
-                    Số lượng đội thi đấu (Tối đa: <strong>1.000 đội</strong>)
+                    Số lượng người tham gia (Tối đa: <strong>128</strong>)
                   </label>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                     <input
                       type="number"
                       min={2}
-                      max={1000}
+                      max={128}
                       className="reg-input"
                       value={maxTeams}
                       onChange={(e) => setMaxTeams(e.target.value)}
                       style={{ width: "120px" }}
                       required
                     />
-                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>đội</span>
+                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>người</span>
                   </div>
                   {/* Các nút bấm chọn nhanh quy mô */}
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
-                    {[8, 16, 32, 64, 128, 256, 512, 1000].map((num) => (
+                    {[4, 8, 16, 32, 64, 128].map((num) => (
                       <button
                         key={num}
                         type="button"
@@ -411,50 +508,107 @@ export default function ProfilePage({
                         }}
                         onClick={() => setMaxTeams(num)}
                       >
-                        {num === 1000 ? "🔥 1000 đội" : `${num} đội`}
+                        {num} người
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
+              <div className="reg-field">
+                <label>Ngôn ngữ bot được phép *</label>
+                <div className="reg-lang-options">
+                  {BOT_LANGUAGES.map((option) => {
+                    const checked = languages.includes(option.id);
+                    return (
+                      <label
+                        key={option.id}
+                        className={`reg-lang ${checked ? "is-checked" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLanguage(option.id)}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="reg-hint">
+                  Bot dự thi phải viết bằng một trong các ngôn ngữ đã chọn.
+                </p>
+              </div>
+
               <div className="form-grid-2">
                 <div className="reg-field">
-                  <label>Thời gian dự kiến bắt đầu</label>
+                  <label>Ngày bắt đầu *</label>
                   <input
-                    type="text"
+                    type="date"
                     className="reg-input"
-                    placeholder="Ví dụ: 19:00 Thứ Bảy ngày 25/10/2026"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    min={todayInputValue()}
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    required
                   />
                 </div>
 
                 <div className="reg-field">
-                  <label>Giải thưởng / Vinh danh</label>
+                  <label>Giờ bắt đầu *</label>
                   <input
-                    type="text"
+                    type="time"
                     className="reg-input"
-                    placeholder="Ví dụ: Cúp vô địch, Vinh danh BXH"
-                    value={prize}
-                    onChange={(e) => setPrize(e.target.value)}
+                    value={startClock}
+                    onChange={(e) => setStartClock(e.target.value)}
+                    required
                   />
                 </div>
               </div>
 
               <div className="reg-field">
-                <label>Mô tả / Thể thức & Quy định nộp bot</label>
-                <textarea
-                  className="reg-textarea"
-                  placeholder="Quy định ngôn ngữ lập trình bot (Python), thời gian timeout mỗi lượt, hình thức ghép đôi..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                <label>Giải thưởng / Vinh danh</label>
+                <input
+                  type="text"
+                  className="reg-input"
+                  placeholder="Ví dụ: Cúp vô địch, Vinh danh BXH"
+                  value={prize}
+                  onChange={(e) => setPrize(e.target.value)}
                 />
               </div>
 
+              <div className="reg-field">
+                <label>Mô tả ngắn về giải đấu</label>
+                <textarea
+                  className="reg-textarea"
+                  placeholder="Giải đấu dành cho ai, thể thức loại trực tiếp, cách tính điểm..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={1000}
+                />
+              </div>
+
+              <div className="reg-field">
+                <label>Luật chơi (mỗi dòng một điều luật)</label>
+                <textarea
+                  className="reg-textarea"
+                  rows={5}
+                  placeholder={"Ví dụ:\nMỗi trận đấu 1 ván, thắng đi tiếp\nKhông được gọi mạng trong lúc thi đấu\nTrọng tài là chủ giải"}
+                  value={rules}
+                  onChange={(e) => setRules(e.target.value)}
+                />
+                <p className="reg-hint">
+                  Người tham gia sẽ đọc phần luật này trong phòng chờ của giải, tối đa 20 dòng.
+                </p>
+              </div>
+
               <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                <button type="submit" className="btn primary" style={{ padding: "10px 24px" }}>
-                  🚀 Gửi đơn đăng ký mở giải
+                <button
+                  type="submit"
+                  className="btn primary"
+                  style={{ padding: "10px 24px" }}
+                  disabled={creating}
+                >
+                  {creating ? "Đang tạo giải…" : "🚀 Mở giải đấu"}
                 </button>
                 <button
                   type="button"

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
   CHECK(winner_id IS NULL OR winner_id IN (participant_a_id,participant_b_id))
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
+ALTER TABLE tournament_match_history ADD COLUMN IF NOT EXISTS slot_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS champion_id TEXT;
 CREATE TABLE IF NOT EXISTS bot_submissions (
   id TEXT PRIMARY KEY, room_id TEXT NOT NULL, team_id TEXT NOT NULL REFERENCES teams(id),

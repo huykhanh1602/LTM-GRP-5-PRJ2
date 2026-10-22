@@ -114,7 +114,6 @@ export default function TournamentHeader({ tournament }) {
         </span>
         <span className="tl-meta-chip">🎁 {tournament.prize}</span>
         <span className="tl-meta-chip">🧩 {tournament.formatLabel}</span>
-        <span className="tl-meta-chip">✉️ {tournament.organizer.contact}</span>
       </div>
 
       <p className="tl-hero__hint">

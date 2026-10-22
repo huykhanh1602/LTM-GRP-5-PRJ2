@@ -5,20 +5,36 @@ import { API_URL } from "./api/index.js";
 
 const baseUrl = (API_URL ?? "").replace(/\/+$/, "");
 
-async function get(path, options = {}) {
-    const response = await fetch(`${baseUrl}${path}`, options);
+async function request(path, { method = "GET", token, body } = {}) {
+    const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+    if (!response.ok) {
+        const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+        error.code = data.error;
+        error.status = response.status;
+        throw error;
+    }
     return data;
 }
 
+const get = (path, options = {}) => request(path, options);
+const post = (path, body, token) => request(path, { method: "POST", body, token });
+
 export const getRankings = () => get("/api/rankings");
-export const getMe = () => {
-    let token;
-    try { token = JSON.parse(localStorage.getItem("daubot_session") ?? "null")?.token; }
-    catch { token = undefined; }
-    return get("/api/me", token ? { headers: { Authorization: `Bearer ${token}` } } : {});
-};
+
+export function sessionToken() {
+    try { return JSON.parse(localStorage.getItem("daubot_session") ?? "null")?.token ?? null; }
+    catch { return null; }
+}
+
+export const getMe = () => get("/api/me", { token: sessionToken() });
 export const getGames = () => get("/api/games");
 export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
@@ -26,17 +42,24 @@ export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
     return get(`/api/tournaments?${params}`);
 }
 export const getTournament = (idOrCode) => get(`/api/tournaments/${encodeURIComponent(idOrCode)}`);
-export const recordTournamentMatch = (tournamentId, result, token) => get(`/api/tournaments/${encodeURIComponent(tournamentId)}/matches`, {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(result),
-});
-export const updateTournamentStatus = (tournamentId, { status, champion_id = null }, token) => get(`/api/tournaments/${encodeURIComponent(tournamentId)}/status`, {
-    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ status, champion_id }),
-});
-export function getBotSubmissions(roomCode, token, { limit = 20, offset = 0 } = {}) {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return get(`/api/rooms/${encodeURIComponent(roomCode)}/submissions?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+export const createTournament = (payload, token) => post("/api/tournaments", payload, token);
+export const registerTournament = (idOrCode, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
+export const startTournament = (idOrCode, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/start`, {}, token);
+export const attachTournamentSlotResult = (idOrCode, roundNo, slotIndex, matchId, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
+        { match_id: matchId }, token);
+export const recordTournamentMatch = (tournamentId, result, token) =>
+    post(`/api/tournaments/${encodeURIComponent(tournamentId)}/matches`, result, token);
+export const updateTournamentStatus = (tournamentId, { status, champion_id = null }, token) =>
+    request(`/api/tournaments/${encodeURIComponent(tournamentId)}/status`, {
+        method: "PATCH", body: { status, champion_id }, token,
     });
+export const getUserProfile = (userId) => get(`/api/users/${encodeURIComponent(userId)}`);
+export const getBotSubmissions = (roomCode, token, { limit = 20, offset = 0 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return get(`/api/rooms/${encodeURIComponent(roomCode)}/submissions?${params}`, { token });
 }
 export function getMatches({ teamId, status, limit = 20, offset = 0 } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });

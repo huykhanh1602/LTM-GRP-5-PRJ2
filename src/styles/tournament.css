@@ -2248,3 +2248,198 @@
   background: linear-gradient(160deg, #fffdf6, #fff);
   box-shadow: 0 8px 22px rgba(247, 207, 114, 0.22), inset 0 1px 1px #fff;
 }
+
+/* ── Thông báo trạng thái trong phòng chờ giải đấu ── */
+.tl-banner {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.tl-banner--ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.tl-banner--err {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.tl-banner--warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.tl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* Nút xem trang cá nhân trong danh sách người tham gia */
+.tl-seed-list__profile {
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 1px solid var(--c-purple-light);
+  background: #fff;
+  color: var(--c-purple-deep);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tl-seed-list__profile:hover {
+  background: var(--c-purple-light);
+}
+
+/* ── Trang cá nhân công khai ── */
+.tl-profile__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.tl-profile__head img {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.tl-profile__head strong {
+  display: block;
+  font-size: 16px;
+  color: var(--c-text-main);
+}
+.tl-profile__head small {
+  font-size: 11.5px;
+  color: var(--c-text-sub);
+}
+.tl-profile__stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.tl-profile__stats span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: rgba(238, 228, 255, 0.55);
+  font-size: 11px;
+  color: var(--c-text-sub);
+}
+.tl-profile__stats b {
+  font-size: 16px;
+  color: var(--c-text-main);
+}
+.tl-profile h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--c-text-main);
+}
+.tl-profile__tours {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+.tl-profile__tours li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+  font-size: 12.5px;
+}
+.tl-profile__tours small {
+  font-size: 11px;
+  color: var(--c-text-sub);
+}
+
+/* ── Chủ giải chọn trận đấu thật để gắn kết quả ── */
+.tl-match-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow: auto;
+}
+.tl-match-picker label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+}
+.tl-match-picker label:has(input:checked) {
+  border-color: var(--c-purple-deep);
+  background: rgba(238, 228, 255, 0.45);
+}
+.tl-match-picker span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tl-match-picker strong {
+  font-size: 13px;
+  color: var(--c-text-main);
+}
+.tl-match-picker small {
+  font-size: 11.5px;
+  color: var(--c-text-sub);
+}
+
+/* ── Danh sách nhánh đang chờ kết quả ── */
+.tl-pending {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tl-pending li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(238, 228, 255, 0.35);
+  font-size: 12.5px;
+  color: var(--c-text-main);
+}
+
+/* Card giải đấu dạng nút bấm (danh sách chọn giải) */
+button.tour-card-item {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button.tour-card-item:hover {
+  border-color: var(--c-purple-deep);
+}

@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 import MatchCard from "./MatchCard.jsx";
 import RegistrationSlots from "./RegistrationSlots.jsx";
-import LiveStatus from "./LiveStatus.jsx";
 import { getRoundLabels } from "../../utils/tournamentView.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -12,9 +11,9 @@ export default function BracketView({
   tournament,
   rounds = null,
   roundLabels = null,
-  live = null,
   onSpectate,
   onReplay,
+  onOpenProfile,
 }) {
   const bracketRounds =
     rounds ?? tournament.rounds ?? tournament.bracket?.rounds ?? [];
@@ -51,12 +50,7 @@ export default function BracketView({
           </p>
         </div>
         <div className="tl-card__aside">
-          <LiveStatus
-            connection={live?.connection ?? "disabled"}
-            lastMessageAt={live?.lastMessageAt}
-          />
           <span className="tl-bracket__legend">
-            <i className="tl-legend-dot tl-legend-dot--live" /> Live
             <i className="tl-legend-dot tl-legend-dot--ready" /> Sẵn sàng
             <i className="tl-legend-dot tl-legend-dot--done" /> Kết thúc
           </span>
@@ -79,6 +73,7 @@ export default function BracketView({
           entries={tournament.entries ?? []}
           capacity={tournament.capacity}
           myEntryId={tournament.myEntryId}
+          onOpenProfile={onOpenProfile}
         />
       )}
 

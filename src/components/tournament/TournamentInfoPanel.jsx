@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────────────────────
-// Lịch trình, quy định từ BTC và thông tin liên hệ
+// Lịch trình, luật chơi do chủ giải đặt ra và thông tin liên hệ
 // ─────────────────────────────────────────────────────────────
+import { languageLabels } from "../../utils/botLanguages.js";
+
 export default function TournamentInfoPanel({ tournament }) {
   return (
     <section className="tl-card tl-info" aria-label="Lịch trình và quy định">
@@ -33,18 +35,35 @@ export default function TournamentInfoPanel({ tournament }) {
       )}
 
       <div className="tl-info__rules">
-        <h3>📜 Thể lệ thi đấu</h3>
-        <ul>
-          {tournament.rules.map((rule) => (
-            <li key={rule}>{rule}</li>
-          ))}
-        </ul>
+        <h3>📜 Luật chơi do chủ giải đặt ra</h3>
+        {tournament.rules.length > 0 ? (
+          <ul>
+            {tournament.rules.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            Chủ giải chưa đăng thể lệ cho giải đấu này.
+          </p>
+        )}
       </div>
+
+      {tournament.languages?.length > 0 && (
+        <div className="tl-info__rules">
+          <h3>🌐 Ngôn ngữ bot được phép</h3>
+          <ul>
+            {tournament.languages.map((id) => (
+              <li key={id}>{languageLabels([id])}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="tl-info__organizer">
         <img src={tournament.organizer.avatar} alt="" />
         <div>
-          <small>Ban Tổ Chức</small>
+          <small>Người tổ chức</small>
           <strong>{tournament.organizer.name}</strong>
           <span>{tournament.organizer.contact}</span>
         </div>

@@ -5,7 +5,7 @@ import { createMatchStore } from "../net/storage/matchStore.js";
 test("tournament history records finished round matches and champion", () => {
   const store=createMatchStore({filename:":memory:"});
   try {
-    const tournament=store.createTournament({gameId:"rps_chess",code:"TEST-CHAMP",name:"Test cup",format:"single_elimination"});
+    const tournament=store.createTournament({gameId:"rps_chess",code:"TEST-CHAMP",name:"Test cup",format:"single_elimination",status:"draft"});
     store.updateTournamentStatus(tournament.id,"open");
     store.updateTournamentStatus(tournament.id,"in_progress");
     const round=store.createTournamentRound(tournament.id,{roundNo:1});

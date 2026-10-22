@@ -85,8 +85,11 @@ test('games, tournaments and bot submission versions persist with validated stat
   const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
   assert.equal(store.listGames()[0].id, 'rps_chess');
   const tournament = store.createTournament({ gameId: 'rps_chess', code: 'LTM-2026',
-    name: 'Autumn Cup', format: 'single_elimination', config: { maxTeams: 8 } });
+    name: 'Autumn Cup', format: 'single_elimination', config: { maxTeams: 8 }, status: 'draft' });
   assert.equal(tournament.status, 'draft');
+  const openByDefault = store.createTournament({ gameId: 'rps_chess', code: 'LTM-OPEN',
+    name: 'Open Cup', format: 'single_elimination' });
+  assert.equal(openByDefault.status, 'open');
   store.createTournamentRound(tournament.id, { roundNo: 1 });
   assert.equal(store.listTournaments().items[0].participant_count, 0);
   assert.equal(store.getTournament('LTM-2026').rounds.length, 1);

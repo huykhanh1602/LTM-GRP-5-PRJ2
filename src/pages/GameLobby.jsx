@@ -1,10 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
 import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../config.js";
-import { getStoredTournaments } from "../utils/tournaments.js";
+import { getTournaments } from "../api.js";
+import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
+import { languageLabels } from "../utils/botLanguages.js";
 
 // Thứ tự hiển thị tab chế độ
 const MODE_ORDER = ["casual", "ranked", "tournament"];
+
+const STATUS_BADGE = {
+  draft: { className: "upcoming", label: "Bản nháp" },
+  open: { className: "upcoming", label: "Sắp diễn ra" },
+  in_progress: { className: "ongoing", label: "Đang diễn ra" },
+  completed: { className: "completed", label: "Đã kết thúc" },
+  cancelled: { className: "completed", label: "Đã hủy" },
+};
 
 function randomCode() {
   let s = "";
@@ -40,36 +50,37 @@ export default function GameLobby({
 
   // Quản lý giải đấu
   const [tournaments, setTournaments] = useState([]);
+  const [tourLoading, setTourLoading] = useState(false);
+  const [tourError, setTourError] = useState("");
   const [tourSearch, setTourSearch] = useState("");
-  const [tourFilter, setTourFilter] = useState("all"); // "all" | "ongoing" | "upcoming" | "completed"
+  const [tourFilter, setTourFilter] = useState("all"); // "all" | "in_progress" | "open" | "completed"
 
-  // Cập nhật danh sách giải đấu khi mở tab tournament
+  // Danh sách giải đấu lấy thật từ API khi mở tab tournament
   useEffect(() => {
-    if (mode === "tournament") {
-      setTournaments(getStoredTournaments());
-    }
+    if (mode !== "tournament") return undefined;
+    let active = true;
+    setTourLoading(true);
+    setTourError("");
+    getTournaments({ limit: 100 })
+      .then((data) => active && setTournaments(data.items.map(toTournamentCard)))
+      .catch((error) => active && setTourError(apiErrorText(error)))
+      .finally(() => active && setTourLoading(false));
+    return () => {
+      active = false;
+    };
   }, [mode]);
 
-  // Bộ lọc giải đấu theo từ khóa (tên hoặc ID) và trạng thái
+  // Bộ lọc giải đấu theo từ khóa (tên hoặc mã) và trạng thái
   const filteredTournaments = useMemo(() => {
     return tournaments.filter((t) => {
-      // Lọc theo game tương ứng (hoặc giải chung)
-      const matchGame = !t.game_id || t.game_id === game.id;
-      if (!matchGame) return false;
+      if (t.gameId && t.gameId !== game.id) return false;
+      if (tourFilter !== "all" && t.status !== tourFilter) return false;
 
-      // Lọc theo trạng thái
-      if (tourFilter !== "all") {
-        if (tourFilter === "ongoing" && t.status !== "ongoing" && t.status !== "active") return false;
-        if (tourFilter === "upcoming" && t.status !== "upcoming" && t.status !== "pending") return false;
-        if (tourFilter === "completed" && t.status !== "completed") return false;
-      }
-
-      // Tìm kiếm theo tên hoặc mã giải đấu
       if (tourSearch.trim()) {
         const query = tourSearch.trim().toLowerCase();
         const matchName = t.name?.toLowerCase().includes(query);
-        const matchCode = t.id?.toLowerCase().includes(query);
-        const matchOrganizer = t.organizer?.toLowerCase().includes(query);
+        const matchCode = t.code?.toLowerCase().includes(query);
+        const matchOrganizer = t.organizerName?.toLowerCase().includes(query);
         if (!matchName && !matchCode && !matchOrganizer) return false;
       }
 
@@ -100,16 +111,10 @@ export default function GameLobby({
     });
   }
 
-  // Mở lobby giải đấu: mã giải (VD: TOUR-KBB-2026) không đi qua join_room.
-  function openTournament(tournament = null, { requireTeam = false } = {}) {
-    if (requireTeam && !teamName.trim()) {
-      return setProblem("Hãy nhập tên đội hoặc bot của bạn.");
-    }
+  // Mở phòng chờ của một giải đấu (id = null → hiện danh sách giải để chọn)
+  function openTournament(id = null) {
     setProblem("");
-    onOpenTournament?.({
-      tournament,
-      teamName: teamName.trim(),
-    });
+    onOpenTournament?.(id);
   }
 
   function joinRoom(roomCode, role, create = false) {
@@ -193,19 +198,10 @@ export default function GameLobby({
               <div className="mode-unavail__icon">🏆</div>
               <p className="mode-unavail__title">Đấu Trường Giải Đấu ({game.name})</p>
               <p className="muted" style={{ maxWidth: "460px", margin: "4px auto 14px", fontSize: "13px" }}>
-                Tất cả giải đấu tạo bởi cộng đồng đều có hiệu lực ngay. Tham gia thi đấu hoặc tạo giải đấu riêng không cần chờ xét duyệt!
+                Mỗi giải đấu có một phòng chờ riêng: xem luật chơi, đếm ngược, đăng ký tham gia và
+                theo dõi sơ đồ nhánh thật.
               </p>
 
-              <label className="field" style={{ maxWidth: "360px", margin: "0 auto 14px", textAlign: "left" }}>
-                Tên đội / Tên Bot
-                <input
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  maxLength={30}
-                  placeholder="Ví dụ: Naruto Bot"
-                  disabled={connecting}
-                />
-              </label>
               {problem && (
                 <p className="err" role="alert" style={{ margin: "-6px 0 12px" }}>
                   {problem}
@@ -213,22 +209,10 @@ export default function GameLobby({
               )}
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
-                <button
-                  className="btn primary"
-                  onClick={() => openTournament()}
-                >
-                  🏆 Vào phòng chờ giải đấu
-                </button>
-                <button
-                  className="btn"
-                  onClick={onGoProfile}
-                >
+                <button className="btn" onClick={onGoProfile}>
                   ➕ Tạo giải đấu mới
                 </button>
-                <button
-                  className="btn"
-                  onClick={() => setMode("casual")}
-                >
+                <button className="btn" onClick={() => setMode("casual")}>
                   Chơi tự do (Casual)
                 </button>
               </div>
@@ -239,7 +223,7 @@ export default function GameLobby({
               <div className="tour-search-row">
                 <input
                   type="text"
-                  placeholder="🔍 Tìm kiếm theo tên hoặc mã giải (VD: TOUR-KBB)..."
+                  placeholder="🔍 Tìm kiếm theo tên hoặc mã giải..."
                   value={tourSearch}
                   onChange={(e) => setTourSearch(e.target.value)}
                 />
@@ -253,8 +237,8 @@ export default function GameLobby({
               <div className="tour-filter-chips">
                 {[
                   { id: "all", label: `Tất cả (${tournaments.length})` },
-                  { id: "ongoing", label: "Đang diễn ra" },
-                  { id: "upcoming", label: "Sắp diễn ra" },
+                  { id: "in_progress", label: "Đang diễn ra" },
+                  { id: "open", label: "Sắp diễn ra" },
                   { id: "completed", label: "Đã kết thúc" },
                 ].map((f) => (
                   <button
@@ -270,28 +254,31 @@ export default function GameLobby({
 
             {/* ── Danh sách các giải đấu ── */}
             <div className="tour-list-container">
-              {filteredTournaments.length === 0 ? (
+              {tourError && <p className="err">{tourError}</p>}
+              {tourLoading && <p className="hint">Đang tải danh sách giải đấu…</p>}
+              {!tourLoading && !tourError && filteredTournaments.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "28px 0", color: "var(--muted)" }}>
                   <div style={{ fontSize: "32px", marginBottom: "6px" }}>🔍</div>
                   <p style={{ margin: 0 }}>Không tìm thấy giải đấu phù hợp với bộ lọc.</p>
                 </div>
               ) : (
                 filteredTournaments.map((t) => {
-                  const isOngoing = t.status === "ongoing" || t.status === "active";
-                  const isUpcoming = t.status === "upcoming" || t.status === "pending";
-                  const statusClass = isOngoing ? "ongoing" : isUpcoming ? "upcoming" : "completed";
-                  const statusLabel = isOngoing ? "Đang diễn ra" : isUpcoming ? "Sắp diễn ra" : "Đã kết thúc";
+                  const badge = STATUS_BADGE[t.status] ?? { className: "", label: t.status };
+                  const actionLabel =
+                    t.status === "open"
+                      ? "Đăng ký tham gia 📝"
+                      : t.status === "in_progress"
+                        ? "Vào xem ⚔️"
+                        : "Xem kết quả 🏆";
 
                   return (
                     <div key={t.id} className="tour-card-item">
                       <div className="tour-card-top">
                         <div>
-                          <span className="tour-card-code">{t.id}</span>
+                          <span className="tour-card-code">{t.code}</span>
                           <h4 className="tour-card-title">{t.name}</h4>
                         </div>
-                        <span className={`tour-status-badge ${statusClass}`}>
-                          {statusLabel}
-                        </span>
+                        <span className={`tour-status-badge ${badge.className}`}>{badge.label}</span>
                       </div>
 
                       {t.description && (
@@ -301,38 +288,26 @@ export default function GameLobby({
                       )}
 
                       <div className="tour-card-meta">
-                        <span>🎮 {t.game_name || "Kéo · Búa · Bao Cờ"}</span>
-                        <span>👑 {t.organizer}</span>
-                        <span>👥 {t.registered_teams || 1}/{t.participants} đội</span>
-                        <span>⏰ {t.start_time}</span>
+                        <span>🎮 {t.gameName}</span>
+                        <span>👑 {t.organizerName}</span>
+                        <span>
+                          👥 {t.registered}
+                          {t.capacity ? `/${t.capacity}` : ""} người
+                        </span>
+                        <span>⏰ {formatStartsAt(t.startsAt)}</span>
+                        {t.languages?.length > 0 && <span>🌐 {languageLabels(t.languages)}</span>}
                       </div>
 
                       <div className="tour-card-footer">
                         <span style={{ color: "#d97706", fontWeight: "600" }}>
-                          🎁 {t.prize || "Cúp vinh danh & ELO"}
+                          🎁 {t.prize || "Cúp vinh danh"}
                         </span>
-                        {isOngoing ? (
-                          <button
-                            className="btn small primary"
-                            onClick={() => openTournament(t, { requireTeam: true })}
-                          >
-                            Tham gia thi đấu ⚔️
-                          </button>
-                        ) : isUpcoming ? (
-                          <button
-                            className="btn small"
-                            onClick={() => openTournament(t, { requireTeam: true })}
-                          >
-                            Đăng ký tham gia 📝
-                          </button>
-                        ) : (
-                          <button
-                            className="btn small"
-                            onClick={() => alert(`Giải đấu ${t.name} đã kết thúc. Xem kết quả trên BXH!`)}
-                          >
-                            Xem kết quả
-                          </button>
-                        )}
+                        <button
+                          className={`btn small ${t.status === "open" ? "primary" : ""}`}
+                          onClick={() => openTournament(t.id)}
+                        >
+                          {actionLabel}
+                        </button>
                       </div>
                     </div>
                   );

@@ -1,4 +1,3 @@
-import { getEntry } from "../../mock/tournamentLobby.mock.js";
 import { resolveEntry } from "../../utils/tournamentView.js";
 
 const STATUS_META = {
@@ -54,15 +53,14 @@ export default function MatchCard({
   const winnerA = Boolean(match.winnerId) && match.winnerId === match.participantAId;
   const winnerB = Boolean(match.winnerId) && match.winnerId === match.participantBId;
 
-  const entryA = resolveEntry(entryMap, match.participantAId) ?? getEntry(match.participantAId);
-  const entryB = resolveEntry(entryMap, match.participantBId) ?? getEntry(match.participantBId);
+  const entryA = resolveEntry(entryMap, match.participantAId);
+  const entryB = resolveEntry(entryMap, match.participantBId);
 
   return (
     <article className={`tl-match tl-match--${meta.tone} ${isFinal ? "tl-match--final" : ""}`}>
       <header className="tl-match__head">
         <span className="tl-match__label">
           {title ?? `Trận ${match.matchIndex + 1}`}
-          <i className="tl-match__bo">Bo3</i>
         </span>
         <span className={`tl-match__status tl-match__status--${meta.tone}`}>
           {meta.tone === "live" && <i className="tl-pulse" aria-hidden="true" />}
@@ -101,14 +99,14 @@ export default function MatchCard({
             type="button"
             className="tl-match__action"
             onClick={() => onReplay?.(match)}
-            disabled={!match.replayId}
+            disabled={!match.replayId && !match.matchId}
           >
-            ⟲ Xem replay
+            ⟲ Xem trận đấu
           </button>
         )}
 
         {match.status === "ready" && (
-          <span className="tl-match__waiting">⏳ Chờ trọng tài bắt đầu</span>
+          <span className="tl-match__waiting">⏳ Chờ kết quả trận đấu</span>
         )}
 
         {match.status === "pending" && (
