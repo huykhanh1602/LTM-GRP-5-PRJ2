@@ -312,6 +312,8 @@ button, select { font: inherit; color: inherit; }
 .banner-slot { min-height: 56px; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
 .banner { border-radius: 16px; padding: 12px 16px; border: 1.5px solid var(--line); backdrop-filter: blur(10px); }
 .banner-icon { width: 1.5em; height: 1.5em; object-fit: contain; vertical-align: middle; margin-right: 6px; }
+.trophy-icon { display: inline-block; vertical-align: middle; }
+.trophy-icon--nav { width: 20px !important; height: 20px !important; margin-right: 3px; }
 .banner.win {
   background: linear-gradient(90deg, rgba(254, 243, 199, 0.9), rgba(255, 228, 230, 0.9));
   border-color: rgba(245, 158, 11, 0.6); font-family: var(--font-display); font-size: 19px; color: #b45309;

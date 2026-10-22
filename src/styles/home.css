@@ -199,7 +199,41 @@
   letter-spacing: -0.5px;
 }
 .cat-icon {
-  font-size: 15px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--cat-icon-bg, #f1f5f9);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 1px 2px rgba(15,23,42,.08);
+  font-size: 16px;
+  line-height: 1;
+  transition: transform .18s ease;
+}
+.cat-icon__sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: url("/category-icons-3d.png");
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+  filter: drop-shadow(0 1px 1px rgba(15,23,42,.2));
+}
+.cat-icon__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(15,23,42,.2));
+}
+.cat-chip:hover .cat-icon {
+  transform: translateY(-1px) scale(1.08) rotate(-3deg);
+}
+.cat-chip--solid .cat-icon,
+.cat-chip.active .cat-icon {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 1px 2px rgba(15,23,42,.08);
 }
 
 /* ── Section Header ── */

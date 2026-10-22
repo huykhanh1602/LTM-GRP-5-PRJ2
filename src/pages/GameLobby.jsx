@@ -4,6 +4,7 @@ import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../config.js";
 import { getTournaments } from "../api.js";
 import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
 import { languageLabels } from "../utils/botLanguages.js";
+import TrophyIcon from "../components/TrophyIcon.jsx";
 
 // Thứ tự hiển thị tab chế độ
 const MODE_ORDER = ["casual", "ranked", "tournament"];
@@ -201,7 +202,7 @@ export default function GameLobby({
           /* ── Chế độ Giải Đấu ── */
           <div className="tournament-section-content">
             <div className="mode-unavail" style={{ padding: "8px 0 16px" }}>
-              <div className="mode-unavail__icon">🏆</div>
+              <div className="mode-unavail__icon"><TrophyIcon size="64px" /></div>
               <p className="mode-unavail__title">Đấu Trường Giải Đấu ({game.name})</p>
               <p className="muted" style={{ maxWidth: "460px", margin: "4px auto 14px", fontSize: "13px" }}>
                 Mỗi giải đấu có một phòng chờ riêng: xem luật chơi, đếm ngược, đăng ký tham gia và
@@ -270,12 +271,13 @@ export default function GameLobby({
               ) : (
                 filteredTournaments.map((t) => {
                   const badge = STATUS_BADGE[t.status] ?? { className: "", label: t.status };
+                  const hasTrophy = !["open", "in_progress"].includes(t.status);
                   const actionLabel =
                     t.status === "open"
                       ? "Đăng ký tham gia 📝"
                       : t.status === "in_progress"
                         ? "Vào xem ⚔️"
-                        : "Xem kết quả 🏆";
+                        : "Xem kết quả";
 
                   return (
                     <div key={t.id} className="tour-card-item">
@@ -312,7 +314,7 @@ export default function GameLobby({
                           className={`btn small ${t.status === "open" ? "primary" : ""}`}
                           onClick={() => openTournament(t.id)}
                         >
-                          {actionLabel}
+                          {actionLabel}{hasTrophy && <> <TrophyIcon size="20px" /></>}
                         </button>
                       </div>
                     </div>

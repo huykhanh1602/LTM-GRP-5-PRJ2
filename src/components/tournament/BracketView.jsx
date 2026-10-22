@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import MatchCard from "./MatchCard.jsx";
 import RegistrationSlots from "./RegistrationSlots.jsx";
 import { getRoundLabels } from "../../utils/tournamentView.js";
+import TrophyIcon from "../TrophyIcon.jsx";
 
 // ─────────────────────────────────────────────────────────────
 // Bảng nhánh đấu (Single Elimination) — render động theo
@@ -88,7 +89,7 @@ export default function BracketView({
               {champion.owner} · {champion.botName}
             </span>
           </div>
-          <span className="tl-champion__prize">🏆 {tournament.prize}</span>
+          <span className="tl-champion__prize"><TrophyIcon size="22px" /> {tournament.prize}</span>
         </div>
       )}
 
@@ -148,7 +149,7 @@ export default function BracketView({
                           match={match}
                           title={
                             isFinalRound && matches.length === 1
-                              ? "🏆 Chung kết"
+                              ? <><TrophyIcon size="18px" /> Chung kết</>
                               : `Trận ${match.matchIndex + 1}`
                           }
                           isFinal={isFinalRound}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { describeEvent, teamName } from "../utils/replayEngine.js";
 import Media from "./Media.jsx";
+import TrophyIcon from "./TrophyIcon.jsx";
 import { theme } from "../theme/theme.js";
 
 // Danh sách các sự kiện, nhóm theo lượt. Bấm để nhảy tới bước đó.
@@ -37,6 +38,7 @@ export default function TurnList({ replay, frames, currentIndex, seek, colorOf }
     }
     const d = describeEvent(f.event, replay);
     const iconSrc = theme.eventIcons[f.event?.type];
+    const fallbackIcon = d.icon === "🏆" ? <TrophyIcon size="24px" /> : d.icon;
     const isMove = f.event?.type === "PIECE_MOVED";
     const isScore = f.event?.type === "SCORE_UPDATED";
     const isCur = i === currentIndex;
@@ -55,9 +57,9 @@ export default function TurnList({ replay, frames, currentIndex, seek, colorOf }
               aria-hidden="true"
             />
           ) : iconSrc ? (
-            <Media className="turn-icon-image" src={iconSrc} fallback={d.icon} />
+            <Media className="turn-icon-image" src={iconSrc} fallback={fallbackIcon} />
           ) : (
-            d.icon
+            fallbackIcon
           )}
         </span>
         <span>{d.text}</span>

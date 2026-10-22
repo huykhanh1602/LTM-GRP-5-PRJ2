@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
+import TrophyIcon from "../components/TrophyIcon.jsx";
 import { BOT_LANGUAGES, languageLabels } from "../utils/botLanguages.js";
 import { createTournament, getTournaments } from "../api.js";
 import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
@@ -346,7 +347,7 @@ export default function ProfilePage({
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <span className="mode-pill mode-pill--ranked" style={{ fontSize: "12px", padding: "4px 12px" }}>
-              🏆 Elo: {user?.elo || 1000}
+              <TrophyIcon size="18px" /> Elo: {user?.elo || 1000}
             </span>
             {!isLoggedIn && (
               <button className="btn small primary" onClick={onOpenLogin}>

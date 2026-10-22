@@ -1,5 +1,6 @@
 import { REASON_LABELS, teamName } from "../utils/replayEngine.js";
 import Media from "./Media.jsx";
+import TrophyIcon from "./TrophyIcon.jsx";
 import { theme } from "../theme/theme.js";
 
 // Hiện cảnh báo (timeout...) và kết quả cuối ván.
@@ -16,7 +17,7 @@ export default function ResultBanner({ replay, frame }) {
       )}
       {over && (
         <div className="banner win">
-          <Media className="banner-icon" src={theme.eventIcons.GAME_OVER} fallback="🏆" />
+          <Media className="banner-icon" src={theme.eventIcons.GAME_OVER} fallback={<TrophyIcon size="40px" />} />
           <b>{over.winner ? teamName(replay, over.winner) : "Hòa"}</b>
           {over.winner ? " thắng" : ""}
           {over.reason ? ` — ${REASON_LABELS[over.reason] ?? over.reason}` : ""}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import TrophyIcon from "../TrophyIcon.jsx";
 
 // Đếm ngược tới mốc thời gian của giải đấu
 function useCountdown(target) {
@@ -53,7 +54,7 @@ export default function TournamentHeader({ tournament }) {
 
           <div className="tl-hero__text">
             <div className="tl-hero__eyebrow">
-              <span className="tl-mode-badge">🏆 Tournament</span>
+              <span className="tl-mode-badge"><TrophyIcon size="18px" /> Tournament</span>
               <span className={`tl-status tl-status--${statusClass}`}>
                 <i aria-hidden="true" />
                 {tournament.statusLabel}

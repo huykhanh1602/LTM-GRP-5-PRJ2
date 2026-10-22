@@ -6,6 +6,7 @@ import RegistrationSlots from "../components/tournament/RegistrationSlots.jsx";
 import StandingsTable from "../components/tournament/StandingsTable.jsx";
 import MatchFeed from "../components/tournament/MatchFeed.jsx";
 import TournamentInfoPanel from "../components/tournament/TournamentInfoPanel.jsx";
+import TrophyIcon from "../components/TrophyIcon.jsx";
 import {
   attachTournamentSlotResult,
   getMatchReplay,
@@ -276,7 +277,7 @@ function TournamentPicker({ gameId, onPick, onBack }) {
           {!items && !error && <p className="muted">Đang tải danh sách giải đấu…</p>}
           {visible?.length === 0 && (
             <div className="tl-empty">
-              <span className="tl-empty__icon" aria-hidden="true">🏆</span>
+              <span className="tl-empty__icon"><TrophyIcon size="56px" /></span>
               <h3>Chưa có giải đấu nào</h3>
               <p>Vào Trang cá nhân để mở giải đấu mới.</p>
             </div>

@@ -3,27 +3,27 @@
 // ============================================================
 
 export const CATEGORIES_ROW_1 = [
-  { id: "all", label: "Danh mục", icon: "⊞", bg: "#4378bf", color: "#fff", solid: true },
-  { id: "hot", label: "Game Hot", icon: "🔥", bg: "#d93829", color: "#fff", solid: true },
-  { id: "hay", label: "Game Hay", icon: "⭐", bg: "#f5a623", color: "#fff", solid: true },
-  { id: "new", label: "Game Mới", icon: "🆕", bg: "#27ae60", color: "#fff", solid: true },
-  { id: "giai_tri", label: "Giải trí", icon: "🎯", color: "#334155" },
-  { id: "game_vui", label: "Game Vui", icon: "😄", color: "#334155" },
-  { id: "van_phong", label: "Văn phòng", icon: "📁", color: "#334155" },
-  { id: "tri_tue", label: "Trí tuệ", icon: "🧠", color: "#334155" },
-  { id: "tre_em", label: "Trẻ em", icon: "👦", color: "#334155" },
+  { id: "all", label: "Danh mục", icon: "▦", iconCell: 0, iconBg: "#e8f0ff", bg: "#4378bf", color: "#fff", solid: true },
+  { id: "hot", label: "Game Hot", icon: "🔥", iconCell: 1, iconBg: "#fff0e9", bg: "#d93829", color: "#fff", solid: true },
+  { id: "hay", label: "Game Hay", icon: "🌟", iconCell: 2, iconBg: "#fff7d6", bg: "#f5a623", color: "#fff", solid: true },
+  { id: "new", label: "Game Mới", icon: "✨", iconCell: 3, iconBg: "#e6f8ed", bg: "#27ae60", color: "#fff", solid: true },
+  { id: "giai_tri", label: "Giải trí", icon: "🎯", iconCell: 4, iconBg: "#fff0e8", color: "#334155" },
+  { id: "game_vui", label: "Game Vui", icon: "😄", iconCell: 5, iconBg: "#fff1df", color: "#334155" },
+  { id: "van_phong", label: "Văn phòng", icon: "🗂️", iconCell: 6, iconBg: "#eaf3ff", color: "#334155" },
+  { id: "tri_tue", label: "Trí tuệ", icon: "🧠", iconCell: 7, iconBg: "#f1eaff", color: "#334155" },
+  { id: "tre_em", label: "Trẻ em", icon: "🧸", iconCell: 8, iconBg: "#fff0f1", color: "#334155" },
 ];
 
 export const CATEGORIES_ROW_2 = [
   { id: "y8", label: "Game Y8", icon: "Y8", color: "#e02e24", isTextIcon: true },
-  { id: "hanh_dong", label: "Hành động", icon: "🥊", color: "#ea580c" },
-  { id: "2_nguoi", label: "2 người", icon: "👥", color: "#0284c7" },
-  { id: "phieu_luu", label: "Phiêu lưu", icon: "🗺️", color: "#16a34a" },
-  { id: "kinh_dien", label: "Kinh điển", icon: "🐍", color: "#ca8a04" },
-  { id: "giai_do_iq", label: "Giải đố IQ", icon: "💡", color: "#9333ea" },
-  { id: "chien_thuat", label: "Chiến thuật", icon: "🎲", color: "#dc2626" },
-  { id: "con_gai", label: "Con gái", icon: "👧", color: "#db2777" },
-  { id: "pikachu", label: "Game Pikachu", icon: "⚡", color: "#eab308" },
+  { id: "hanh_dong", label: "Hành động", icon: "⚔️", iconCell: 9, iconBg: "#fff0e7", color: "#ea580c" },
+  { id: "2_nguoi", label: "2 người", icon: "🧑‍🤝‍🧑", iconCell: 10, iconBg: "#e7f5ff", color: "#0284c7" },
+  { id: "phieu_luu", label: "Phiêu lưu", icon: "🧭", iconCell: 11, iconBg: "#e9f8ed", color: "#16a34a" },
+  { id: "kinh_dien", label: "Kinh điển", icon: "🕹️", iconCell: 12, iconBg: "#fff7db", color: "#ca8a04" },
+  { id: "giai_do_iq", label: "Giải đố IQ", icon: "🧩", iconCell: 13, iconBg: "#f3eaff", color: "#9333ea" },
+  { id: "chien_thuat", label: "Chiến thuật", icon: "♟️", iconCell: 14, iconBg: "#ffe9e9", color: "#dc2626" },
+  { id: "con_gai", label: "Con gái", icon: "🌸", iconCell: 15, iconBg: "#ffeaf4", color: "#db2777" },
+  { id: "pikachu", label: "Game Pikachu", icon: "⚡", iconImage: "/category-pikachu-3d.png", iconBg: "#fff8d7", color: "#b77900" },
 ];
 
 export const ALL_CATEGORIES = [...CATEGORIES_ROW_1, ...CATEGORIES_ROW_2];

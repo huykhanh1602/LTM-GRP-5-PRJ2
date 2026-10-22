@@ -8,6 +8,7 @@ import DatabasePage from "./pages/DatabasePage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import TournamentLobby from "./pages/TournamentLobby.jsx";
 import AuthModal from "./components/AuthModal.jsx";
+import TrophyIcon from "./components/TrophyIcon.jsx";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
 import "./styles/pages.css";
@@ -314,7 +315,7 @@ export default function App() {
               className={view === "tournament" ? "on" : ""}
               onClick={() => openTournament()}
             >
-              🏆 Giải đấu
+              <TrophyIcon className="trophy-icon--nav" /> Giải đấu
             </button>
           </nav>
         )}

@@ -6,6 +6,7 @@ import {
   ALL_CATEGORIES,
 } from "../games/catalog.js";
 import HeroBanner from "../components/HeroBanner.jsx";
+import CategoryIcon from "../components/CategoryIcon.jsx";
 import "../styles/home.css";
 
 export default function HomePage({ onSelectGame, searchQuery = "" }) {
@@ -53,10 +54,11 @@ export default function HomePage({ onSelectGame, searchQuery = "" }) {
                   backgroundColor: cat.solid ? cat.bg : undefined,
                   color: cat.solid ? "#ffffff" : cat.color,
                   borderColor: cat.solid ? cat.bg : undefined,
+                  "--cat-icon-bg": cat.solid ? "rgba(255,255,255,.2)" : cat.iconBg,
                 }}
                 onClick={() => setSelectedCategory(cat.id)}
               >
-                <span className="cat-icon">{cat.icon}</span>
+                <CategoryIcon category={cat} />
                 <span className="cat-label">{cat.label}</span>
               </button>
             );
@@ -75,6 +77,7 @@ export default function HomePage({ onSelectGame, searchQuery = "" }) {
                   color: isActive ? "#ffffff" : cat.color,
                   borderColor: isActive ? cat.color : undefined,
                   backgroundColor: isActive ? cat.color : undefined,
+                  "--cat-icon-bg": isActive ? "rgba(255,255,255,.2)" : cat.iconBg,
                 }}
                 onClick={() => setSelectedCategory(cat.id)}
               >
@@ -83,7 +86,7 @@ export default function HomePage({ onSelectGame, searchQuery = "" }) {
                     {cat.icon}
                   </span>
                 ) : (
-                  <span className="cat-icon">{cat.icon}</span>
+                  <CategoryIcon category={cat} />
                 )}
                 <span className="cat-label">{cat.label}</span>
               </button>
@@ -95,9 +98,7 @@ export default function HomePage({ onSelectGame, searchQuery = "" }) {
       {/* ── Tiêu đề Section Game (Điểm cuộn tới) ── */}
       <div className="section-header-row" ref={gamesSectionRef} id="games-section" style={{ scrollMarginTop: "20px" }}>
         <div className="section-title-badge">
-          <span className="badge-icon">
-            {ALL_CATEGORIES.find((c) => c.id === selectedCategory)?.icon || "🎮"}
-          </span>
+          <CategoryIcon category={ALL_CATEGORIES.find((c) => c.id === selectedCategory)} className="badge-icon" />
           <h3>
             {selectedCategory === "all"
               ? "Tất cả Game Đấu Bot"
