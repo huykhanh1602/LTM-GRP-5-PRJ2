@@ -47,10 +47,6 @@
   font-weight: 800;
 }
 
-.tl-toolbar__actions {
-  margin-left: auto;
-}
-
 /* ---------- Chuyển trạng thái mock ---------- */
 .tl-phase-switch {
   display: flex;
@@ -2135,8 +2131,7 @@
 }
 
 @media (max-width: 560px) {
-  .tl-toolbar__actions {
-    margin-left: 0;
+  .tl-mock-controls {
     width: 100%;
   }
   .tl-phase-switch {
@@ -2194,6 +2189,7 @@
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
 /* ---------- Card aside (legend + live status) ---------- */

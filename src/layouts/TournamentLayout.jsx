@@ -20,7 +20,7 @@ export default function TournamentLayout({ tournament, onBack, actions, children
           <strong>Phòng chờ giải đấu</strong>
         </nav>
 
-        {actions && <div className="tl-toolbar__actions">{actions}</div>}
+        {actions}
       </div>
 
       <div className="tl-shell">{children}</div>
