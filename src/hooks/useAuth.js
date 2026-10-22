@@ -86,7 +86,7 @@ export function useAuth() {
 
   // Đăng xuất
   const logout = useCallback(() => {
-    if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => { });
     localStorage.removeItem(STORAGE_KEY);
     setSession(null);
   }, [token]);
@@ -135,7 +135,7 @@ export function useAuth() {
   const loginGoogle = useCallback(async (idToken) => {
     try {
       if (!idToken) {
-        idToken=await googleCredential();
+        idToken = await googleCredential();
       }
       const res = await fetch(`${getApiBase()}/api/auth/google`, {
         method: "POST",
@@ -181,7 +181,7 @@ export function useAuth() {
   }, []);
 
   const linkAccount = useCallback(async (provider, credentials) => {
-    if (!credentials) credentials=provider==="google"?{id_token:await googleCredential()}:provider==="facebook"?{access_token:await facebookCredential()}:null;
+    if (!credentials) credentials = provider === "google" ? { id_token: await googleCredential() } : provider === "facebook" ? { access_token: await facebookCredential() } : null;
     if (!credentials) throw new Error("Liên kết số điện thoại cần xác minh OTP.");
     const res = await fetch(`${getApiBase()}/api/auth/link/${provider}`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
