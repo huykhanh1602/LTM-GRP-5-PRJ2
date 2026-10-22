@@ -39,11 +39,13 @@ export default function ProfilePage({
   onLogout,
   onUpdateProfile,
   onChangePassword,
+  onSetPassword,
   onLinkAccount,
   onOpenTournament,
   onBack,
 }) {
-  const [activeTab, setActiveTab] = useState("tournaments"); // "tournaments" | "create_tour" | "security"
+  const [activeTab, setActiveTab] = useState("profile"); // "profile" | "settings"
+  const [createOpen, setCreateOpen] = useState(false);
 
   // State mở giải đấu
   const [tourName, setTourName] = useState("");
@@ -81,6 +83,9 @@ export default function ProfilePage({
   const winRate = user?.matches_played > 0
     ? Math.round(((user?.wins || 0) / user.matches_played) * 100)
     : 0;
+
+  // Tài khoản đăng nhập qua Google/Facebook sẽ chưa có mật khẩu → hiện "Thêm mật khẩu".
+  const hasPassword = !!user?.has_password;
 
   // Danh sách giải đấu do chính người này tổ chức (lọc từ API thật)
   useEffect(() => {
@@ -216,8 +221,8 @@ export default function ProfilePage({
     if (!oldPassword) {
       return setPasswordMsg({ type: "err", text: "Vui lòng nhập mật khẩu hiện tại." });
     }
-    if (newPassword.length < 6) {
-      return setPasswordMsg({ type: "err", text: "Mật khẩu mới phải có ít nhất 6 ký tự." });
+    if (newPassword.length < 8) {
+      return setPasswordMsg({ type: "err", text: "Mật khẩu mới phải có ít nhất 8 ký tự." });
     }
     if (newPassword !== confirmNewPassword) {
       return setPasswordMsg({ type: "err", text: "Mật khẩu xác nhận không trùng khớp." });
@@ -234,6 +239,37 @@ export default function ProfilePage({
       setConfirmNewPassword("");
     } catch (err) {
       setPasswordMsg({ type: "err", text: err.message || "Đổi mật khẩu thất bại." });
+    } finally {
+      setIsChangingPass(false);
+    }
+  }
+
+  // Đặt mật khẩu lần đầu cho tài khoản đăng nhập bằng Google/Facebook (chưa có mật khẩu)
+  async function handleSetPasswordSubmit(e) {
+    e.preventDefault();
+    setPasswordMsg({ type: "", text: "" });
+
+    if (!isLoggedIn) {
+      return setPasswordMsg({ type: "err", text: "Bạn phải đăng nhập trước khi thêm mật khẩu." });
+    }
+    if (newPassword.length < 8) {
+      return setPasswordMsg({ type: "err", text: "Mật khẩu phải có ít nhất 8 ký tự." });
+    }
+    if (newPassword !== confirmNewPassword) {
+      return setPasswordMsg({ type: "err", text: "Mật khẩu xác nhận không trùng khớp." });
+    }
+
+    setIsChangingPass(true);
+    try {
+      await onSetPassword?.(newPassword);
+      setPasswordMsg({
+        type: "ok",
+        text: "🎉 Đã thêm mật khẩu. Từ giờ bạn có thể đăng nhập bằng email + mật khẩu.",
+      });
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (err) {
+      setPasswordMsg({ type: "err", text: err.message || "Thêm mật khẩu thất bại." });
     } finally {
       setIsChangingPass(false);
     }
@@ -344,41 +380,35 @@ export default function ProfilePage({
       {/* ── Tab điều hướng nội dung ── */}
       <div className="profile-nav-tabs">
         <button
-          className={`profile-tab-btn ${activeTab === "tournaments" ? "active" : ""}`}
-          onClick={() => setActiveTab("tournaments")}
+          className={`profile-tab-btn ${activeTab === "profile" ? "active" : ""}`}
+          onClick={() => setActiveTab("profile")}
         >
-          🏆 Giải đấu của tôi ({myTournaments.length})
+          👤 Trang cá nhân
         </button>
         <button
-          className={`profile-tab-btn ${activeTab === "create_tour" ? "active" : ""}`}
-          onClick={() => setActiveTab("create_tour")}
-        >
-          ➕ Đăng ký mở giải đấu mới
-        </button>
-        <button
-          className={`profile-tab-btn ${activeTab === "security" ? "active" : ""}`}
+          className={`profile-tab-btn ${activeTab === "settings" ? "active" : ""}`}
           onClick={() => {
             if (!isLoggedIn) {
-              if (onOpenLogin) onOpenLogin();
-            } else {
-              setActiveTab("security");
+              onOpenLogin?.();
+              return;
             }
+            setActiveTab("settings");
           }}
-          title={!isLoggedIn ? "Cần đăng nhập tài khoản để đổi mật khẩu" : ""}
+          title={!isLoggedIn ? "Cần đăng nhập để vào Cài đặt" : ""}
         >
-          🔒 Đổi mật khẩu & Bảo mật {!isLoggedIn && "(Cần đăng nhập)"}
+          ⚙️ Cài đặt {!isLoggedIn && "(Cần đăng nhập)"}
         </button>
       </div>
 
       {/* ── Nội dung từng Tab ── */}
       <div className="profile-card">
-        {/* TAB 1: Danh sách giải đấu */}
-        {activeTab === "tournaments" && (
+        {/* TAB 1: TRANG CÁ NHÂN — giải đấu của tôi + mở giải mới */}
+        {activeTab === "profile" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0 }}>Các giải đấu cá nhân đã tạo</h3>
-              <button className="btn small primary" onClick={() => setActiveTab("create_tour")}>
-                + Mở giải mới
+              <h3 style={{ margin: 0 }}>Giải đấu của tôi ({myTournaments.length})</h3>
+              <button className="btn small primary" onClick={() => setCreateOpen((v) => !v)}>
+                {createOpen ? "← Đóng" : "➕ Mở giải mới"}
               </button>
             </div>
 
@@ -386,7 +416,7 @@ export default function ProfilePage({
               <div style={{ textAlign: "center", padding: "30px 0", color: "var(--muted)" }}>
                 <div style={{ fontSize: "40px", marginBottom: "8px" }}>📜</div>
                 <p>Bạn chưa mở giải đấu nào.</p>
-                <button className="btn primary" onClick={() => setActiveTab("create_tour")}>
+                <button className="btn primary" onClick={() => setCreateOpen(true)}>
                   Tạo giải đấu đầu tiên ngay!
                 </button>
               </div>
@@ -424,9 +454,9 @@ export default function ProfilePage({
           </div>
         )}
 
-        {/* TAB 2: Mở giải đấu mới (ghi thẳng vào server) */}
-        {activeTab === "create_tour" && (
-          <div>
+        {/* Form mở giải đấu mới (ẩn/hiện trong tab Trang cá nhân, ghi thẳng vào server) */}
+        {activeTab === "profile" && createOpen && (
+          <div style={{ marginTop: "18px", borderTop: "1px solid var(--border, #e2e8f0)", paddingTop: "16px" }}>
             <h3 style={{ margin: "0 0 8px" }}>Mở giải đấu cá nhân / cộng đồng</h3>
             <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "var(--muted)" }}>
               Giải đấu có hiệu lực ngay sau khi tạo. Luật chơi bạn điền ở đây sẽ hiện trong phòng
@@ -613,7 +643,7 @@ export default function ProfilePage({
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => setActiveTab("tournaments")}
+                  onClick={() => setCreateOpen(false)}
                 >
                   Hủy
                 </button>
@@ -622,72 +652,57 @@ export default function ProfilePage({
           </div>
         )}
 
-        {/* TAB 3: Đổi Mật Khẩu (Phải có tài khoản mới được đổi) */}
-        {activeTab === "security" && (
-          <div style={{ maxWidth: "480px" }}>
-            <h3 style={{ margin: "0 0 8px" }}>Đổi mật khẩu tài khoản</h3>
-
-            {!isLoggedIn ? (
-              <div
-                style={{
-                  background: "#fef2f2",
-                  border: "1.5px solid #fecaca",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "36px", marginBottom: "8px" }}>🔒</div>
-                <h4 style={{ margin: "0 0 6px", color: "#b91c1c" }}>
-                  Bạn phải có tài khoản mới đổi được mật khẩu
-                </h4>
-                <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "#64748b" }}>
-                  Hiện bạn đang ở chế độ chơi Khách ẩn danh. Vui lòng đăng nhập hoặc tạo tài khoản để đặt mật khẩu bảo vệ.
-                </p>
-                <button className="btn primary" onClick={onOpenLogin}>
-                  Đăng nhập / Đăng ký ngay
-                </button>
+        {/* TAB 2: CÀI ĐẶT — liên kết tài khoản + mật khẩu */}
+        {activeTab === "settings" && (
+          <div style={{ maxWidth: "520px" }}>
+            {/* Liên kết tài khoản */}
+            <section style={{ margin: "0 0 22px", padding: "16px", border: "1px solid var(--border, #e2e8f0)", borderRadius: 12 }}>
+              <h3 style={{ margin: "0 0 8px" }}>Tài khoản đã liên kết</h3>
+              <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--muted)" }}>
+                Email hoặc số điện thoại và Google/Facebook giúp bạn đăng nhập lại vào cùng hồ sơ người chơi.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {["google", "facebook"].map((provider) => {
+                  const linked = (user?.linked_accounts ?? []).some((item) => item.provider === provider);
+                  return (
+                    <button key={provider} type="button" className="btn secondary" disabled={linked || !!linkingProvider} onClick={async () => {
+                      setLinkMessage(""); setLinkingProvider(provider);
+                      try { await onLinkAccount?.(provider); setLinkMessage(`${provider === "google" ? "Google" : "Facebook"} đã liên kết.`); }
+                      catch (error) { setLinkMessage(error.message || "Không liên kết được tài khoản."); }
+                      finally { setLinkingProvider(""); }
+                    }}>{linkingProvider === provider ? "Đang kết nối…" : linked ? `${provider === "google" ? "Google" : "Facebook"} đã liên kết` : `Liên kết ${provider === "google" ? "Google" : "Facebook"}`}</button>
+                  );
+                })}
+                <span className="btn secondary" aria-disabled="true">Số điện thoại: {user?.phone ? "đã có" : "cần xác minh SMS"}</span>
               </div>
-            ) : (
-              <>
-                <section style={{ margin:"0 0 22px",padding:"16px",border:"1px solid var(--border, #e2e8f0)",borderRadius:12 }}>
-                  <h3 style={{ margin:"0 0 8px" }}>Tài khoản đã liên kết</h3>
-                  <p style={{ margin:"0 0 10px",fontSize:13,color:"var(--muted)" }}>
-                    Email hoặc số điện thoại và Google/Facebook giúp bạn đăng nhập lại vào cùng hồ sơ người chơi.
-                  </p>
-                  <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-                    {["google","facebook"].map(provider=>{
-                      const linked=(user?.linked_accounts??[]).some(item=>item.provider===provider);
-                      return <button key={provider} type="button" className="btn secondary" disabled={linked||!!linkingProvider} onClick={async()=>{
-                        setLinkMessage("");setLinkingProvider(provider);
-                        try { await onLinkAccount?.(provider); setLinkMessage(`${provider==="google"?"Google":"Facebook"} đã liên kết.`); }
-                        catch(error){ setLinkMessage(error.message||"Không liên kết được tài khoản."); }
-                        finally { setLinkingProvider(""); }
-                      }}>{linkingProvider===provider?"Đang kết nối…":linked?`${provider==="google"?"Google":"Facebook"} đã liên kết`:`Liên kết ${provider==="google"?"Google":"Facebook"}`}</button>;
-                    })}
-                    <span className="btn secondary" aria-disabled="true">Số điện thoại: {user?.phone?"đã có":"cần xác minh SMS"}</span>
-                  </div>
-                  {linkMessage&&<p role="status" style={{margin:"10px 0 0",fontSize:13}}>{linkMessage}</p>}
-                </section>
-                <p style={{ margin: "0 0 18px", fontSize: "13.5px", color: "var(--muted)" }}>
-                  Hãy chọn mật khẩu mạnh từ 6 ký tự trở lên để bảo vệ tài khoản bot và lịch sử thi đấu của bạn.
-                </p>
+              {linkMessage && <p role="status" style={{ margin: "10px 0 0", fontSize: 13 }}>{linkMessage}</p>}
+            </section>
 
-                {passwordMsg.text && (
-                  <div
-                    className="auth-error"
-                    style={{
-                      background: passwordMsg.type === "ok" ? "#f0fdf4" : "#fef2f2",
-                      borderColor: passwordMsg.type === "ok" ? "#bbf7d0" : "#fecaca",
-                      color: passwordMsg.type === "ok" ? "#166534" : "#dc2626",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    {passwordMsg.text}
-                  </div>
-                )}
+            {/* Mật khẩu: "Thêm mật khẩu" nếu chưa có (đăng nhập Google), ngược lại "Đổi mật khẩu" */}
+            <section style={{ padding: "16px", border: "1px solid var(--border, #e2e8f0)", borderRadius: 12 }}>
+              <h3 style={{ margin: "0 0 8px" }}>{hasPassword ? "🔒 Đổi mật khẩu" : "➕ Thêm mật khẩu"}</h3>
+              <p style={{ margin: "0 0 18px", fontSize: "13.5px", color: "var(--muted)" }}>
+                {hasPassword
+                  ? "Nhập mật khẩu hiện tại rồi chọn mật khẩu mới (tối thiểu 8 ký tự) để bảo vệ tài khoản."
+                  : "Bạn đang đăng nhập bằng Google/Facebook và chưa có mật khẩu. Đặt mật khẩu (tối thiểu 8 ký tự) để có thể đăng nhập bằng email."}
+              </p>
 
-                <form onSubmit={handleChangePasswordSubmit} className="tournament-reg-form">
+              {passwordMsg.text && (
+                <div
+                  className="auth-error"
+                  style={{
+                    background: passwordMsg.type === "ok" ? "#f0fdf4" : "#fef2f2",
+                    borderColor: passwordMsg.type === "ok" ? "#bbf7d0" : "#fecaca",
+                    color: passwordMsg.type === "ok" ? "#166534" : "#dc2626",
+                    marginBottom: "16px",
+                  }}
+                >
+                  {passwordMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={hasPassword ? handleChangePasswordSubmit : handleSetPasswordSubmit} className="tournament-reg-form">
+                {hasPassword && (
                   <div className="reg-field">
                     <label>Mật khẩu hiện tại</label>
                     <input
@@ -700,46 +715,46 @@ export default function ProfilePage({
                       required
                     />
                   </div>
+                )}
 
-                  <div className="reg-field">
-                    <label>Mật khẩu mới</label>
-                    <input
-                      type="password"
-                      className="reg-input"
-                      placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      disabled={isChangingPass}
-                      required
-                    />
-                  </div>
+                <div className="reg-field">
+                  <label>Mật khẩu mới</label>
+                  <input
+                    type="password"
+                    className="reg-input"
+                    placeholder="Mật khẩu mới (tối thiểu 8 ký tự)"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    disabled={isChangingPass}
+                    required
+                  />
+                </div>
 
-                  <div className="reg-field">
-                    <label>Xác nhận mật khẩu mới</label>
-                    <input
-                      type="password"
-                      className="reg-input"
-                      placeholder="Nhập lại mật khẩu mới"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      disabled={isChangingPass}
-                      required
-                    />
-                  </div>
+                <div className="reg-field">
+                  <label>Xác nhận mật khẩu mới</label>
+                  <input
+                    type="password"
+                    className="reg-input"
+                    placeholder="Nhập lại mật khẩu mới"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    disabled={isChangingPass}
+                    required
+                  />
+                </div>
 
-                  <div style={{ marginTop: "10px" }}>
-                    <button
-                      type="submit"
-                      className="btn primary"
-                      disabled={isChangingPass}
-                      style={{ padding: "10px 24px" }}
-                    >
-                      {isChangingPass ? "Đang xử lý..." : "🔒 Cập nhật mật khẩu mới"}
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
+                <div style={{ marginTop: "10px" }}>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={isChangingPass}
+                    style={{ padding: "10px 24px" }}
+                  >
+                    {isChangingPass ? "Đang xử lý..." : hasPassword ? "🔒 Đổi mật khẩu" : "➕ Thêm mật khẩu"}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
         )}
       </div>

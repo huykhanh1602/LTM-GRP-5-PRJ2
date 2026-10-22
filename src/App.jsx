@@ -161,6 +161,7 @@ export default function App() {
         }}
         onUpdateProfile={auth.updateProfile}
         onChangePassword={auth.changePassword}
+        onSetPassword={auth.setPassword}
         onLinkAccount={auth.linkAccount}
         onOpenTournament={openTournament}
         onBack={goBack}

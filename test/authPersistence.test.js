@@ -70,6 +70,33 @@ test("auth: Google account without password can set one, then log in with email"
   t.after(()=>rm(dir,{recursive:true,force:true}));
 });
 
+test("auth: existing password can be changed with correct old password only", async t => {
+  const dir=await mkdtemp(join(tmpdir(),"ltm-auth-changepw-")), filename=join(dir,"auth-changepw.sqlite");
+  const inst=await start(t,filename);
+  const post=(path,body,token)=>fetch(`${inst.base}${path}`,{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(body)});
+
+  const registered=await post("/api/auth/register",{display_name:"Change Player",identifier:"change@example.com",password:"old-pass-123"});
+  assert.equal(registered.status,200,await registered.clone().text());
+  const account=await registered.json();
+  assert.equal(account.user.has_password,true);
+
+  const wrongOld=await post("/api/auth/change-password",{old_password:"nope",new_password:"new-pass-999"},account.token);
+  assert.equal(wrongOld.status,401);
+
+  const tooShort=await post("/api/auth/change-password",{old_password:"old-pass-123",new_password:"short"},account.token);
+  assert.equal(tooShort.status,400);
+
+  const changed=await post("/api/auth/change-password",{old_password:"old-pass-123",new_password:"new-pass-999"},account.token);
+  assert.equal(changed.status,200,await changed.clone().text());
+
+  const oldLogin=await post("/api/auth/login",{identifier:"change@example.com",password:"old-pass-123"});
+  assert.equal(oldLogin.status,401);
+  const newLogin=await post("/api/auth/login",{identifier:"change@example.com",password:"new-pass-999"});
+  assert.equal(newLogin.status,200,await newLogin.clone().text());
+
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+});
+
 test("auth: Facebook login verifies access_token, links identity and survives restart", async t => {
   const dir = await mkdtemp(join(tmpdir(), "ltm-auth-fb-")), filename = join(dir, "auth-fb.sqlite");
   const serverInst = await start(t, filename, {

@@ -93,7 +93,7 @@ export function createAuthService({
         const session=async user=>sendJson(200,{token:await sessions.issue(user.id),user:await publicProfile(user)});
         const token=request.headers.authorization?.replace(/^Bearer\s+/i,"");
         const linkMatch=url.pathname.match(/^\/api\/auth\/link\/(google|facebook)$/);
-        if (url.pathname==="/api/me" || url.pathname==="/api/auth/identities" || url.pathname==="/api/auth/logout" || url.pathname==="/api/auth/set-password" || linkMatch) {
+        if (url.pathname==="/api/me" || url.pathname==="/api/auth/identities" || url.pathname==="/api/auth/logout" || url.pathname==="/api/auth/set-password" || url.pathname==="/api/auth/change-password" || linkMatch) {
             const user=await userForToken(token);
             if (!user) return sendJson(401,{error:"INVALID_TOKEN"}),true;
             if (url.pathname==="/api/me" && request.method==="GET") return sendJson(200,{user:await publicProfile(user)}),true;
@@ -105,6 +105,18 @@ export function createAuthService({
                 const newPassword=body.value.password;
                 if (typeof newPassword!=="string"||newPassword.length<8||newPassword.length>128) return sendJson(400,{error:"INVALID_PASSWORD",message:"Mật khẩu phải từ 8 đến 128 ký tự."}),true;
                 if (user.password_salt) return sendJson(409,{error:"PASSWORD_ALREADY_SET",message:"Tài khoản đã có mật khẩu."}),true;
+                const salt=randomBytes(16).toString("hex");
+                const updated=await storage.updateAuthPassword(user.id,salt,(await passwordHash(newPassword,salt)).toString("hex"));
+                return sendJson(200,{user:await publicProfile(updated)}),true;
+            }
+            if (url.pathname==="/api/auth/change-password" && request.method==="POST") {
+                if (!storage) return sendJson(503,{error:"PERSISTENT_AUTH_REQUIRED"}),true;
+                const body=await readJson(request); if (body.tooLarge) return sendJson(413,{error:"BODY_TOO_LARGE"}),true; if (!body.value) return sendJson(400,{error:"INVALID_JSON"}),true;
+                const { old_password:oldPassword, new_password:newPassword } = body.value;
+                if (!user.password_salt||!user.password_hash) return sendJson(400,{error:"PASSWORD_NOT_SET",message:"Tài khoản chưa có mật khẩu. Hãy dùng chức năng thêm mật khẩu."}),true;
+                if (typeof newPassword!=="string"||newPassword.length<8||newPassword.length>128) return sendJson(400,{error:"INVALID_PASSWORD",message:"Mật khẩu mới phải từ 8 đến 128 ký tự."}),true;
+                const actual=await passwordHash(typeof oldPassword==="string"?oldPassword:"",user.password_salt), expected=Buffer.from(user.password_hash,"hex");
+                if (actual.length!==expected.length||!timingSafeEqual(actual,expected)) return sendJson(401,{error:"INVALID_CREDENTIALS",message:"Mật khẩu hiện tại không đúng."}),true;
                 const salt=randomBytes(16).toString("hex");
                 const updated=await storage.updateAuthPassword(user.id,salt,(await passwordHash(newPassword,salt)).toString("hex"));
                 return sendJson(200,{user:await publicProfile(updated)}),true;
