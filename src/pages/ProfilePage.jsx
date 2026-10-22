@@ -705,10 +705,11 @@ export default function ProfilePage({
                 <div className="reg-field">
                   <label>Tên đăng nhập</label>
                   <input
-                    type="text"
+                    type="email"
                     className="reg-input"
+                    name="username"
                     value={user?.email || user?.phone || user?.identifier || ""}
-                    readOnly
+                    onChange={() => {}}
                     autoComplete="username"
                   />
                 </div>
