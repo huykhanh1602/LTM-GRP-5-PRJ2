@@ -27,6 +27,7 @@ export default function GameLobby({
   user,
   onOpenLogin,
   onGoProfile,
+  onOpenTournament,
 }) {
   const game = GAME_CATALOG.find((g) => g.id === gameId) ?? GAME_CATALOG[0];
 
@@ -181,6 +182,12 @@ export default function GameLobby({
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button
                   className="btn primary"
+                  onClick={onOpenTournament}
+                >
+                  🏆 Vào phòng chờ giải đấu
+                </button>
+                <button
+                  className="btn"
                   onClick={onGoProfile}
                 >
                   ➕ Tạo giải đấu mới

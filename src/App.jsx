@@ -6,6 +6,7 @@ import ReplayPage from "./pages/ReplayPage.jsx";
 import Room from "./pages/Room.jsx";
 import DatabasePage from "./pages/DatabasePage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
+import TournamentLobby from "./pages/TournamentLobby.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
@@ -64,6 +65,13 @@ export default function App() {
         onBack={goHome}
       />
     );
+  } else if (view === "tournament") {
+    page = (
+      <TournamentLobby
+        user={auth.user}
+        onBack={() => setView(selectedGameId ? "lobby" : "home")}
+      />
+    );
   } else if (view === "replay") {
     page = (
       <ReplayPage
@@ -119,6 +127,7 @@ export default function App() {
           user={auth.user}
           onOpenLogin={() => setIsAuthOpen(true)}
           onGoProfile={() => setView("profile")}
+          onOpenTournament={() => setView("tournament")}
         />
       );
     }
@@ -193,11 +202,28 @@ export default function App() {
             >
               Bảng xếp hạng
             </button>
+
+            <button
+              className={view === "tournament" ? "on" : ""}
+              onClick={() => setView("tournament")}
+            >
+              🏆 Giải đấu
+            </button>
           </nav>
         )}
 
-        {/* ── Khu vực Phải: CHỈ 1 NÚT DUY NHẤT ĐỨNG MỘT MÌNH ── */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+        {/* ── Khu vực Phải: nút Giải đấu + nút tài khoản ── */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            className="quick-auth-btn"
+            onClick={() => setView("tournament")}
+            style={{
+              background:
+                "linear-gradient(135deg, var(--c-purple-deep), var(--c-pink-deep))",
+            }}
+          >
+            🏆 Giải đấu
+          </button>
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */
             <button
