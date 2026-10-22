@@ -12,6 +12,7 @@ export function createUserStore() {
         avatar_url: user.avatar_url,
         guest: user.guest,
         role: user.role ?? "player",
+        has_password: !!user.password_salt,
     });
 
     function cleanName(name) {

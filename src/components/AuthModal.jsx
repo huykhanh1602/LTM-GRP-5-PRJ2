@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "../styles/auth.css";
 
-export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle, onLoginFacebook }) {
+export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle, onSetPassword, onLoginFacebook }) {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -9,6 +9,16 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setNeedsPassword(false);
+      setPassword("");
+      setConfirmPassword("");
+      setError("");
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -54,7 +64,11 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
     setError("");
     try {
       if (onLoginGoogle) {
-        await onLoginGoogle();
+        const result = await onLoginGoogle();
+        if (result?.user?.has_password === false) {
+          setNeedsPassword(true);
+          return;
+        }
         onClose();
       }
     } catch (err) {
@@ -62,6 +76,74 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSetPassword(e) {
+    e.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      return setError("Mật khẩu phải từ 8 ký tự trở lên.");
+    }
+    if (password !== confirmPassword) {
+      return setError("Mật khẩu xác nhận không khớp.");
+    }
+    setLoading(true);
+    try {
+      await onSetPassword(password);
+      onClose();
+    } catch (err) {
+      setError(err.message || "Đặt mật khẩu thất bại.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (needsPassword) {
+    return (
+      <div className="auth-overlay" onClick={onClose}>
+        <div className="auth-card" onClick={(e) => e.stopPropagation()}>
+          <button className="auth-close" onClick={onClose} aria-label="Đóng">
+            ✕
+          </button>
+
+          <h2 className="auth-title">Đặt mật khẩu cho tài khoản</h2>
+          <div className="auth-divider" />
+          <p className="auth-note">
+            Tài khoản Google của bạn chưa có mật khẩu. Hãy đặt mật khẩu để có thể
+            đăng nhập bằng Email/SĐT sau này.
+          </p>
+
+          <form onSubmit={handleSetPassword} className="auth-form">
+            <label className="auth-field-label">Mật khẩu mới</label>
+            <input
+              type="password"
+              className="auth-input"
+              placeholder="Tối thiểu 8 ký tự"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              autoFocus
+            />
+
+            <label className="auth-field-label">Xác nhận mật khẩu</label>
+            <input
+              type="password"
+              className="auth-input"
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+            />
+
+            {error && <div className="auth-error">{error}</div>}
+
+            <button type="submit" className="auth-btn-submit" disabled={loading}>
+              {loading ? "Đang lưu..." : "Lưu mật khẩu"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (

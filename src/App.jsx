@@ -239,6 +239,7 @@ export default function App() {
         onLogin={auth.login}
         onRegister={auth.register}
         onLoginGoogle={auth.loginGoogle}
+        onSetPassword={auth.setPassword}
         onLoginFacebook={auth.loginFacebook}
       />
     </div>

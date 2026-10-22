@@ -154,6 +154,39 @@ export function useAuth() {
     }
   }, []);
 
+  // Đặt mật khẩu lần đầu cho tài khoản đăng nhập bằng Google
+  const setPassword = useCallback(async (newPassword) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: newPassword }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          json.message ||
+            (json.error === "PASSWORD_ALREADY_SET"
+              ? "Tài khoản đã có mật khẩu."
+              : "Đặt mật khẩu thất bại.")
+        );
+      }
+      setSession((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev, user: json.user };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        return updated;
+      });
+      return json;
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập.");
+    }
+  }, [token]);
+
   const loginFacebook = useCallback(async () => {
     try {
       const accessToken = await facebookCredential();
@@ -256,6 +289,7 @@ export function useAuth() {
     login,
     register,
     loginGoogle,
+    setPassword,
     loginFacebook,
     linkAccount,
     logout,
