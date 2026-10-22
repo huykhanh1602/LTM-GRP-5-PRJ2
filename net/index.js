@@ -1,3 +1,5 @@
+import { Pool } from 'pg';
+
 import config from "./config.js";
 import { createHttpServer } from "./http.js";
 import { createRegistry } from "./registry.js";
@@ -8,9 +10,82 @@ import { createStorage } from './storage/index.js';
 import { createRoomGateway } from "./roomGateway.js";
 import { createAuthService } from "./auth/authService.js";
 import { createWsGateway } from "./wsGateway.js";
+import { createEventBus } from "./application/EventBus.js";
+import { createRatingService } from "./application/rating/RatingService.js";
+import { createTournamentService } from "./application/tournament/TournamentService.js";
+import { createTournamentScheduler } from "./application/tournament/TournamentScheduler.js";
+import { createSingleEliminationFormat } from "./application/tournament/formats/singleElimination.js";
+import { createRoundRobinFormat } from "./application/tournament/formats/roundRobin.js";
 
+const databaseUrl = process.env.DATABASE_URL?.trim();
+
+// ── Storage (match store) ──────────────────────────────────────
 const matchStore = await createStorage();
 await matchStore.abortInterruptedMatches();
+
+// ── Rating Service ─────────────────────────────────────────────
+let ratingService = null;
+if (databaseUrl) {
+  const { createPostgresRatingRepository } = await import(
+    './infrastructure/persistence/postgres/PostgresRatingRepository.js'
+  );
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    ssl: { rejectUnauthorized: false },
+  });
+  const ratingRepo = createPostgresRatingRepository({ pool });
+  ratingService = createRatingService({ repository: ratingRepo });
+} else {
+  const { createSqliteRatingRepository } = await import(
+    './infrastructure/persistence/sqlite/SqliteRatingRepository.js'
+  );
+  const ratingRepo = createSqliteRatingRepository({ filename: ':memory:' });
+  ratingService = createRatingService({ repository: ratingRepo });
+}
+
+// ── Tournament Service ─────────────────────────────────────────
+let tournamentService = null;
+let tournamentScheduler = null;
+const events = createEventBus();
+
+if (databaseUrl) {
+  const { createPostgresTournamentRepository } = await import(
+    './infrastructure/persistence/postgres/PostgresTournamentRepository.js'
+  );
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    ssl: { rejectUnauthorized: false },
+  });
+  const tournamentRepo = createPostgresTournamentRepository({ pool });
+  const formats = new Map();
+  formats.set('single_elimination', createSingleEliminationFormat());
+  formats.set('round_robin', createRoundRobinFormat());
+
+  tournamentService = createTournamentService({
+    tournaments: tournamentRepo,
+    matchQueue: {
+      async enqueue(job) {
+        console.log(`[Tournament] Enqueue match ${job.matchId} for tournament ${job.tournamentId}`);
+        // Trong tương lai: đẩy vào hàng đợi thực tế để engine chạy.
+      },
+    },
+    formats,
+    events,
+  });
+
+  tournamentScheduler = createTournamentScheduler({
+    events,
+    tournaments: tournamentRepo,
+    tournamentService,
+  });
+  tournamentScheduler.start();
+}
+
+// ── Gateways ───────────────────────────────────────────────────
 const registry = createRegistry();
 const roomGateway = createRoomGateway({ matchStore });
 const authService = createAuthService({ storage: matchStore });
@@ -18,6 +93,7 @@ const wsGateway = createWsGateway({
     sessions: authService.sessions,
     users: authService.users,
     matchStore,
+    ratingService,
 });
 const server = createHttpServer({ matchStore, roomGateway, authService });
 
@@ -43,6 +119,21 @@ botGateway.setBotRegisteredHandler(
 spectatorGateway.setRoomInfoProvider(
     orchestrator.getRoomInfo
 );
+
+// ── Phát sự kiện MATCH_FINISHED khi orchestrator kết thúc trận ─
+const originalStopRoom = orchestrator.stopRoom;
+orchestrator.stopRoom = async function(roomId, result) {
+  const room = orchestrator.getRoom(roomId);
+  const matchId = room?.matchId;
+  const outcome = await originalStopRoom(roomId, result);
+  if (outcome && matchId) {
+    events.emit('MATCH_FINISHED', {
+      matchId,
+      result: result ?? {},
+    });
+  }
+  return outcome;
+};
 
 // Định tuyến kết nối WebSocket.
 server.on("upgrade", (request, socket, head) => {
@@ -110,4 +201,8 @@ export {
     roomGateway,
     wsGateway,
     authService,
+    ratingService,
+    tournamentService,
+    tournamentScheduler,
+    events,
 };

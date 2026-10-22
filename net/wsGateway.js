@@ -50,6 +50,7 @@ export function createWsGateway({
     sessions,
     users,
     ratings = createRatingStore(),
+    ratingService = null,
     queue = createMatchQueue(),
     runMatch = runEngineMatch,
     validateBot = validateBotSource,
@@ -203,14 +204,32 @@ export function createWsGateway({
                         const winner = message.winner === "team_a" || message.winner === "team_b" ? message.winner : "draw";
                         const over = { type: "game_over", match_id: room.matchId, winner, reason: message.reason ?? null };
                         if (room.mode === "ranked" && ids[0] && ids[1]) {
-                            const result = ratings.applyResult({
-                                gameId: room.gameId,
-                                userA: ids[0],
-                                userB: ids[1],
-                                winner: winner === "team_a" ? "a" : winner === "team_b" ? "b" : "draw",
-                            });
-                            over.elo_change_a = result.a.change;
-                            over.elo_change_b = result.b.change;
+                            const outcome = winner === "team_a" ? "a" : winner === "team_b" ? "b" : "draw";
+                            if (ratingService) {
+                                ratingService.applyMatchResult({
+                                    matchId: room.matchId,
+                                    gameId: room.gameId,
+                                    participants: { a: { userId: ids[0] }, b: { userId: ids[1] } },
+                                    outcome,
+                                    reason: message.reason ?? null,
+                                }).then((result) => {
+                                    if (result?.applied) {
+                                        over.elo_change_a = result.a.change;
+                                        over.elo_change_b = result.b.change;
+                                    }
+                                }).catch((error) => {
+                                    console.error("RatingService error:", error.message);
+                                });
+                            } else {
+                                const result = ratings.applyResult({
+                                    gameId: room.gameId,
+                                    userA: ids[0],
+                                    userB: ids[1],
+                                    winner: outcome,
+                                });
+                                over.elo_change_a = result.a.change;
+                                over.elo_change_b = result.b.change;
+                            }
                         }
                         emit(over);
                         broadcastRoom(room);
@@ -223,9 +242,11 @@ export function createWsGateway({
             }
             if (matchStore) {
                 try {
-                    matchStore.importReplay(replay, {
+                    await matchStore.importReplay(replay, {
                         roomId: room.code,
                         ranked: room.mode === "ranked",
+                        teamAId: ids[0],
+                        teamBId: ids[1],
                         startedAt,
                         endedAt: new Date().toISOString(),
                     });

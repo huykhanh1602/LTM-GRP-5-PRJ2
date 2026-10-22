@@ -31,7 +31,7 @@ const mapMatch = row => {
 
 export function createPostgresMatchStore({ connectionString = process.env.DATABASE_URL, poolOptions = {} } = {}) {
   if (!connectionString) throw new Error('DATABASE_URL is required for PostgreSQL storage');
-  const pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30000, ...poolOptions });
+  const pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: false }, ...poolOptions });
   const schema = readFileSync(new URL('./postgres-schema.sql', import.meta.url), 'utf8');
   let ready;
   function initialize() {
