@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 // ─────────────────────────────────────────────────────────────
 // useAuth — Quản lý trạng thái đăng nhập, profile & bảo mật
@@ -74,7 +74,12 @@ async function facebookCredential() {
 export function useAuth() {
   const [session, setSession] = useState(loadSession);
 
-  const user = session?.user ?? null;
+  const rawUser = session?.user ?? null;
+  // Backend trả avatar_url; UI đọc user.avatar -> chuẩn hoá để avatar Google là mặc định.
+  const user = useMemo(
+    () => (rawUser ? { ...rawUser, avatar: rawUser.avatar ?? rawUser.avatar_url ?? null } : null),
+    [rawUser],
+  );
   const token = session?.token ?? null;
   const isLoggedIn = !!token && user?.role !== "guest";
 
