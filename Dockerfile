@@ -14,4 +14,8 @@ COPY . .
 RUN mkdir -p /app/data && chown node:node /app/data
 
 USER node
+
+ENV COREPACK_ENABLE_STRICT=0
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
 CMD ["pnpm", "run", "server"]
