@@ -86,10 +86,6 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
           ✕
         </button>
 
-        <button type="button" className="auth-google-btn" onClick={async()=>{setLoading(true);setError("");try{await onLoginFacebook?.();onClose();}catch(err){setError(err.message||"Đăng nhập Facebook thất bại.");}finally{setLoading(false);}}} disabled={loading}>
-          <span aria-hidden="true">f</span><span>Tiếp tục với Facebook</span>
-        </button>
-
         <h2 className="auth-title">
           {isRegister ? "Đăng ký tài khoản" : "Đăng nhập tài khoản"}
         </h2>
