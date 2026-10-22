@@ -101,6 +101,11 @@ export default function GameLobby({
   }
 
   function joinRoom(roomCode, role, create = false) {
+    // Giải đấu dùng mã giải (VD: TOUR-KBB-2026), không phải mã phòng 4 ký tự.
+    if (mode === "tournament") {
+      onOpenTournament?.(roomCode.trim().toUpperCase());
+      return;
+    }
     if (role === "player" && !teamName.trim())
       return setProblem("Hãy nhập tên đội.");
     if (!roomCode.trim()) return setProblem("Hãy nhập mã phòng.");
