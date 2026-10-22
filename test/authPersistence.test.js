@@ -40,3 +40,51 @@ test("auth: password account, identity links and session survive backend restart
   assert.equal((await login.json()).user.id,account.user.id);
   t.after(()=>rm(dir,{recursive:true,force:true}));
 });
+
+test("auth: Facebook login verifies access_token, links identity and survives restart", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "ltm-auth-fb-")), filename = join(dir, "auth-fb.sqlite");
+  const serverInst = await start(t, filename, {
+    facebookAppId: "test-fb-app-id",
+    facebookAppSecret: "test-fb-secret",
+    verifyFacebook: async token => token === "valid-fb-token" ? {
+      sub: "fb-user-12345",
+      name: "FB Player",
+      email: "fbplayer@example.com",
+      email_verified: true,
+      picture: "https://example.com/fb.jpg",
+    } : null,
+  });
+
+  const post = (path, body, token) => fetch(`${serverInst.base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+
+  // 1. Login with Facebook directly
+  const fbLogin = await post("/api/auth/facebook", { access_token: "valid-fb-token" });
+  assert.equal(fbLogin.status, 200, await fbLogin.clone().text());
+  const fbData = await fbLogin.json();
+  assert.equal(fbData.user.display_name, "FB Player");
+  assert.equal(fbData.user.avatar_url, "https://example.com/fb.jpg");
+  assert.ok(fbData.token);
+
+  // 2. Reject invalid token
+  const badLogin = await post("/api/auth/facebook", { access_token: "invalid-token" });
+  assert.equal(badLogin.status, 401);
+
+  // 3. Reject when Facebook is not configured
+  const unconfiguredServer = await start(t, join(dir, "auth-unconfigured.sqlite"), {
+    facebookAppId: "",
+    facebookAppSecret: "",
+  });
+  const unconfRes = await fetch(`${unconfiguredServer.base}/api/auth/facebook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: "valid-fb-token" }),
+  });
+  assert.equal(unconfRes.status, 503);
+  assert.equal((await unconfRes.json()).error, "FACEBOOK_NOT_CONFIGURED");
+
+  t.after(() => rm(dir, { recursive: true, force: true }));
+});

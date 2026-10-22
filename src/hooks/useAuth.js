@@ -32,21 +32,44 @@ function loadScript(src, ready) {
 }
 
 async function googleCredential() {
-  const clientId=import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   if (!clientId) throw new Error("Google chưa được cấu hình trên giao diện.");
-  await loadScript("https://accounts.google.com/gsi/client",()=>!!window.google?.accounts?.id);
-  return new Promise((resolve,reject)=>{
-    window.google.accounts.id.initialize({client_id:clientId,callback:result=>result.credential?resolve(result.credential):reject(new Error("Google không trả thông tin đăng nhập."))});
-    window.google.accounts.id.prompt(notification=>{if(notification.isNotDisplayed?.()||notification.isSkippedMoment?.())reject(new Error("Không mở được cửa sổ Google. Hãy thử lại."));});
+  await loadScript("https://accounts.google.com/gsi/client", () => !!window.google?.accounts?.id);
+  return new Promise((resolve, reject) => {
+    window.google.accounts.id.initialize({ client_id: clientId, callback: result => result.credential ? resolve(result.credential) : reject(new Error("Google không trả thông tin đăng nhập.")) });
+    window.google.accounts.id.prompt(notification => { if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) reject(new Error("Không mở được cửa sổ Google. Hãy thử lại.")); });
   });
 }
 
+let fbInitialized = false;
+
 async function facebookCredential() {
-  const appId=import.meta.env.VITE_FACEBOOK_APP_ID;
-  if (!appId) throw new Error("Facebook chưa được cấu hình trên giao diện.");
-  await loadScript("https://connect.facebook.net/vi_VN/sdk.js",()=>!!window.FB);
-  window.FB.init({appId,cookie:true,xfbml:false,version:"v23.0"});
-  return new Promise((resolve,reject)=>window.FB.login(result=>result.authResponse?.accessToken?resolve(result.authResponse.accessToken):reject(new Error("Bạn chưa cấp quyền đăng nhập Facebook.")),{scope:"public_profile,email"}));
+  const appId = import.meta.env.VITE_FACEBOOK_APP_ID;
+  if (!appId) {
+    throw new Error("Facebook chưa được cấu hình trên giao diện (thiếu VITE_FACEBOOK_APP_ID trong .env).");
+  }
+  await loadScript("https://connect.facebook.net/vi_VN/sdk.js", () => !!window.FB);
+  if (!fbInitialized && window.FB) {
+    window.FB.init({
+      appId,
+      cookie: true,
+      xfbml: false,
+      version: "v20.0",
+    });
+    fbInitialized = true;
+  }
+  return new Promise((resolve, reject) => {
+    window.FB.login(
+      (result) => {
+        if (result.authResponse?.accessToken) {
+          resolve(result.authResponse.accessToken);
+        } else {
+          reject(new Error("Bạn chưa cấp quyền đăng nhập Facebook hoặc đã hủy thao tác."));
+        }
+      },
+      { scope: "public_profile,email" }
+    );
+  });
 }
 
 export function useAuth() {
@@ -132,11 +155,29 @@ export function useAuth() {
   }, []);
 
   const loginFacebook = useCallback(async () => {
-    const accessToken=await facebookCredential();
-    const res = await fetch(`${getApiBase()}/api/auth/facebook`, { method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({access_token:accessToken}) });
-    const json=await res.json().catch(()=>({}));
-    if (!res.ok||!json.token) throw new Error(json.error==="FACEBOOK_NOT_CONFIGURED"?"Facebook chưa được cấu hình trên máy chủ.":"Facebook chưa xác minh được tài khoản.");
-    persist(json); return json;
+    try {
+      const accessToken = await facebookCredential();
+      const res = await fetch(`${getApiBase()}/api/auth/facebook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: accessToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.token) {
+        persist(json);
+        return json;
+      }
+      throw new Error(
+        json.error === "FACEBOOK_NOT_CONFIGURED"
+          ? "Facebook chưa được cấu hình trên máy chủ (thiếu FACEBOOK_APP_ID / FACEBOOK_APP_SECRET)."
+          : json.error === "INVALID_PROVIDER_TOKEN"
+            ? "Mã truy cập Facebook không hợp lệ hoặc đã hết hạn."
+            : "Facebook chưa xác minh được tài khoản."
+      );
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập Facebook.");
+    }
   }, []);
 
   const linkAccount = useCallback(async (provider, credentials) => {
