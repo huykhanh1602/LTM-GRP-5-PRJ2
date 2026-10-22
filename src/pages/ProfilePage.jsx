@@ -702,6 +702,17 @@ export default function ProfilePage({
               )}
 
               <form onSubmit={hasPassword ? handleChangePasswordSubmit : handleSetPasswordSubmit} className="tournament-reg-form">
+                <div className="reg-field">
+                  <label>Tên đăng nhập</label>
+                  <input
+                    type="text"
+                    className="reg-input"
+                    value={user?.email || user?.phone || user?.identifier || ""}
+                    readOnly
+                    autoComplete="username"
+                  />
+                </div>
+
                 {hasPassword && (
                   <div className="reg-field">
                     <label>Mật khẩu hiện tại</label>
@@ -711,6 +722,7 @@ export default function ProfilePage({
                       placeholder="Nhập mật khẩu hiện tại"
                       value={oldPassword}
                       onChange={(e) => setOldPassword(e.target.value)}
+                      autoComplete="current-password"
                       disabled={isChangingPass}
                       required
                     />
@@ -725,6 +737,7 @@ export default function ProfilePage({
                     placeholder="Mật khẩu mới (tối thiểu 8 ký tự)"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
                     disabled={isChangingPass}
                     required
                   />
@@ -738,6 +751,7 @@ export default function ProfilePage({
                     placeholder="Nhập lại mật khẩu mới"
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    autoComplete="new-password"
                     disabled={isChangingPass}
                     required
                   />

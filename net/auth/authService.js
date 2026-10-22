@@ -55,7 +55,7 @@ export function createAuthService({
         return userId ? resolveUser(userId) : null;
     }
     async function publicProfile(user) {
-        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player",has_password:!!user.password_salt } : users.publicUser(user);
+        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,email:user.email??null,phone:user.phone??null,guest:false,role:user.role??"player",has_password:!!user.password_salt } : users.publicUser(user);
         if (storage) safe.linked_accounts = await storage.listAuthIdentities(user.id);
         return safe;
     }
