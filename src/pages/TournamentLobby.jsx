@@ -255,49 +255,14 @@ export function PageTournamentLobby({
 
   const myEntry = base.entryMap.get(tournament.myEntryId);
 
-  const phaseSwitcher = usingMockData ? (
-    <div className="tl-mock-controls">
-      <div className="tl-phase-switch" role="group" aria-label="Xem trước trạng thái giải đấu">
-        <span className="tl-phase-switch__label">Mock state</span>
-        {TOURNAMENT_PHASES.map((phase) => (
-          <button
-            key={phase.key}
-            type="button"
-            className={phaseKey === phase.key ? "is-active" : ""}
-            onClick={() => setPhaseKey(phase.key)}
-            title={phase.hint}
-          >
-            {phase.icon} {phase.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="tl-phase-switch" role="group" aria-label="Xem trước thể thức">
-        <span className="tl-phase-switch__label">Format</span>
-        <button
-          type="button"
-          className={mockFormat === FORMAT.SINGLE_ELIMINATION ? "is-active" : ""}
-          onClick={() => setMockFormat(FORMAT.SINGLE_ELIMINATION)}
-        >
-          Single Elim
-        </button>
-        <button
-          type="button"
-          className={mockFormat === FORMAT.ROUND_ROBIN ? "is-active" : ""}
-          onClick={() => setMockFormat(FORMAT.ROUND_ROBIN)}
-        >
-          Round Robin
-        </button>
-      </div>
-    </div>
-  ) : (
-    <LiveStatus connection={live.connection} lastMessageAt={live.lastMessageAt} />
-  );
-
   const showRegistration = tournament.status === "open";
 
   return (
-    <TournamentLayout tournament={tournament} onBack={onBack} actions={phaseSwitcher}>
+    <TournamentLayout
+      tournament={tournament}
+      onBack={onBack}
+      actions={<LiveStatus connection={live.connection} lastMessageAt={live.lastMessageAt} />}
+    >
       <TournamentHeader tournament={tournament} />
 
       <div className="tl-main">
