@@ -23,12 +23,16 @@ import "./styles/auth.css";
 //   "tournament"→ TournamentLobby (tournamentId=null → danh sách giải)
 //   "replay" | "history" | "rankings" | "profile"
 // ─────────────────────────────────────────────────────────────
-function hashFor({ view, gameId, tournamentId }) {
+function hashFor({ view, gameId, tournamentId, mode }) {
   if (view === "home" || !view) return "#/";
   if (view === "profile") return "#/profile";
   if (!gameId) return "#/";
   const base = `#/game/${gameId}`;
-  if (view === "lobby") return base;
+  if (view === "lobby") {
+    if (mode === "ranked") return `${base}/ranked`;
+    if (mode === "tournament") return `${base}/tournaments`;
+    return base;
+  }
   if (view === "history") return `${base}/history`;
   if (view === "rankings") return `${base}/rankings`;
   if (view === "replay") return `${base}/replay`;
@@ -38,19 +42,21 @@ function hashFor({ view, gameId, tournamentId }) {
 
 function parseHash(hash) {
   const parts = (hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  if (parts.length === 0) return { view: "home", gameId: null, tournamentId: null };
-  if (parts[0] === "profile") return { view: "profile", gameId: null, tournamentId: null };
+  if (parts.length === 0) return { view: "home", gameId: null, tournamentId: null, mode: "casual" };
+  if (parts[0] === "profile") return { view: "profile", gameId: null, tournamentId: null, mode: "casual" };
   if (parts[0] === "game" && parts[1]) {
     const gameId = parts[1];
     const sub = parts[2];
-    if (!sub) return { view: "lobby", gameId, tournamentId: null };
-    if (sub === "history") return { view: "history", gameId, tournamentId: null };
-    if (sub === "rankings") return { view: "rankings", gameId, tournamentId: null };
-    if (sub === "replay") return { view: "replay", gameId, tournamentId: null };
-    if (sub === "tournament") return { view: "tournament", gameId, tournamentId: parts[3] ?? null };
-    return { view: "lobby", gameId, tournamentId: null };
+    if (!sub) return { view: "lobby", gameId, tournamentId: null, mode: "casual" };
+    if (sub === "ranked") return { view: "lobby", gameId, tournamentId: null, mode: "ranked" };
+    if (sub === "tournaments") return { view: "lobby", gameId, tournamentId: null, mode: "tournament" };
+    if (sub === "history") return { view: "history", gameId, tournamentId: null, mode: "casual" };
+    if (sub === "rankings") return { view: "rankings", gameId, tournamentId: null, mode: "casual" };
+    if (sub === "replay") return { view: "replay", gameId, tournamentId: null, mode: "casual" };
+    if (sub === "tournament") return { view: "tournament", gameId, tournamentId: parts[3] ?? null, mode: "tournament" };
+    return { view: "lobby", gameId, tournamentId: null, mode: "casual" };
   }
-  return { view: "home", gameId: null, tournamentId: null };
+  return { view: "home", gameId: null, tournamentId: null, mode: "casual" };
 }
 
 export default function App() {
@@ -60,6 +66,7 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tournamentId, setTournamentId] = useState(null);
+  const [lobbyMode, setLobbyMode] = useState("casual");
 
   const room = useRoom();
   const auth = useAuth();
@@ -69,6 +76,8 @@ export default function App() {
   selectedGameIdRef.current = selectedGameId;
   const tournamentIdRef = useRef(tournamentId);
   tournamentIdRef.current = tournamentId;
+  const lobbyModeRef = useRef(lobbyMode);
+  lobbyModeRef.current = lobbyMode;
   const roomRef = useRef(room);
   roomRef.current = room;
 
@@ -80,6 +89,7 @@ export default function App() {
     }
     setSelectedGameId(route.gameId ?? null);
     setTournamentId(route.tournamentId ?? null);
+    setLobbyMode(route.mode ?? "casual");
     setView(route.view);
   }, []);
 
@@ -89,6 +99,7 @@ export default function App() {
       view: route.view,
       gameId: route.gameId !== undefined ? route.gameId : selectedGameIdRef.current,
       tournamentId: route.tournamentId !== undefined ? route.tournamentId : tournamentIdRef.current,
+      mode: route.mode !== undefined ? route.mode : lobbyModeRef.current,
     };
     applyRoute(next);
     const url = hashFor(next);
@@ -115,7 +126,7 @@ export default function App() {
 
   // Chọn game từ trang chủ
   function selectGame(gameId) {
-    navigate({ view: "lobby", gameId, tournamentId: null });
+    navigate({ view: "lobby", gameId, tournamentId: null, mode: "casual" });
   }
 
   // Mở phòng chờ của một giải đấu cụ thể (id = null → hiện danh sách giải để chọn)
@@ -218,6 +229,8 @@ export default function App() {
           queue={room.phase === "queue" ? room.queue : null}
           error={room.error}
           user={auth.user}
+          mode={lobbyMode}
+          onModeChange={(m) => navigate({ view: "lobby", mode: m }, { replace: true })}
           onOpenLogin={() => setIsAuthOpen(true)}
           onGoProfile={() => navigate({ view: "profile" })}
           onOpenTournament={openTournament}

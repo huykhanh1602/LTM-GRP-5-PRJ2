@@ -35,6 +35,8 @@ export default function GameLobby({
   queue,
   error,
   user,
+  mode: modeProp,
+  onModeChange,
   onOpenLogin,
   onGoProfile,
   onOpenTournament,
@@ -43,7 +45,11 @@ export default function GameLobby({
 
   const firstEnabled =
     MODE_ORDER.find((m) => game.modes[m]?.enabled) ?? "casual";
-  const [mode, setMode] = useState(firstEnabled);
+  const mode = modeProp ?? firstEnabled;
+  const setMode = (m) => {
+    if (modeProp === undefined) return;
+    onModeChange?.(m);
+  };
   const [teamName, setTeamName] = useState(user?.display_name || "");
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState("");
