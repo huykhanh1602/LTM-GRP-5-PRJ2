@@ -100,11 +100,22 @@ export default function GameLobby({
     });
   }
 
+  // Mở lobby giải đấu: mã giải (VD: TOUR-KBB-2026) không đi qua join_room.
+  function openTournament(tournament = null, { requireTeam = false } = {}) {
+    if (requireTeam && !teamName.trim()) {
+      return setProblem("Hãy nhập tên đội hoặc bot của bạn.");
+    }
+    setProblem("");
+    onOpenTournament?.({
+      tournament,
+      teamName: teamName.trim(),
+    });
+  }
+
   function joinRoom(roomCode, role, create = false) {
-    // Giải đấu dùng mã giải (VD: TOUR-KBB-2026), không phải mã phòng 4 ký tự.
+    // Giải đấu dùng mã giải, không phải mã phòng 4 ký tự.
     if (mode === "tournament") {
-      onOpenTournament?.(roomCode.trim().toUpperCase());
-      return;
+      return openTournament();
     }
     if (role === "player" && !teamName.trim())
       return setProblem("Hãy nhập tên đội.");
@@ -184,10 +195,27 @@ export default function GameLobby({
               <p className="muted" style={{ maxWidth: "460px", margin: "4px auto 14px", fontSize: "13px" }}>
                 Tất cả giải đấu tạo bởi cộng đồng đều có hiệu lực ngay. Tham gia thi đấu hoặc tạo giải đấu riêng không cần chờ xét duyệt!
               </p>
+
+              <label className="field" style={{ maxWidth: "360px", margin: "0 auto 14px", textAlign: "left" }}>
+                Tên đội / Tên Bot
+                <input
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  maxLength={30}
+                  placeholder="Ví dụ: Naruto Bot"
+                  disabled={connecting}
+                />
+              </label>
+              {problem && (
+                <p className="err" role="alert" style={{ margin: "-6px 0 12px" }}>
+                  {problem}
+                </p>
+              )}
+
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button
                   className="btn primary"
-                  onClick={onOpenTournament}
+                  onClick={() => openTournament()}
                 >
                   🏆 Vào phòng chờ giải đấu
                 </button>
@@ -286,18 +314,14 @@ export default function GameLobby({
                         {isOngoing ? (
                           <button
                             className="btn small primary"
-                            onClick={() => {
-                              joinRoom(t.id, "player", false);
-                            }}
+                            onClick={() => openTournament(t, { requireTeam: true })}
                           >
                             Tham gia thi đấu ⚔️
                           </button>
                         ) : isUpcoming ? (
                           <button
                             className="btn small"
-                            onClick={() => {
-                              alert(`Đã đăng ký tham gia ${t.name}! Vui lòng có mặt lúc: ${t.start_time}`);
-                            }}
+                            onClick={() => openTournament(t, { requireTeam: true })}
                           >
                             Đăng ký tham gia 📝
                           </button>
@@ -423,7 +447,7 @@ export default function GameLobby({
         {connecting && !queue && (
           <p className="hint">Đang kết nối…</p>
         )}
-        {(problem || error) && (
+        {(problem || error) && mode !== "tournament" && (
           <p className="err">{problem || error}</p>
         )}
       </div>

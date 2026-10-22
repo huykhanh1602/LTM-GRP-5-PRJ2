@@ -26,6 +26,7 @@ export default function App() {
   const [databaseReplay, setDatabaseReplay] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [tournamentEntry, setTournamentEntry] = useState(null);
 
   const room = useRoom();
   const auth = useAuth();
@@ -36,12 +37,19 @@ export default function App() {
     setView("lobby");
   }
 
+  // Mở lobby giải đấu, kèm giải được chọn và tên đội (nếu có)
+  function openTournament(payload = null) {
+    setTournamentEntry(payload);
+    setView("tournament");
+  }
+
   // Quay về trang chủ
   function goHome() {
     if (room.phase === "idle" || room.phase === "connecting" || room.phase === "queue") {
       room.leave();
     }
     setSelectedGameId(null);
+    setTournamentEntry(null);
     setView("home");
   }
 
@@ -69,6 +77,8 @@ export default function App() {
     page = (
       <TournamentLobby
         user={auth.user}
+        tournamentMeta={tournamentEntry?.tournament ?? null}
+        myTeamName={tournamentEntry?.teamName ?? ""}
         onBack={() => setView(selectedGameId ? "lobby" : "home")}
       />
     );
@@ -127,7 +137,7 @@ export default function App() {
           user={auth.user}
           onOpenLogin={() => setIsAuthOpen(true)}
           onGoProfile={() => setView("profile")}
-          onOpenTournament={() => setView("tournament")}
+          onOpenTournament={openTournament}
         />
       );
     }
@@ -205,7 +215,7 @@ export default function App() {
 
             <button
               className={view === "tournament" ? "on" : ""}
-              onClick={() => setView("tournament")}
+              onClick={() => openTournament()}
             >
               🏆 Giải đấu
             </button>
@@ -216,7 +226,7 @@ export default function App() {
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
           <button
             className="quick-auth-btn"
-            onClick={() => setView("tournament")}
+            onClick={() => openTournament()}
             style={{
               background:
                 "linear-gradient(135deg, var(--c-purple-deep), var(--c-pink-deep))",

@@ -21,6 +21,7 @@ import {
   buildFeedFromRounds,
   computeStandingsFromRounds,
   mergeLiveUpdates,
+  normalizeStatus,
   normalizeTournament,
 } from "../utils/tournamentView.js";
 import "../styles/tournament.css";
@@ -132,6 +133,8 @@ function MatchViewerModal({ match, tournament, onClose }) {
 // ─────────────────────────────────────────────────────────────
 export function PageTournamentLobby({
   tournamentData = null,
+  tournamentMeta = null,
+  myTeamName = "",
   user = null,
   onBack,
   liveSocket = true,
@@ -152,10 +155,48 @@ export function PageTournamentLobby({
     setSnapshot(null);
   }, [tournamentData]);
 
+  // Giải được chọn ngoài sảnh: đồng bộ trạng thái mock theo status thật
+  useEffect(() => {
+    if (!tournamentMeta?.status) return;
+    const nextPhase = normalizeStatus(tournamentMeta.status);
+    if (TOURNAMENT_PHASES.some((phase) => phase.key === nextPhase)) {
+      setPhaseKey(nextPhase);
+    }
+  }, [tournamentMeta?.status]);
+
   const mockSource = useMemo(() => {
     const base = getTournamentFixture(phaseKey);
-    return mockFormat === FORMAT.ROUND_ROBIN ? buildRoundRobinFixture(base) : base;
-  }, [phaseKey, mockFormat]);
+    const fixture =
+      mockFormat === FORMAT.ROUND_ROBIN ? buildRoundRobinFixture(base) : base;
+
+    if (!tournamentMeta) return fixture;
+
+    const myEntry = myTeamName
+      ? {
+          id: `me-${user?.id ?? "guest"}`,
+          teamName: myTeamName,
+          botName: `${myTeamName}.py`,
+          owner: user?.display_name ?? myTeamName,
+          rating: 1000,
+          seed: fixture.entries.length + 1,
+          avatar: user?.avatar || "/icons.png",
+        }
+      : null;
+    const entries = myEntry ? [...fixture.entries, myEntry] : fixture.entries;
+
+    return {
+      ...fixture,
+      ...(tournamentMeta.id ? { id: tournamentMeta.id, code: tournamentMeta.id } : {}),
+      ...(tournamentMeta.name ? { name: tournamentMeta.name } : {}),
+      ...(tournamentMeta.organizer ? { organizer: tournamentMeta.organizer } : {}),
+      ...(tournamentMeta.prize ? { prize: tournamentMeta.prize } : {}),
+      ...(tournamentMeta.description ? { description: tournamentMeta.description } : {}),
+      ...(tournamentMeta.start_time ? { startAt: tournamentMeta.start_time } : {}),
+      entries,
+      registered: entries.length,
+      ...(myEntry ? { myEntryId: myEntry.id } : {}),
+    };
+  }, [phaseKey, mockFormat, tournamentMeta, myTeamName, user]);
 
   const source = snapshot ?? tournamentData ?? mockSource;
   const fallback = usingMockData ? mockSource : {};
