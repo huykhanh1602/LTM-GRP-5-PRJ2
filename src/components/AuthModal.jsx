@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "../styles/auth.css";
 
-export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle, onLoginFacebook }) {
+export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLoginGoogle, onSetPassword, onLoginFacebook }) {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -9,6 +9,16 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setNeedsPassword(false);
+      setPassword("");
+      setConfirmPassword("");
+      setError("");
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -54,7 +64,11 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
     setError("");
     try {
       if (onLoginGoogle) {
-        await onLoginGoogle();
+        const result = await onLoginGoogle();
+        if (result?.user?.has_password === false) {
+          setNeedsPassword(true);
+          return;
+        }
         onClose();
       }
     } catch (err) {
@@ -64,19 +78,72 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
     }
   }
 
-  async function handleFacebookClick() {
-    setLoading(true);
+  async function handleSetPassword(e) {
+    e.preventDefault();
     setError("");
+    if (password.length < 8) {
+      return setError("Mật khẩu phải từ 8 ký tự trở lên.");
+    }
+    if (password !== confirmPassword) {
+      return setError("Mật khẩu xác nhận không khớp.");
+    }
+    setLoading(true);
     try {
-      if (onLoginFacebook) {
-        await onLoginFacebook();
-        onClose();
-      }
+      await onSetPassword(password);
+      onClose();
     } catch (err) {
-      setError(err.message || "Đăng nhập Facebook thất bại.");
+      setError(err.message || "Đặt mật khẩu thất bại.");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (needsPassword) {
+    return (
+      <div className="auth-overlay" onClick={onClose}>
+        <div className="auth-card" onClick={(e) => e.stopPropagation()}>
+          <button className="auth-close" onClick={onClose} aria-label="Đóng">
+            ✕
+          </button>
+
+          <h2 className="auth-title">Đặt mật khẩu cho tài khoản</h2>
+          <div className="auth-divider" />
+          <p className="auth-note">
+            Tài khoản Google của bạn chưa có mật khẩu. Hãy đặt mật khẩu để có thể
+            đăng nhập bằng Email/SĐT sau này.
+          </p>
+
+          <form onSubmit={handleSetPassword} className="auth-form">
+            <label className="auth-field-label">Mật khẩu mới</label>
+            <input
+              type="password"
+              className="auth-input"
+              placeholder="Tối thiểu 8 ký tự"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              autoFocus
+            />
+
+            <label className="auth-field-label">Xác nhận mật khẩu</label>
+            <input
+              type="password"
+              className="auth-input"
+              placeholder="Nhập lại mật khẩu"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+            />
+
+            {error && <div className="auth-error">{error}</div>}
+
+            <button type="submit" className="auth-btn-submit" disabled={loading}>
+              {loading ? "Đang lưu..." : "Lưu mật khẩu"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -123,13 +190,13 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister, onLogi
           <button
             type="button"
             className="auth-facebook-btn"
-            onClick={handleFacebookClick}
-            disabled={loading}
+            disabled
+            title="Đăng nhập Facebook đang được phát triển"
           >
             <svg className="facebook-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>
-            <span>Tiếp tục với Facebook</span>
+            <span>Facebook đang phát triển</span>
           </button>
         </div>
 

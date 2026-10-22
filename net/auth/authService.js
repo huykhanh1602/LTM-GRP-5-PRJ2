@@ -48,14 +48,14 @@ export function createAuthService({
     allowGuest = process.env.AUTH_ALLOW_GUEST !== "0",
 } = {}) {
     const memoryUsers = suppliedUsers ?? createUserStore();
-    const users = storage ? { get:id=>storage.getAuthUser(id), publicUser:user=>({id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player"}) } : memoryUsers;
+    const users = storage ? { get:id=>storage.getAuthUser(id), publicUser:user=>({id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player",has_password:!!user.password_salt}) } : memoryUsers;
     const resolveUser = async id => storage ? storage.getAuthUser(id) : users.get(id);
     async function userForToken(token) {
         const userId = await sessions.resolve(token);
         return userId ? resolveUser(userId) : null;
     }
     async function publicProfile(user) {
-        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player" } : users.publicUser(user);
+        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player",has_password:!!user.password_salt } : users.publicUser(user);
         if (storage) safe.linked_accounts = await storage.listAuthIdentities(user.id);
         return safe;
     }
@@ -93,12 +93,22 @@ export function createAuthService({
         const session=async user=>sendJson(200,{token:await sessions.issue(user.id),user:await publicProfile(user)});
         const token=request.headers.authorization?.replace(/^Bearer\s+/i,"");
         const linkMatch=url.pathname.match(/^\/api\/auth\/link\/(google|facebook)$/);
-        if (url.pathname==="/api/me" || url.pathname==="/api/auth/identities" || url.pathname==="/api/auth/logout" || linkMatch) {
+        if (url.pathname==="/api/me" || url.pathname==="/api/auth/identities" || url.pathname==="/api/auth/logout" || url.pathname==="/api/auth/set-password" || linkMatch) {
             const user=await userForToken(token);
             if (!user) return sendJson(401,{error:"INVALID_TOKEN"}),true;
             if (url.pathname==="/api/me" && request.method==="GET") return sendJson(200,{user:await publicProfile(user)}),true;
             if (url.pathname==="/api/auth/identities" && request.method==="GET") return sendJson(200,{items:await storage.listAuthIdentities(user.id)}),true;
             if (url.pathname==="/api/auth/logout" && request.method==="POST") { await sessions.revoke(token); return sendJson(200,{ok:true}),true; }
+            if (url.pathname==="/api/auth/set-password" && request.method==="POST") {
+                if (!storage) return sendJson(503,{error:"PERSISTENT_AUTH_REQUIRED"}),true;
+                const body=await readJson(request); if (body.tooLarge) return sendJson(413,{error:"BODY_TOO_LARGE"}),true; if (!body.value) return sendJson(400,{error:"INVALID_JSON"}),true;
+                const newPassword=body.value.password;
+                if (typeof newPassword!=="string"||newPassword.length<8||newPassword.length>128) return sendJson(400,{error:"INVALID_PASSWORD",message:"Mật khẩu phải từ 8 đến 128 ký tự."}),true;
+                if (user.password_salt) return sendJson(409,{error:"PASSWORD_ALREADY_SET",message:"Tài khoản đã có mật khẩu."}),true;
+                const salt=randomBytes(16).toString("hex");
+                const updated=await storage.updateAuthPassword(user.id,salt,(await passwordHash(newPassword,salt)).toString("hex"));
+                return sendJson(200,{user:await publicProfile(updated)}),true;
+            }
             if (linkMatch && request.method==="POST") {
                 const body=await readJson(request); if (!body.value) return sendJson(400,{error:"INVALID_JSON"}),true;
                 const provider=linkMatch[1]; let claims;

@@ -86,7 +86,7 @@ export function useAuth() {
 
   // Đăng xuất
   const logout = useCallback(() => {
-    if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => { });
     localStorage.removeItem(STORAGE_KEY);
     setSession(null);
   }, [token]);
@@ -135,7 +135,7 @@ export function useAuth() {
   const loginGoogle = useCallback(async (idToken) => {
     try {
       if (!idToken) {
-        idToken=await googleCredential();
+        idToken = await googleCredential();
       }
       const res = await fetch(`${getApiBase()}/api/auth/google`, {
         method: "POST",
@@ -153,6 +153,39 @@ export function useAuth() {
       throw new Error("Không thể kết nối máy chủ đăng nhập Google.");
     }
   }, []);
+
+  // Đặt mật khẩu lần đầu cho tài khoản đăng nhập bằng Google
+  const setPassword = useCallback(async (newPassword) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: newPassword }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          json.message ||
+            (json.error === "PASSWORD_ALREADY_SET"
+              ? "Tài khoản đã có mật khẩu."
+              : "Đặt mật khẩu thất bại.")
+        );
+      }
+      setSession((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev, user: json.user };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        return updated;
+      });
+      return json;
+    } catch (err) {
+      if (err.message && err.message !== "Failed to fetch") throw err;
+      throw new Error("Không thể kết nối máy chủ đăng nhập.");
+    }
+  }, [token]);
 
   const loginFacebook = useCallback(async () => {
     try {
@@ -181,7 +214,7 @@ export function useAuth() {
   }, []);
 
   const linkAccount = useCallback(async (provider, credentials) => {
-    if (!credentials) credentials=provider==="google"?{id_token:await googleCredential()}:provider==="facebook"?{access_token:await facebookCredential()}:null;
+    if (!credentials) credentials = provider === "google" ? { id_token: await googleCredential() } : provider === "facebook" ? { access_token: await facebookCredential() } : null;
     if (!credentials) throw new Error("Liên kết số điện thoại cần xác minh OTP.");
     const res = await fetch(`${getApiBase()}/api/auth/link/${provider}`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -256,6 +289,7 @@ export function useAuth() {
     login,
     register,
     loginGoogle,
+    setPassword,
     loginFacebook,
     linkAccount,
     logout,

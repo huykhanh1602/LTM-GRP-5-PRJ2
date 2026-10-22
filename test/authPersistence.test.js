@@ -41,6 +41,35 @@ test("auth: password account, identity links and session survive backend restart
   t.after(()=>rm(dir,{recursive:true,force:true}));
 });
 
+test("auth: Google account without password can set one, then log in with email", async t => {
+  const dir=await mkdtemp(join(tmpdir(),"ltm-auth-setpw-")), filename=join(dir,"auth-setpw.sqlite");
+  const inst=await start(t,filename,{
+    verifyGoogle:async token=>token==="valid-google-setpw"?{sub:"google-person-setpw",email:"gplayer@example.com",email_verified:true,name:"G Player"}:null,
+  });
+  const post=(path,body,token)=>fetch(`${inst.base}${path}`,{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify(body)});
+
+  const google=await post("/api/auth/google",{id_token:"valid-google-setpw"});
+  assert.equal(google.status,200,await google.clone().text());
+  const account=await google.json();
+  assert.equal(account.user.has_password,false);
+
+  const tooShort=await post("/api/auth/set-password",{password:"short"},account.token);
+  assert.equal(tooShort.status,400);
+
+  const saved=await post("/api/auth/set-password",{password:"strong-pass-456"},account.token);
+  assert.equal(saved.status,200,await saved.clone().text());
+  assert.equal((await saved.json()).user.has_password,true);
+
+  const again=await post("/api/auth/set-password",{password:"another-pass-789"},account.token);
+  assert.equal(again.status,409);
+
+  const login=await post("/api/auth/login",{identifier:"gplayer@example.com",password:"strong-pass-456"});
+  assert.equal(login.status,200,await login.clone().text());
+  assert.equal((await login.json()).user.id,account.user.id);
+
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+});
+
 test("auth: Facebook login verifies access_token, links identity and survives restart", async t => {
   const dir = await mkdtemp(join(tmpdir(), "ltm-auth-fb-")), filename = join(dir, "auth-fb.sqlite");
   const serverInst = await start(t, filename, {

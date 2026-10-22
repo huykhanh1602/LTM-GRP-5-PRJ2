@@ -200,6 +200,13 @@
   border-radius: 6px;
 }
 
+.auth-note {
+  font-size: 13.5px;
+  color: #475569;
+  line-height: 1.55;
+  margin: 0 0 6px;
+}
+
 /* Nút đỏ đặc trưng kiểu GameVui */
 .auth-btn-submit {
   width: 100%;
