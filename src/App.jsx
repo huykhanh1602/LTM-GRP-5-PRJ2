@@ -122,9 +122,19 @@ export default function App() {
 
   // Áp route vào state (không đẩy history) — dùng cho popstate & lần đầu.
   const applyRoute = useCallback((route) => {
+    const phase = roomRef.current.phase;
     if (route.view === "home") {
-      const phase = roomRef.current.phase;
+      // Roi phong khi ve trang chu o cac giai doan chua vao match
       if (phase === "idle" || phase === "connecting" || phase === "queue") roomRef.current.leave();
+    } else if (route.view === "lobby") {
+      // Roi phong khi chuyen sang game khac trong khi dang trong phong/match
+      const currentGameId = selectedGameIdRef.current;
+      if (
+        currentGameId !== route.gameId &&
+        (phase === "match" || phase === "room" || phase === "connecting" || phase === "queue")
+      ) {
+        roomRef.current.leave();
+      }
     }
     setSelectedGameId(route.gameId ?? null);
     setTournamentId(route.tournamentId ?? null);
