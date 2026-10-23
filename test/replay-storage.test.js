@@ -10,18 +10,22 @@ const sample = JSON.parse(readFileSync(new URL('../replay.json', import.meta.url
 test('Python replay imports atomically and round-trips through the real frontend renderer', t => {
   const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
   const match = store.importReplay(sample, { teamAId: 'alpha', teamBId: 'beta' });
-  assert.equal(match.winner_id, 'alpha');
-  assert.deepEqual(match.final_state.find(piece => piece.id === 'A1').pos, [7, 0]);
-  assert.ok(!match.final_state.some(piece => piece.id === 'A2' || piece.id === 'B3'));
-  assert.equal(store.getRankings()[0].points, 3);
+  const expectedWinnerId = sample.match_info.winner === 'team_a' ? 'alpha' : 'beta';
+  const expectedWinner = sample.match_info.winner;
+  assert.equal(match.winner_id, expectedWinnerId);
+  assert.deepEqual(match.final_state.find(piece => piece.id === 'A1').pos, buildFrames(sample).at(-1).pieces.A1.pos);
+  const expectedFinalPieces = Object.values(buildFrames(sample).at(-1).pieces)
+    .filter(piece => piece.alive).map(({ alive, ...piece }) => piece);
+  assert.deepEqual(match.final_state, expectedFinalPieces);
+  assert.equal(store.getRankings().find(row => row.team_id === expectedWinnerId).points, 3);
   const replay = parseReplay(store.getReplay(match.id));
   assert.deepEqual(replay.match_info.teams, sample.match_info.teams);
-  assert.equal(replay.match_info.winner, 'team_a');
+  assert.equal(replay.match_info.winner, expectedWinner);
   assert.equal(replay.turns.length, sample.turns.length);
   const frames = buildFrames(replay);
-  assert.equal(frames.at(-1).over.winner, 'team_a');
+  assert.equal(frames.at(-1).over.winner, expectedWinner);
   assert.throws(() => store.importReplay(sample), /already exists/);
-  assert.equal(store.getRankings()[0].points, 3);
+  assert.equal(store.getRankings().find(row => row.team_id === expectedWinnerId).points, 3);
 });
 
 test('a malformed imported turn rolls back all teams, match and turns', t => {
@@ -36,7 +40,7 @@ test('a malformed imported turn rolls back all teams, match and turns', t => {
 test('conflicting replay results cannot display a different winner from the ranking', t => {
   const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
   const replay = structuredClone(sample);
-  replay.match_info.winner = 'team_b';
+  replay.match_info.winner = sample.match_info.winner === 'team_a' ? 'team_b' : 'team_a';
   assert.throws(() => store.importReplay(replay), /disagrees/);
   assert.equal(store.listMatches().total, 0);
 });

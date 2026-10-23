@@ -48,6 +48,7 @@ export function createSqliteRatingRepository({
   const database = db ?? new DatabaseSync(filename);
   database.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   database.exec(DDL);
+  let transactionQueue = Promise.resolve();
 
   function selectRow(gameId, userId) {
     const row = database.prepare(`
@@ -79,73 +80,79 @@ export function createSqliteRatingRepository({
     };
   }
 
-  async function transaction(work) {
-    database.exec('BEGIN IMMEDIATE');
-    const now = clock().toISOString();
+  function transaction(work) {
+    const current = transactionQueue.then(async () => {
+      database.exec('BEGIN IMMEDIATE');
+      const now = clock().toISOString();
 
-    const tx = {
-      async claimMatch({ matchId, gameId }) {
-        const result = database.prepare(`
-          INSERT INTO rating_applied_matches (match_id, game_id, created_at)
-          VALUES (?, ?, ?)
-          ON CONFLICT (match_id) DO NOTHING
-        `).run(matchId, gameId, now);
-        return result.changes > 0;
-      },
+      const tx = {
+        async claimMatch({ matchId, gameId }) {
+          const result = database.prepare(`
+            INSERT INTO rating_applied_matches (match_id, game_id, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (match_id) DO NOTHING
+          `).run(matchId, gameId, now);
+          return result.changes > 0;
+        },
 
-      async getForUpdate(gameId, userId) {
-        return ensureRow(gameId, userId);
-      },
+        async getForUpdate(gameId, userId) {
+          return ensureRow(gameId, userId);
+        },
 
-      async save(rows) {
-        const statement = database.prepare(`
-          UPDATE ratings
-          SET rating = ?, games_played = ?, wins = ?, losses = ?, draws = ?, updated_at = ?
-          WHERE game_id = ? AND user_id = ?
-        `);
-        for (const row of rows) {
-          statement.run(
-            row.rating,
-            row.gamesPlayed,
-            row.wins,
-            row.losses,
-            row.draws,
-            row.updatedAt,
-            row.gameId,
-            row.userId,
+        async save(rows) {
+          const statement = database.prepare(`
+            UPDATE ratings
+            SET rating = ?, games_played = ?, wins = ?, losses = ?, draws = ?, updated_at = ?
+            WHERE game_id = ? AND user_id = ?
+          `);
+          for (const row of rows) {
+            statement.run(
+              row.rating,
+              row.gamesPlayed,
+              row.wins,
+              row.losses,
+              row.draws,
+              row.updatedAt,
+              row.gameId,
+              row.userId,
+            );
+          }
+        },
+
+        async appendHistory(entry) {
+          database.prepare(`
+            INSERT INTO rating_history
+              (id, match_id, game_id, user_id, rating_before, rating_after,
+               delta, outcome, reason, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            entry.id,
+            entry.matchId,
+            entry.gameId,
+            entry.userId,
+            entry.before,
+            entry.after,
+            entry.delta,
+            entry.outcome,
+            entry.reason,
+            entry.createdAt,
           );
-        }
-      },
+        },
+      };
 
-      async appendHistory(entry) {
-        database.prepare(`
-          INSERT INTO rating_history
-            (id, match_id, game_id, user_id, rating_before, rating_after,
-             delta, outcome, reason, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          entry.id,
-          entry.matchId,
-          entry.gameId,
-          entry.userId,
-          entry.before,
-          entry.after,
-          entry.delta,
-          entry.outcome,
-          entry.reason,
-          entry.createdAt,
-        );
-      },
-    };
-
-    try {
-      const value = await work(tx);
-      database.exec('COMMIT');
-      return value;
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    }
+      try {
+        const value = await work(tx);
+        database.exec('COMMIT');
+        return value;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    });
+    // Keep the queue usable after a failed transaction while returning the
+    // failure to the caller that submitted it.
+    transactionQueue = current.catch(() => undefined);
+    return current;
   }
 
   async function get(gameId, userId) {

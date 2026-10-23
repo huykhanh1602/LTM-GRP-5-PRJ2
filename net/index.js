@@ -41,7 +41,8 @@ if (databaseUrl) {
   const { createSqliteRatingRepository } = await import(
     './infrastructure/persistence/sqlite/SqliteRatingRepository.js'
   );
-  const ratingRepo = createSqliteRatingRepository({ filename: ':memory:' });
+  // Elo must survive backend restarts just like match history and accounts.
+  const ratingRepo = createSqliteRatingRepository();
   ratingService = createRatingService({ repository: ratingRepo });
 }
 
@@ -189,7 +190,9 @@ server.listen(config.port,"0.0.0.0", () => {
 });
 
 server.on("error", (error) => {
-    console.error("HTTP server error:", error.message);
+    console.error(`[Backend] ${error.code ?? "SERVER_ERROR"}: ${error.message}`);
+    // Do not leave a healthy-looking Node process running without a listener.
+    process.exitCode = 1;
 });
 
 export {

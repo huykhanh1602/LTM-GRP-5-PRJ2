@@ -43,8 +43,10 @@ export function toUiMessage(m, myUserId) {
                 match_id: m.match_id,
                 winner: m.winner === "draw" ? null : m.winner,
                 reason: m.reason ?? null,
-                elo_change_a: m.elo_change_a,
-                elo_change_b: m.elo_change_b,
+                ...(m.elo_change_a !== undefined ? { elo_change_a: m.elo_change_a } : {}),
+                ...(m.elo_change_b !== undefined ? { elo_change_b: m.elo_change_b } : {}),
+                ...(typeof m.history_saved === "boolean" ? { history_saved: m.history_saved } : {}),
+                ...(typeof m.rating_saved === "boolean" ? { rating_saved: m.rating_saved } : {}),
             };
         case "match_start":
         case "turn":
@@ -63,7 +65,7 @@ const SUBMIT_ERRORS = new Set([
     "INVALID_BOT", "BOT_TOO_LARGE", "UNSUPPORTED_LANGUAGE", "WRONG_STATE", "NOT_IN_ROOM", "INVALID_MESSAGE", "RATE_LIMITED",
 ]);
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, create, find, mode = "casual", gameId = "rps_chess" }) {
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken = null, role, create, find, mode = "casual", gameId = "rps_chess" }) {
     const listeners = new Set();
     const emit = (m) => listeners.forEach((l) => l(m));
     let ws = null;
@@ -106,16 +108,18 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, role, crea
     }
 
     async function start() {
-        let token;
+        let token = authToken;
         try {
-            const res = await fetch(apiUrl("/api/auth/guest"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ display_name: teamName }),
-            });
-            const body = await res.json();
-            if (!res.ok) throw new Error(body.message || body.error || `Lỗi ${res.status}`);
-            token = body.token;
+            if (!token) {
+                const res = await fetch(apiUrl("/api/auth/guest"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ display_name: teamName }),
+                });
+                const body = await res.json();
+                if (!res.ok) throw new Error(body.message || body.error || `Lỗi ${res.status}`);
+                token = body.token;
+            }
         } catch (e) {
             if (!closed) fail(`Không đăng nhập được: ${e.message}`);
             return;

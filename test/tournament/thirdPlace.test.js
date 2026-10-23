@@ -18,7 +18,7 @@ test('Third-place match được tạo sau khi bán kết kết thúc', () => {
   format.bindMatch(bracket, semi1.matchKey, 'm1');
   format.bindMatch(bracket, semi2.matchKey, 'm2');
 
-  // u1 thắng u2, u3 thắng u4
+  // Đội A thắng cả hai bán kết; bên thua phải vào trận hạng ba.
   format.applyResult(bracket, { matchId: 'm1', outcome: 'a' }); // u1 thắng
   format.applyResult(bracket, { matchId: 'm2', outcome: 'a' }); // u3 thắng
 
@@ -27,8 +27,8 @@ test('Third-place match được tạo sau khi bán kết kết thúc', () => {
   assert.equal(finalRound.length, 2); // Final + Third-place
   const thirdPlace = finalRound[1];
   
-  // Losers are u2 and u4
+  // Lấy đúng hai người thua theo cặp bán kết do hệ thống xếp hạt giống.
+  const expectedLosers = [semi1.participantBId, semi2.participantBId];
   const losers = [thirdPlace.participantAId, thirdPlace.participantBId];
-  assert.ok(losers.includes('u2'));
-  assert.ok(losers.includes('u4'));
+  assert.deepEqual(losers, expectedLosers);
 });

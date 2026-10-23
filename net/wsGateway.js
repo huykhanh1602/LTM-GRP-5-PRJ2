@@ -167,6 +167,8 @@ export function createWsGateway({
         room.status = "waiting";
         room.players.forEach((slot) => { slot.ready = false; });
         room.liveEvents = [];
+        room.pendingGameOver = null;
+        room.pendingRating = Promise.resolve();
     }
 
     // -------------------------------------------------------------- bắt đầu trận
@@ -208,22 +210,25 @@ export function createWsGateway({
                         room.players.forEach((slot) => { slot.ready = false; });
                         const winner = message.winner === "team_a" || message.winner === "team_b" ? message.winner : "draw";
                         const over = { type: "game_over", match_id: room.matchId, winner, reason: message.reason ?? null };
+                        room.pendingGameOver = over;
                         if (room.mode === "ranked" && ids[0] && ids[1]) {
                             const outcome = winner === "team_a" ? "a" : winner === "team_b" ? "b" : "draw";
                             if (ratingService) {
-                                ratingService.applyMatchResult({
+                                room.pendingRating = ratingService.applyMatchResult({
                                     matchId: room.matchId,
                                     gameId: room.gameId,
                                     participants: { a: { userId: ids[0] }, b: { userId: ids[1] } },
                                     outcome,
                                     reason: message.reason ?? null,
                                 }).then((result) => {
+                                    over.rating_saved = true;
                                     if (result?.applied) {
                                         over.elo_change_a = result.a.change;
                                         over.elo_change_b = result.b.change;
                                     }
                                 }).catch((error) => {
-                                    console.error("RatingService error:", error.message);
+                                    over.rating_saved = false;
+                                    console.error(`[Rating] Không lưu được kết quả trận ${room.matchId}:`, error);
                                 });
                             } else {
                                 const result = ratings.applyResult({
@@ -234,9 +239,9 @@ export function createWsGateway({
                                 });
                                 over.elo_change_a = result.a.change;
                                 over.elo_change_b = result.b.change;
+                                over.rating_saved = true;
                             }
                         }
-                        emit(over);
                         broadcastRoom(room);
                     }
                 },
@@ -245,19 +250,29 @@ export function createWsGateway({
             if (runToken === room.runToken && room.status === "playing") {
                 throw new Error("Engine kết thúc mà không gửi kết quả trận.");
             }
+            await room.pendingRating;
+            let historySaved = false;
             if (matchStore) {
                 try {
                     await matchStore.importReplay(replay, {
                         roomId: room.code,
+                        gameId: room.gameId,
+                        mode: room.mode,
                         ranked: room.mode === "ranked",
                         teamAId: ids[0],
                         teamBId: ids[1],
                         startedAt,
                         endedAt: new Date().toISOString(),
                     });
+                    historySaved = true;
                 } catch (error) {
-                    console.error("Không lưu được replay:", error.message);
+                    console.error(`[History] Không lưu được replay trận ${room.matchId}:`, error);
                 }
+            }
+            if (room.pendingGameOver) {
+                room.pendingGameOver.history_saved = historySaved;
+                emit(room.pendingGameOver);
+                broadcastRoom(room);
             }
         } catch (error) {
             if (runToken !== room.runToken) return;

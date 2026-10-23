@@ -130,7 +130,9 @@ test("a failing asynchronous importReplay does not crash the server and the matc
     await c.waitFor((m) => m.type === "bot_accepted");
     c.send({ type: "ready", ready: true });
   }
-  assert.equal((await accounts[0].c.waitFor((m) => m.type === "game_over")).winner, "team_a");
+  const result = await accounts[0].c.waitFor((m) => m.type === "game_over");
+  assert.equal(result.winner, "team_a");
+  assert.equal(result.history_saved, false, "phải báo rõ khi replay không ghi được vào storage");
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.equal(importCalls, 1);
   assert.deepEqual(unhandled, [], "lỗi lưu replay phải được bắt, không được thành unhandled rejection");

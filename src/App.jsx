@@ -231,6 +231,11 @@ export default function App() {
           queue={room.phase === "queue" ? room.queue : null}
           error={room.error}
           user={auth.user}
+          isLoggedIn={auth.isLoggedIn}
+          onJoin={(params) => room.join({
+            ...params,
+            authToken: auth.isLoggedIn ? auth.token : null,
+          })}
           mode={lobbyMode}
           onModeChange={(m) => navigate({ view: "lobby", mode: m }, { replace: true })}
           onOpenLogin={() => setIsAuthOpen(true)}

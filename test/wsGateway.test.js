@@ -247,6 +247,7 @@ test("full casual match: submit_bot, ready, countdown, match events, game_over, 
   const over = await b.client.waitFor(b.client.type("game_over"));
   assert.equal(over.winner, "team_b");
   assert.equal(over.reason, "BASE_CAPTURED");
+  assert.equal(over.history_saved, true, "game_over chỉ đến sau khi replay được lưu");
   assert.equal("elo_change_a" in over, false);
 
   const finished = await a.client.waitFor((m) => m.type === "room_state" && m.status === "finished");
@@ -275,6 +276,8 @@ test("ranked: guests are refused unless allowed; elo_change is reported and cons
   assert.equal(over.winner, "team_a");
   assert.equal(over.elo_change_a, 16);
   assert.equal(over.elo_change_b, -16);
+  assert.equal(over.rating_saved, true);
+  assert.equal(over.history_saved, true);
   await new Promise((resolve) => setTimeout(resolve, 20));
   const table = store.getRankings();
   assert.deepEqual(table.map((row) => [row.name, row.played, row.points]), [["Alpha", 1, 3], ["Beta", 1, 0]], "ranked được tính vào bảng xếp hạng");

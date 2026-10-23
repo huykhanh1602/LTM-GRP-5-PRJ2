@@ -1,61 +1,362 @@
 {
   "match_info": {
-    "match_id": "M_2026_ROCK_PAPER_SCISSORS",
+    "match_id": "M_LOCAL_RPS",
     "teams": {
       "team_a": "Bot_Alpha",
       "team_b": "Bot_Beta"
     },
-    "winner": "team_a",
+    "winner": "team_b",
     "win_reason": "BASE_CAPTURED",
     "final_scores": {
-      "team_a": 1,
-      "team_b": 0
-    }
+      "team_a": 0,
+      "team_b": 1
+    },
+    "total_turns": 22
   },
-
   "game_config": {
     "board": {
       "width": 8,
       "height": 8,
       "coordinate_system": "TOP_LEFT_ORIGIN_X_RIGHT_Y_DOWN",
       "special_tiles": [
-        { "pos": [0, 7], "type": "BASE", "owner": "team_a" },
-        { "pos": [7, 0], "type": "BASE", "owner": "team_b" },
-        { "pos": [3, 3], "type": "OBSTACLE" },
-        { "pos": [4, 4], "type": "TRAP" }
+        {
+          "pos": [
+            7,
+            0
+          ],
+          "type": "BASE",
+          "owner": "team_a"
+        },
+        {
+          "pos": [
+            0,
+            7
+          ],
+          "type": "BASE",
+          "owner": "team_b"
+        },
+        {
+          "pos": [
+            3,
+            3
+          ],
+          "type": "OBSTACLE"
+        },
+        {
+          "pos": [
+            4,
+            4
+          ],
+          "type": "OBSTACLE"
+        },
+        {
+          "pos": [
+            2,
+            2
+          ],
+          "type": "TRAP"
+        },
+        {
+          "pos": [
+            5,
+            5
+          ],
+          "type": "TRAP"
+        }
       ]
     },
     "max_turns": 100,
-    "turn_mode": "ALTERNATING"
+    "turn_mode": "ALTERNATING",
+    "rules": {
+      "movement": "KING_8_DIR_1_STEP",
+      "same_type_collision": "BOTH_DESTROYED",
+      "trap_effect": "DESTROYED",
+      "allow_diagonal": true,
+      "combat": {
+        "ROCK": "SCISSORS",
+        "SCISSORS": "PAPER",
+        "PAPER": "ROCK"
+      }
+    },
+    "limits": {
+      "bot_time_ms": 1000,
+      "max_timeouts": 3,
+      "max_errors": 3,
+      "starting_team": "team_a"
+    }
   },
-
   "initial_state": [
-    { "id": "A1", "owner": "team_a", "type": "ROCK", "pos": [0, 0], "hp": 1 },
-    { "id": "A2", "owner": "team_a", "type": "PAPER", "pos": [1, 0], "hp": 1 },
-    { "id": "A3", "owner": "team_a", "type": "SCISSORS", "pos": [2, 0], "hp": 1 },
-    { "id": "B1", "owner": "team_b", "type": "ROCK", "pos": [7, 7], "hp": 1 },
-    { "id": "B2", "owner": "team_b", "type": "PAPER", "pos": [6, 7], "hp": 1 },
-    { "id": "B3", "owner": "team_b", "type": "SCISSORS", "pos": [5, 7], "hp": 1 }
+    {
+      "id": "A1",
+      "owner": "team_a",
+      "type": "ROCK",
+      "pos": [
+        0,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A2",
+      "owner": "team_a",
+      "type": "PAPER",
+      "pos": [
+        1,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A3",
+      "owner": "team_a",
+      "type": "SCISSORS",
+      "pos": [
+        2,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A4",
+      "owner": "team_a",
+      "type": "ROCK",
+      "pos": [
+        3,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A5",
+      "owner": "team_a",
+      "type": "PAPER",
+      "pos": [
+        6,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A6",
+      "owner": "team_a",
+      "type": "SCISSORS",
+      "pos": [
+        6,
+        1
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A7",
+      "owner": "team_a",
+      "type": "ROCK",
+      "pos": [
+        7,
+        1
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A8",
+      "owner": "team_a",
+      "type": "SCISSORS",
+      "pos": [
+        5,
+        0
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A9",
+      "owner": "team_a",
+      "type": "PAPER",
+      "pos": [
+        5,
+        1
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A10",
+      "owner": "team_a",
+      "type": "ROCK",
+      "pos": [
+        5,
+        2
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A11",
+      "owner": "team_a",
+      "type": "SCISSORS",
+      "pos": [
+        6,
+        2
+      ],
+      "hp": 1
+    },
+    {
+      "id": "A12",
+      "owner": "team_a",
+      "type": "PAPER",
+      "pos": [
+        7,
+        2
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B1",
+      "owner": "team_b",
+      "type": "ROCK",
+      "pos": [
+        7,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B2",
+      "owner": "team_b",
+      "type": "PAPER",
+      "pos": [
+        6,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B3",
+      "owner": "team_b",
+      "type": "SCISSORS",
+      "pos": [
+        5,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B4",
+      "owner": "team_b",
+      "type": "ROCK",
+      "pos": [
+        4,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B5",
+      "owner": "team_b",
+      "type": "PAPER",
+      "pos": [
+        1,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B6",
+      "owner": "team_b",
+      "type": "SCISSORS",
+      "pos": [
+        1,
+        6
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B7",
+      "owner": "team_b",
+      "type": "ROCK",
+      "pos": [
+        0,
+        6
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B8",
+      "owner": "team_b",
+      "type": "SCISSORS",
+      "pos": [
+        2,
+        7
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B9",
+      "owner": "team_b",
+      "type": "PAPER",
+      "pos": [
+        2,
+        6
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B10",
+      "owner": "team_b",
+      "type": "ROCK",
+      "pos": [
+        2,
+        5
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B11",
+      "owner": "team_b",
+      "type": "SCISSORS",
+      "pos": [
+        1,
+        5
+      ],
+      "hp": 1
+    },
+    {
+      "id": "B12",
+      "owner": "team_b",
+      "type": "PAPER",
+      "pos": [
+        0,
+        5
+      ],
+      "hp": 1
+    }
   ],
-
   "turns": [
     {
       "turn": 1,
       "player": "team_a",
       "actions": [
         {
-          "piece_id": "A1",
+          "piece_id": "A3",
           "action_type": "MOVE",
-          "from": [0, 0],
-          "to": [1, 1]
+          "from": [
+            2,
+            0
+          ],
+          "to": [
+            2,
+            1
+          ]
         }
       ],
       "events": [
         {
           "type": "PIECE_MOVED",
-          "piece_id": "A1",
-          "from": [0, 0],
-          "to": [1, 1]
+          "piece_id": "A3",
+          "from": [
+            2,
+            0
+          ],
+          "to": [
+            2,
+            1
+          ]
         }
       ]
     },
@@ -64,27 +365,30 @@
       "player": "team_b",
       "actions": [
         {
-          "piece_id": "B3",
+          "piece_id": "B10",
           "action_type": "MOVE",
-          "from": [5, 7],
-          "to": [1, 1]
+          "from": [
+            2,
+            5
+          ],
+          "to": [
+            3,
+            4
+          ]
         }
       ],
       "events": [
         {
           "type": "PIECE_MOVED",
-          "piece_id": "B3",
-          "from": [5, 7],
-          "to": [1, 1]
-        },
-        {
-          "type": "COMBAT_RESOLVED",
-          "attacker_id": "B3",
-          "defender_id": "A1",
-          "location": [1, 1],
-          "winner_id": "A1",
-          "destroyed_pieces": ["B3"],
-          "damaged_pieces": []
+          "piece_id": "B10",
+          "from": [
+            2,
+            5
+          ],
+          "to": [
+            3,
+            4
+          ]
         }
       ]
     },
@@ -93,24 +397,30 @@
       "player": "team_a",
       "actions": [
         {
-          "piece_id": "A2",
+          "piece_id": "A1",
           "action_type": "MOVE",
-          "from": [1, 0],
-          "to": [4, 4]
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            1
+          ]
         }
       ],
       "events": [
         {
           "type": "PIECE_MOVED",
-          "piece_id": "A2",
-          "from": [1, 0],
-          "to": [4, 4]
-        },
-        {
-          "type": "TRAP_TRIGGERED",
-          "piece_id": "A2",
-          "location": [4, 4],
-          "effect": "DESTROYED"
+          "piece_id": "A1",
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            1
+          ]
         }
       ]
     },
@@ -119,17 +429,30 @@
       "player": "team_b",
       "actions": [
         {
-          "piece_id": "B1",
+          "piece_id": "B10",
           "action_type": "MOVE",
-          "from": [7, 7],
-          "to": [7, 6]
+          "from": [
+            3,
+            4
+          ],
+          "to": [
+            4,
+            3
+          ]
         }
       ],
       "events": [
         {
-          "type": "BOT_TIMEOUT",
-          "team_id": "team_b",
-          "max_time_ms": 1000
+          "type": "PIECE_MOVED",
+          "piece_id": "B10",
+          "from": [
+            3,
+            4
+          ],
+          "to": [
+            4,
+            3
+          ]
         }
       ]
     },
@@ -138,27 +461,656 @@
       "player": "team_a",
       "actions": [
         {
-          "piece_id": "A1",
+          "piece_id": "A11",
           "action_type": "MOVE",
-          "from": [1, 1],
-          "to": [7, 0]
+          "from": [
+            6,
+            2
+          ],
+          "to": [
+            7,
+            3
+          ]
         }
       ],
       "events": [
         {
           "type": "PIECE_MOVED",
-          "piece_id": "A1",
-          "from": [1, 1],
-          "to": [7, 0]
+          "piece_id": "A11",
+          "from": [
+            6,
+            2
+          ],
+          "to": [
+            7,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 6,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B10",
+          "action_type": "MOVE",
+          "from": [
+            4,
+            3
+          ],
+          "to": [
+            5,
+            3
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B10",
+          "from": [
+            4,
+            3
+          ],
+          "to": [
+            5,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 7,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A10",
+          "action_type": "MOVE",
+          "from": [
+            5,
+            2
+          ],
+          "to": [
+            4,
+            2
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A10",
+          "from": [
+            5,
+            2
+          ],
+          "to": [
+            4,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 8,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B10",
+          "action_type": "MOVE",
+          "from": [
+            5,
+            3
+          ],
+          "to": [
+            6,
+            2
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B10",
+          "from": [
+            5,
+            3
+          ],
+          "to": [
+            6,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 9,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A10",
+          "action_type": "MOVE",
+          "from": [
+            4,
+            2
+          ],
+          "to": [
+            5,
+            3
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A10",
+          "from": [
+            4,
+            2
+          ],
+          "to": [
+            5,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 10,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B10",
+          "action_type": "MOVE",
+          "from": [
+            6,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B10",
+          "from": [
+            6,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "B10",
+          "defender_id": "A6",
+          "location": [
+            6,
+            1
+          ],
+          "winner_id": "B10",
+          "destroyed_pieces": [
+            "A6"
+          ],
+          "damaged_pieces": []
+        }
+      ]
+    },
+    {
+      "turn": 11,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A12",
+          "action_type": "MOVE",
+          "from": [
+            7,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A12",
+          "from": [
+            7,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "A12",
+          "defender_id": "B10",
+          "location": [
+            6,
+            1
+          ],
+          "winner_id": "A12",
+          "destroyed_pieces": [
+            "B10"
+          ],
+          "damaged_pieces": []
+        }
+      ]
+    },
+    {
+      "turn": 12,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            1,
+            5
+          ],
+          "to": [
+            2,
+            4
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            1,
+            5
+          ],
+          "to": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 13,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A11",
+          "action_type": "MOVE",
+          "from": [
+            7,
+            3
+          ],
+          "to": [
+            6,
+            4
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A11",
+          "from": [
+            7,
+            3
+          ],
+          "to": [
+            6,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 14,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            2,
+            4
+          ],
+          "to": [
+            3,
+            4
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            2,
+            4
+          ],
+          "to": [
+            3,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 15,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A10",
+          "action_type": "MOVE",
+          "from": [
+            5,
+            3
+          ],
+          "to": [
+            6,
+            2
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A10",
+          "from": [
+            5,
+            3
+          ],
+          "to": [
+            6,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 16,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            3,
+            4
+          ],
+          "to": [
+            4,
+            3
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            3,
+            4
+          ],
+          "to": [
+            4,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 17,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A7",
+          "action_type": "MOVE",
+          "from": [
+            7,
+            1
+          ],
+          "to": [
+            7,
+            2
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A7",
+          "from": [
+            7,
+            1
+          ],
+          "to": [
+            7,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 18,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            4,
+            3
+          ],
+          "to": [
+            5,
+            2
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            4,
+            3
+          ],
+          "to": [
+            5,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 19,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A5",
+          "action_type": "MOVE",
+          "from": [
+            6,
+            0
+          ],
+          "to": [
+            7,
+            0
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A5",
+          "from": [
+            6,
+            0
+          ],
+          "to": [
+            7,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "turn": 20,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            5,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            5,
+            2
+          ],
+          "to": [
+            6,
+            1
+          ]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "B11",
+          "defender_id": "A12",
+          "location": [
+            6,
+            1
+          ],
+          "winner_id": "B11",
+          "destroyed_pieces": [
+            "A12"
+          ],
+          "damaged_pieces": []
+        }
+      ]
+    },
+    {
+      "turn": 21,
+      "player": "team_a",
+      "actions": [
+        {
+          "piece_id": "A9",
+          "action_type": "MOVE",
+          "from": [
+            5,
+            1
+          ],
+          "to": [
+            6,
+            1
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "A9",
+          "from": [
+            5,
+            1
+          ],
+          "to": [
+            6,
+            1
+          ]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "A9",
+          "defender_id": "B11",
+          "location": [
+            6,
+            1
+          ],
+          "winner_id": "B11",
+          "destroyed_pieces": [
+            "A9"
+          ],
+          "damaged_pieces": []
+        }
+      ]
+    },
+    {
+      "turn": 22,
+      "player": "team_b",
+      "actions": [
+        {
+          "piece_id": "B11",
+          "action_type": "MOVE",
+          "from": [
+            6,
+            1
+          ],
+          "to": [
+            7,
+            0
+          ]
+        }
+      ],
+      "events": [
+        {
+          "type": "PIECE_MOVED",
+          "piece_id": "B11",
+          "from": [
+            6,
+            1
+          ],
+          "to": [
+            7,
+            0
+          ]
+        },
+        {
+          "type": "COMBAT_RESOLVED",
+          "attacker_id": "B11",
+          "defender_id": "A5",
+          "location": [
+            7,
+            0
+          ],
+          "winner_id": "B11",
+          "destroyed_pieces": [
+            "A5"
+          ],
+          "damaged_pieces": []
         },
         {
           "type": "BASE_CAPTURED",
-          "team_id": "team_a",
-          "location": [7, 0]
+          "team_id": "team_b",
+          "location": [
+            7,
+            0
+          ]
         },
         {
           "type": "GAME_OVER",
-          "winner_team": "team_a",
+          "winner_team": "team_b",
           "reason": "BASE_CAPTURED"
         }
       ]

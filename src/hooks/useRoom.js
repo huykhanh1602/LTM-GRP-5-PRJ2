@@ -86,12 +86,19 @@ export function useRoom() {
         const replay = finishLiveReplay(liveReplayRef.current, m);
         liveReplayRef.current = null;
         if (replay) lastReplayRef.current = replay;
+        const persistenceErrors = [];
+        if (m.history_saved === false) persistenceErrors.push("lịch sử/replay trận chưa được lưu");
+        if (m.rating_saved === false) persistenceErrors.push("điểm xếp hạng chưa được cập nhật");
+        const persistenceError = persistenceErrors.length
+          ? `Trận đã kết thúc nhưng ${persistenceErrors.join(" và ")}. Hãy báo quản trị viên kiểm tra backend.`
+          : null;
         setState((p) =>
           p.frames ? {
             ...p,
             frames: endFrames(p.frames, m),
             replay: replay ?? lastReplayRef.current,
             finished: true,
+            error: persistenceError,
           } : p
         );
         break;

@@ -16,7 +16,9 @@ function loadSession() {
 }
 
 function getApiBase() {
-  return import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+  // Local development uses Vite's /api proxy. This keeps auth requests on the
+  // same origin as the UI and avoids hard-coding a localhost hostname/port.
+  return (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
 }
 
 function loadScript(src, ready) {

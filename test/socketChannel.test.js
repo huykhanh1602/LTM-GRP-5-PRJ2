@@ -19,7 +19,7 @@ test("toUiRoom always returns two team slots and marks the current user", () => 
 
 test("toUiMessage maps game_over to match_end and hides channel-only messages", () => {
   assert.deepEqual(toUiMessage({ type: "game_over", match_id: "M", winner: "draw", reason: "DRAW" }, "u"), {
-    type: "match_end", match_id: "M", winner: null, reason: "DRAW", elo_change_a: undefined, elo_change_b: undefined,
+    type: "match_end", match_id: "M", winner: null, reason: "DRAW",
   });
   assert.equal(toUiMessage({ type: "game_over", winner: "team_b" }, "u").winner, "team_b");
   assert.equal(toUiMessage({ type: "bot_accepted" }, "u"), null);
@@ -61,7 +61,11 @@ test("the real client channel pairs, submits a bot, readies and receives match_e
   const port = server.address().port;
   const endpoints = { wsUrl: `ws://127.0.0.1:${port}`, httpUrl: `http://127.0.0.1:${port}` };
 
-  const alpha = createSocketChannel({ ...endpoints, teamName: "Alpha", role: "player", find: true, mode: "casual" });
+  const alphaUser = authService.users.findOrCreateExternal({
+    provider: "google", providerUserId: "alpha-account", displayName: "Alpha Account",
+  });
+  const alphaToken = await authService.sessions.issue(alphaUser.id);
+  const alpha = createSocketChannel({ ...endpoints, authToken: alphaToken, teamName: "Ignored Name", role: "player", find: true, mode: "casual" });
   const beta = createSocketChannel({ ...endpoints, teamName: "Beta", role: "player", find: true, mode: "casual" });
   t.after(() => { alpha.close(); beta.close(); });
   const waitA = collector(alpha);
@@ -70,7 +74,7 @@ test("the real client channel pairs, submits a bot, readies and receives match_e
   assert.equal((await waitA((m) => m.type === "queue_state")).in_queue, true);
   assert.equal((await waitA((m) => m.type === "match_found")).opponent.display_name, "Beta");
   const roomA = await waitA((m) => m.type === "room_state" && m.room.teams.every((team) => team.name));
-  assert.deepEqual(roomA.room.teams.map((team) => [team.name, team.isMe]), [["Alpha", true], ["Beta", false]]);
+  assert.deepEqual(roomA.room.teams.map((team) => [team.name, team.isMe]), [["Alpha Account", true], ["Beta", false]]);
   await waitB((m) => m.type === "match_found");
 
   await assert.rejects(alpha.submitCode(new File(["x"], "bot.txt")), (error) => /py/i.test(error.message) || /bot/i.test(error.message));

@@ -8,6 +8,7 @@
     },
     "scripts": {
         "dev": "vite",
+        "dev:all": "node --env-file-if-exists=.env scripts/dev-all.js",
         "build": "vite build",
         "preview": "vite preview",
         "server": "node --env-file-if-exists=.env net/index.js",

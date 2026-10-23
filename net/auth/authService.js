@@ -48,14 +48,14 @@ export function createAuthService({
     allowGuest = process.env.AUTH_ALLOW_GUEST !== "0",
 } = {}) {
     const memoryUsers = suppliedUsers ?? createUserStore();
-    const users = storage ? { get:id=>storage.getAuthUser(id), publicUser:user=>({id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:false,role:user.role??"player",has_password:!!user.password_salt}) } : memoryUsers;
+    const users = storage ? { get:id=>storage.getAuthUser(id), publicUser:user=>({id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,guest:!!user.guest,role:user.role??"player",has_password:!!user.password_salt}) } : memoryUsers;
     const resolveUser = async id => storage ? storage.getAuthUser(id) : users.get(id);
     async function userForToken(token) {
         const userId = await sessions.resolve(token);
         return userId ? resolveUser(userId) : null;
     }
     async function publicProfile(user) {
-        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,email:user.email??null,phone:user.phone??null,guest:false,role:user.role??"player",has_password:!!user.password_salt } : users.publicUser(user);
+        const safe = storage ? { id:user.id,display_name:user.display_name,avatar_url:user.avatar_url,email:user.email??null,phone:user.phone??null,guest:!!user.guest,role:user.role??"player",has_password:!!user.password_salt } : users.publicUser(user);
         if (storage) safe.linked_accounts = await storage.listAuthIdentities(user.id);
         return safe;
     }
@@ -143,7 +143,7 @@ export function createAuthService({
             if (!allowGuest) return sendJson(403,{error:"GUEST_DISABLED"}),true;
             const user=storage?{id:randomUUID(),display_name:cleanName(data.display_name),avatar_url:null,guest:true,role:"player"}:memoryUsers.createGuest(data.display_name);
             if (!user?.display_name) return sendJson(400,{error:"INVALID_NAME"}),true;
-            if (storage) { const guest=await storage.createAuthUser({id:user.id,display_name:user.display_name}); user.guest=true; }
+            if (storage) { Object.assign(user, await storage.createAuthUser({id:user.id,display_name:user.display_name,guest:true})); }
             return session(user),true;
         }
         if (url.pathname==="/api/auth/register") {

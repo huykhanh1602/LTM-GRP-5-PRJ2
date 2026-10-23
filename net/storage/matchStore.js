@@ -52,6 +52,14 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   for (const [name, type] of [['email','TEXT'],['phone','TEXT'],['password_salt','TEXT'],['password_hash','TEXT']]) {
     if (!userColumns.has(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
   }
+  if (!userColumns.has('guest')) {
+    db.exec('ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0 CHECK(guest IN (0, 1))');
+    // Older databases did not persist this flag. Recover guest rows from the
+    // absence of account credentials and linked identity providers.
+    db.exec(`UPDATE users SET guest = 1
+      WHERE email IS NULL AND phone IS NULL AND password_hash IS NULL AND password_salt IS NULL
+        AND NOT EXISTS (SELECT 1 FROM auth_identities WHERE auth_identities.user_id = users.id)`);
+  }
   const tournamentColumns = new Set(db.prepare('PRAGMA table_info(tournaments)').all().map(column => column.name));
   if (!tournamentColumns.has('champion_id')) db.exec('ALTER TABLE tournaments ADD COLUMN champion_id TEXT');
   if (!matchColumns.has('game_id')) {
@@ -67,6 +75,8 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   if (!roundColumns.has('auto_start')) db.exec("ALTER TABLE tournament_rounds ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 1 CHECK(auto_start IN (0, 1));");
   const entryColumns = new Set(db.prepare('PRAGMA table_info(tournament_entries)').all().map(column => column.name));
   if (!entryColumns.has('team_id')) db.exec('ALTER TABLE tournament_entries ADD COLUMN team_id TEXT REFERENCES teams(id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL');
   const historyColumns = new Set(db.prepare('PRAGMA table_info(tournament_match_history)').all().map(column => column.name));
   if (!historyColumns.has('slot_index')) db.exec('ALTER TABLE tournament_match_history ADD COLUMN slot_index INTEGER NOT NULL DEFAULT 0');
   db.exec("UPDATE matches SET game_id = 'rps_chess' WHERE game_id = 'ltm-strategy';");
@@ -348,13 +358,13 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return db.prepare('SELECT id, display_name, avatar_url, role, banned FROM users WHERE id = ?').get(id);
   }
 
-  function authUser(row) { return row ? { ...row, guest: false } : null; }
-  function getAuthUser(id) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash FROM users WHERE id=?').get(id)); }
-  function findAuthUser(identifier) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash FROM users WHERE email=? OR phone=?').get(identifier, identifier)); }
+  function authUser(row) { return row ? { ...row, guest: Boolean(row.guest) } : null; }
+  function getAuthUser(id) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash,guest FROM users WHERE id=?').get(id)); }
+  function findAuthUser(identifier) { return authUser(db.prepare('SELECT id,display_name,avatar_url,email,phone,role,banned,password_salt,password_hash,guest FROM users WHERE email=? OR phone=?').get(identifier, identifier)); }
   function createAuthUser(user) {
     const id = user.id ?? randomUUID();
-    db.prepare(`INSERT INTO users(id,display_name,avatar_url,email,phone,password_salt,password_hash,role,created_at)
-      VALUES(?,?,?,?,?,?,?,'player',?)`).run(id,user.display_name,user.avatar_url??null,user.email??null,user.phone??null,user.password_salt??null,user.password_hash??null,new Date().toISOString());
+    db.prepare(`INSERT INTO users(id,display_name,avatar_url,email,phone,password_salt,password_hash,role,guest,created_at)
+      VALUES(?,?,?,?,?,?,?,'player',?,?)`).run(id,user.display_name,user.avatar_url??null,user.email??null,user.phone??null,user.password_salt??null,user.password_hash??null,user.guest?1:0,new Date().toISOString());
     return getAuthUser(id);
   }
   function updateAuthPassword(id, salt, hash) { db.prepare('UPDATE users SET password_salt=?,password_hash=? WHERE id=?').run(salt,hash,id); return getAuthUser(id); }

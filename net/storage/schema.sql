@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   student_id TEXT UNIQUE,
   role TEXT NOT NULL DEFAULT 'player' CHECK(role IN ('player', 'organizer', 'admin')),
+  guest INTEGER NOT NULL DEFAULT 0 CHECK(guest IN (0, 1)),
   banned INTEGER NOT NULL DEFAULT 0 CHECK(banned IN (0, 1)),
   created_at TEXT NOT NULL
 );
@@ -144,6 +145,3 @@ CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status, starts_
 CREATE INDEX IF NOT EXISTS idx_matches_started ON matches(started_at DESC, id);
 CREATE INDEX IF NOT EXISTS idx_matches_team_a ON matches(team_a_id);
 CREATE INDEX IF NOT EXISTS idx_matches_team_b ON matches(team_b_id);
--- Migration cho các cột mới trên bảng đã tồn tại (SQLite dùng ALTER TABLE an toàn)
-CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id);
-CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL;
