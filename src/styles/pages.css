@@ -88,17 +88,33 @@ input[type="text"]:focus, .field input:focus, .code-input:focus {
 
 .lobby { display: flex; justify-content: center; padding: 20px 0; width: 100%; }
 .lobby-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   max-width: 1100px;
-  padding: 24px;
-  /* Ảnh bìa game làm nền chìm, phủ 1 lớp trắng mờ lên trên cho rõ chữ */
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
-    var(--lobby-bg, none) center / cover no-repeat;
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 16px; backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-radius: 16px;
   box-shadow: 0 8px 24px rgba(30, 41, 59, 0.08);
+  /* Chiếm hết chiều cao còn lại của .game-lobby và căn giữa nội dung theo dọc */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
+/* Ảnh bìa game làm nền chìm: mờ nhẹ + nhạt để không giành chữ */
+.lobby-card::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  background: var(--lobby-bg, none) center / cover no-repeat;
+  filter: blur(5px) saturate(1.05);
+  opacity: 0.32;
+  z-index: 0;
+  pointer-events: none;
+}
+.lobby-card > * { position: relative; z-index: 1; }
 .lobby-card h2 { margin: 0 0 20px; font-family: var(--font-display); font-size: 23px; color: var(--text); }
 .field { display: flex; flex-direction: column; gap: 7px; font-size: 14px; color: #475569; font-weight: 600; }
 .lobby-card .field input,

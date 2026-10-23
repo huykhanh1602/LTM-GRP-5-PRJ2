@@ -481,6 +481,7 @@
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
+  min-height: calc(100vh - 150px);
   display: flex;
   flex-direction: column;
   gap: 16px;
