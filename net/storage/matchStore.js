@@ -406,7 +406,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
 
   function listTournamentRounds(tournamentId) {
-    const rounds = db.prepare('SELECT id, round_no, status FROM tournament_rounds WHERE tournament_id = ? ORDER BY round_no').all(tournamentId);
+    const rounds = db.prepare('SELECT id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE tournament_id = ? ORDER BY round_no').all(tournamentId);
     for (const round of rounds) round.matches = db.prepare(`SELECT id,match_id,slot_index,participant_a_id,participant_a_name,
       participant_b_id,participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE round_id=? ORDER BY slot_index,id`)
       .all(round.id).map(item=>({id:item.id,match_id:item.match_id,slot_index:item.slot_index,round_id:round.id,
@@ -774,5 +774,6 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
     createTournamentRound, addTournamentEntry, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
+    updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
     listBotSubmissions, getBotSubmission, importReplay, abortInterruptedMatches, close: () => db.close() };
 }

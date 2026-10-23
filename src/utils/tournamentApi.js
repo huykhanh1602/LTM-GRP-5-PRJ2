@@ -102,6 +102,9 @@ export function toTournamentInput(api, currentUserId) {
     statusHint: STATUS_HINTS[api.status] ?? "",
     languages: Array.isArray(config.languages) ? config.languages : [],
     organizerId: config.organizerId ?? null,
+    participantMode: config.participantMode ?? "INDIVIDUAL",
+    minTeamSize: config.minTeamSize ?? 1,
+    maxTeamSize: config.maxTeamSize ?? 5,
     myEntryId:
       currentUserId && entries.some((entry) => String(entry.user_id) === String(currentUserId))
         ? String(currentUserId)

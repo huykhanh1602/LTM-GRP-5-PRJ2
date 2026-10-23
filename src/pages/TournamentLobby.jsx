@@ -9,13 +9,18 @@ import TournamentInfoPanel from "../components/tournament/TournamentInfoPanel.js
 import TrophyIcon from "../components/TrophyIcon.jsx";
 import {
   attachTournamentSlotResult,
+  getBotSubmissions,
   getMatchReplay,
   getMatches,
   getTournament,
   getTournaments,
   getUserProfile,
   registerTournament,
+  registerTournamentTeam,
+  rescheduleMatch,
   startTournament,
+  triggerRoundStart,
+  updateRoundSchedule,
 } from "../api.js";
 import { apiErrorText, formatStartsAt, toTournamentCard, toTournamentView } from "../utils/tournamentApi.js";
 import { languageLabels } from "../utils/botLanguages.js";
@@ -228,6 +233,343 @@ function AttachResultModal({ slot, nameA, nameB, onClose, onAttached }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Đăng ký Đội: đặt tên Đội, mời thành viên (có thể trống),
+// chọn Bot Submission đại diện dla Đội, rồi đăng ký với team_id.
+// ─────────────────────────────────────────────────────────────
+function TeamRegistrationModal({ tournament, token, onClose, onRegistered }) {
+  const [roomCode, setRoomCode] = useState(tournament.code ?? "");
+  const [teamName, setTeamName] = useState("");
+  const [members, setMembers] = useState("");
+  const [submissions, setSubmissions] = useState(null);
+  const [pickedTeamId, setPickedTeamId] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const code = roomCode.trim().toUpperCase();
+    if (!code) {
+      setSubmissions([]);
+      return undefined;
+    }
+    setSubmissions(null);
+    getBotSubmissions(code, token, { limit: 50 })
+      .then((data) => active && setSubmissions(data.items ?? []))
+      .catch(() => active && setSubmissions([]));
+    return () => {
+      active = false;
+    };
+  }, [roomCode, token]);
+
+  async function submit() {
+    if (!teamName.trim()) {
+      setError("Đặt tên Đội trước đăng ký tham gia.");
+      return;
+    }
+    if (!pickedTeamId) {
+      setError("Chọn Bot Submission đại diện dla Đội.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      onRegistered(await registerTournamentTeam(tournament.id, pickedTeamId, token));
+    } catch (err) {
+      setError(apiErrorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Tạo Đội / Chọn Đội"
+      subtitle={`${tournament.name} · chế độ Đội (${tournament.minTeamSize}–${tournament.maxTeamSize} người)`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose}>
+            Hủy
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={busy}
+            onClick={submit}
+          >
+            {busy ? "Đang đăng ký…" : "✔ Đăng ký Đội"}
+          </button>
+        </>
+      }
+    >
+      {error && <p className="err">{error}</p>}
+
+      <label className="tl-form-label" htmlFor="tl-team-room">
+        Mã phòng đấu (để tải Bot Submission của bạn)
+      </label>
+      <input
+        id="tl-team-room"
+        className="tl-form-input"
+        value={roomCode}
+        onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
+        placeholder="ABCD"
+        maxLength={4}
+      />
+
+      <label className="tl-form-label" htmlFor="tl-team-name">
+        Tên Đội <b className="tl-form-req">*</b>
+      </label>
+      <input
+        id="tl-team-name"
+        className="tl-form-input"
+        value={teamName}
+        onChange={(event) => setTeamName(event.target.value)}
+        placeholder="Đội Rồng"
+        maxLength={60}
+      />
+
+      <label className="tl-form-label" htmlFor="tl-team-members">
+        Thành viên (phân dấu dấu, có thể để trống)
+      </label>
+      <input
+        id="tl-team-members"
+        className="tl-form-input"
+        value={members}
+        onChange={(event) => setMembers(event.target.value)}
+        placeholder="user1, user2, …"
+      />
+
+      <div className="tl-form-label">Bot Submission đại diện dla Đội <b className="tl-form-req">*</b></div>
+      {submissions === null ? (
+        <p className="muted">Đang tải Bot Submission…</p>
+      ) : submissions.length === 0 ? (
+        <p className="muted">
+          Không tìm thấy Bot Submission dla mã phòng này. Nộp bot trước trong phòng đấu rồi thử lại.
+        </p>
+      ) : (
+        <ul className="tl-match-picker">
+          {submissions.map((item) => (
+            <li key={item.id}>
+              <label>
+                <input
+                  type="radio"
+                  name="tl-team-submission"
+                  checked={pickedTeamId === item.team_id}
+                  onChange={() => setPickedTeamId(item.team_id)}
+                />
+                <span>
+                  <strong>{item.filename}</strong>
+                  <small>
+                    Đội: <code>{item.team_id}</code> · {formatStartsAt(item.created_at)}
+                  </small>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {members.trim() && (
+        <p className="tl-form-note">
+          👥 Đội sẽ có {members.split(",").map((m) => m.trim()).filter(Boolean).length + 1} người
+          (bao hán bạn). Thành viên được mời tham gia khi giải khởi tranh.
+        </p>
+      )}
+    </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bảng điều điều giải (Admin): điều thời gian vòng/trận,
+// Bắt đầu ngay (Trigger Start), hoãn/dời lịch trận đấu.
+// ─────────────────────────────────────────────────────────────
+function toLocalInputValue(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+function AdminControlModal({ tournament, token, onClose, onUpdated }) {
+  const rawRounds = tournament.raw?.rounds ?? [];
+  const [roundId, setRoundId] = useState(rawRounds[0]?.id ?? null);
+  const [roundAt, setRoundAt] = useState("");
+  const [autoStart, setAutoStart] = useState(true);
+  const [matchId, setMatchId] = useState(null);
+  const [matchAt, setMatchAt] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const activeRound = rawRounds.find((round) => round.id === roundId) ?? null;
+  const matchOptions = (activeRound?.matches ?? []).filter((item) => item.match_id);
+
+  useEffect(() => {
+    setRoundAt(toLocalInputValue(activeRound?.scheduled_at));
+    setAutoStart(Boolean(activeRound?.auto_start ?? true));
+    setMatchId(matchOptions[0]?.match_id ?? null);
+    setMatchAt(toLocalInputValue(matchOptions[0]?.played_at ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundId]);
+
+  async function run(action, successText) {
+    setBusy(true);
+    setError(null);
+    try {
+      onUpdated(await action());
+      setError({ tone: "ok", text: successText });
+    } catch (err) {
+      setError({ tone: "err", text: apiErrorText(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Bảng điều điều giải"
+      subtitle="Điều thời gian thi đấu, khởi tranh thủ và hoãn trận đấu"
+      onClose={onClose}
+    >
+      {error && (
+        <p className={`tl-banner tl-banner--${error.tone}`} role="status">
+          {error.text}
+        </p>
+      )}
+
+      <h3 className="tl-admin-title">⏰ Vòng đấu</h3>
+      <label className="tl-form-label" htmlFor="tl-admin-round">
+        Chọn vòng
+      </label>
+      <select
+        id="tl-admin-round"
+        className="tl-form-input"
+        value={roundId ?? ""}
+        onChange={(event) => setRoundId(event.target.value)}
+      >
+        {rawRounds.map((round) => (
+          <option key={round.id} value={round.id}>
+            Vòng {round.round_no} · {round.status}
+          </option>
+        ))}
+      </select>
+
+      <label className="tl-form-label" htmlFor="tl-admin-round-at">
+        Thời gian thi đấu (scheduled_at)
+      </label>
+      <input
+        id="tl-admin-round-at"
+        type="datetime-local"
+        className="tl-form-input"
+        value={roundAt}
+        onChange={(event) => setRoundAt(event.target.value)}
+      />
+
+      <label className="tl-form-label">
+        <input
+          type="checkbox"
+          checked={autoStart}
+          onChange={(event) => setAutoStart(event.target.checked)}
+        />
+        Khởi tranh tự động khi đến thời gian
+      </label>
+
+      <div className="tl-actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || !roundId}
+          onClick={() =>
+            run(
+              () =>
+                updateRoundSchedule(
+                  tournament.id,
+                  roundId,
+                  roundAt ? new Date(roundAt).toISOString() : null,
+                  autoStart,
+                  token,
+                ),
+              "Lịch vòng đã cập nhật.",
+            )
+          }
+        >
+          💾 Lưu lịch vòng
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={busy || !roundId}
+          onClick={() =>
+            run(() => triggerRoundStart(tournament.id, roundId, token), "Vòng đã khởi tranh ngay.")
+          }
+        >
+          ▶ Bắt đầu ngay
+        </button>
+      </div>
+
+      {matchOptions.length > 0 && (
+        <>
+          <h3 className="tl-admin-title">🔁 Hoãn / dời lịch trận đấu</h3>
+          <label className="tl-form-label" htmlFor="tl-admin-match">
+            Trận đấu (có mã trận)
+          </label>
+          <select
+            id="tl-admin-match"
+            className="tl-form-input"
+            value={matchId ?? ""}
+            onChange={(event) => {
+              const picked = matchOptions.find((item) => item.match_id === event.target.value);
+              setMatchId(event.target.value);
+              setMatchAt(toLocalInputValue(picked?.played_at ?? null));
+            }}
+          >
+            {matchOptions.map((item) => (
+              <option key={item.match_id} value={item.match_id}>
+                {item.participant_a_name} vs {item.participant_b_name}
+              </option>
+            ))}
+          </select>
+
+          <label className="tl-form-label" htmlFor="tl-admin-match-at">
+            Thời gian mới
+          </label>
+          <input
+            id="tl-admin-match-at"
+            type="datetime-local"
+            className="tl-form-input"
+            value={matchAt}
+            onChange={(event) => setMatchAt(event.target.value)}
+          />
+
+          <div className="tl-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !matchId}
+              onClick={() =>
+                run(
+                  () =>
+                    rescheduleMatch(
+                      matchId,
+                      matchAt ? new Date(matchAt).toISOString() : null,
+                      token,
+                    ),
+                  "Trận đấu đã hoãn/dời lịch.",
+                )
+              }
+            >
+              🔁 Hoãn / dời lịch trận
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Danh sách giải đấu thật — dùng khi chưa chọn giải nào
 // ─────────────────────────────────────────────────────────────
 function TournamentPicker({ gameId, onPick, onBack }) {
@@ -337,6 +679,8 @@ export function PageTournamentLobby({
   const [tab, setTab] = useState("standings");
   const [profileId, setProfileId] = useState(null);
   const [attachSlot, setAttachSlot] = useState(null);
+  const [teamModal, setTeamModal] = useState(false);
+  const [adminModal, setAdminModal] = useState(false);
 
   const load = useCallback(async () => {
     const data = await getTournament(activeId);
@@ -494,7 +838,17 @@ export function PageTournamentLobby({
               />
 
               <div className="tl-actions">
-                {registrationOpen && !isRegistered && (
+                {registrationOpen && !isRegistered && tournament.participantMode === "TEAM" && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={busy}
+                    onClick={() => setTeamModal(true)}
+                  >
+                    👥 Đăng ký Đội (Tạo / Chọn)
+                  </button>
+                )}
+                {registrationOpen && !isRegistered && tournament.participantMode !== "TEAM" && (
                   <button
                     type="button"
                     className="btn primary"
@@ -520,6 +874,16 @@ export function PageTournamentLobby({
                     }
                   >
                     ⚔️ Khởi tranh & xếp nhánh
+                  </button>
+                )}
+                {isOrganizer && hasBracket && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    onClick={() => setAdminModal(true)}
+                  >
+                    🛠 Bảng điều điều giải
                   </button>
                 )}
                 {status === "draft" && (
@@ -675,6 +1039,31 @@ export function PageTournamentLobby({
             setRaw(data);
             setAttachSlot(null);
             setMessage({ tone: "ok", text: "Đã ghi nhận kết quả trận đấu." });
+          }}
+        />
+      )}
+
+      {teamModal && (
+        <TeamRegistrationModal
+          tournament={tournament}
+          token={token}
+          onClose={() => setTeamModal(false)}
+          onRegistered={(data) => {
+            setRaw(data);
+            setTeamModal(false);
+            setMessage({ tone: "ok", text: "🎉 Đội đã đăng ký tham gia giải đấu." });
+          }}
+        />
+      )}
+
+      {adminModal && (
+        <AdminControlModal
+          tournament={tournament}
+          token={token}
+          onClose={() => setAdminModal(false)}
+          onUpdated={(data) => {
+            setRaw(data);
+            setMessage({ tone: "ok", text: "Bảng điều điều giải đã cập nhật." });
           }}
         />
       )}

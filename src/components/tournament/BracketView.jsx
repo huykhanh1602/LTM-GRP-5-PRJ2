@@ -131,35 +131,44 @@ export default function BracketView({
                   Math.floor(totalRows / Math.max(1, matches.length)),
                 );
                 const isFinalRound = roundIndex === totalRounds - 1;
+                const hasThirdPlace = isFinalRound && matches.length === 2;
 
                 return (
                   <Fragment key={`round-${roundIndex}`}>
-                    {matches.map((match) => (
-                      <div
-                        key={match.matchKey}
-                        className={`tl-slot ${roundIndex > 0 ? "tl-slot--joiner" : "tl-slot--feeder"} ${
-                          isFinalRound ? "tl-slot--final" : ""
-                        }`}
-                        style={{
-                          gridColumn: roundIndex + 1,
-                          gridRow: `${match.matchIndex * span + 1} / span ${span}`,
-                        }}
-                      >
-                        <MatchCard
-                          match={match}
-                          title={
-                            isFinalRound && matches.length === 1
-                              ? <><TrophyIcon size="18px" /> Chung kết</>
-                              : `Trận ${match.matchIndex + 1}`
-                          }
-                          isFinal={isFinalRound}
-                          myEntryId={tournament.myEntryId}
-                          entryMap={tournament.entryMap}
-                          onSpectate={onSpectate}
-                          onReplay={onReplay}
-                        />
-                      </div>
-                    ))}
+                    {matches.map((match) => {
+                      const isThirdPlace = hasThirdPlace && match.matchIndex === 1;
+                      return (
+                        <div
+                          key={match.matchKey}
+                          className={`tl-slot ${roundIndex > 0 ? "tl-slot--joiner" : "tl-slot--feeder"} ${
+                            isFinalRound ? "tl-slot--final" : ""
+                          } ${isThirdPlace ? "tl-slot--third" : ""}`}
+                          style={{
+                            gridColumn: roundIndex + 1,
+                            gridRow: `${match.matchIndex * span + 1} / span ${span}`,
+                          }}
+                        >
+                          <MatchCard
+                            match={match}
+                            title={
+                              isFinalRound && matches.length === 1
+                                ? <><TrophyIcon size="18px" /> Chung kết</>
+                                : isThirdPlace
+                                  ? <><span aria-hidden="true">🥉</span> Trận hạng 3</>
+                                  : isFinalRound
+                                    ? <><TrophyIcon size="18px" /> Chung kết</>
+                                    : `Trận ${match.matchIndex + 1}`
+                            }
+                            isFinal={isFinalRound}
+                            isThirdPlace={isThirdPlace}
+                            myEntryId={tournament.myEntryId}
+                            entryMap={tournament.entryMap}
+                            onSpectate={onSpectate}
+                            onReplay={onReplay}
+                          />
+                        </div>
+                      );
+                    })}
                   </Fragment>
                 );
               })}

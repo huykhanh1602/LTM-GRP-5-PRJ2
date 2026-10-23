@@ -2443,3 +2443,83 @@ button.tour-card-item {
 button.tour-card-item:hover {
   border-color: var(--c-purple-deep);
 }
+
+/* ---------- Đếm ngược trận đấu (scheduled_at) ---------- */
+.tl-match__countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #b45309;
+  background: rgba(255, 237, 213, 0.55);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.tl-match__countdown.is-ended {
+  color: #15803d;
+  background: rgba(220, 252, 231, 0.6);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* ---------- Trận hạng 3 (Third-place match) ---------- */
+.tl-match--third {
+  border-color: rgba(203, 213, 225, 0.55);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18);
+}
+.tl-match--third .tl-match__label {
+  color: #64748b;
+}
+.tl-slot--third {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+/* ---------- Form đăng ký Đội & Bảng điều điều giải ---------- */
+.tl-form-label {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-main);
+}
+.tl-form-req {
+  color: #dc2626;
+}
+.tl-form-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--c-text-main);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+}
+.tl-form-input:focus {
+  outline: none;
+  border-color: var(--c-purple-deep);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
+}
+.tl-form-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--c-text-sub);
+}
+.tl-admin-title {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--c-purple-deep);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+  padding-bottom: 4px;
+}
+.tl-admin-title + .tl-form-label,
+.tl-admin-title + .tl-form-input {
+  margin-top: 8px;
+}

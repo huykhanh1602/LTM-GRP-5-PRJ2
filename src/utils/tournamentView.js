@@ -142,7 +142,11 @@ export function normalizeEntries(rawEntries = [], bracketParticipants = []) {
 
   return list.map((raw = {}, index) => {
     const displayName = firstDefined(raw.displayName, raw.display_name, raw.username, raw.name);
-    const id = pickId(raw.userId, raw.user_id, raw.id, raw.entryId, raw.entry_id) ?? `participant-${index + 1}`;
+    // Đội: id = team_id (nhán đấu dùng team_id làm participant id);
+    // Đơn: id = user_id.
+    const id =
+      pickId(raw.teamId, raw.team_id, raw.userId, raw.user_id, raw.id, raw.entryId, raw.entry_id) ??
+      `participant-${index + 1}`;
     const teamName = firstDefined(
       raw.teamName,
       raw.team_name,
@@ -153,6 +157,8 @@ export function normalizeEntries(rawEntries = [], bracketParticipants = []) {
     );
     return {
       id,
+      userId: pickId(raw.userId, raw.user_id),
+      teamId: pickId(raw.teamId, raw.team_id),
       teamName,
       botName: firstDefined(raw.botName, raw.bot_name, raw.filename, `${teamName}.py`),
       owner: firstDefined(raw.owner, displayName, ""),
@@ -202,12 +208,15 @@ export function normalizeSlot(raw = {}, roundIndex = 0, matchIndex = 0) {
     matchIndex: toNumber(firstDefined(raw.matchIndex, raw.match_index), matchIndex),
     participantAId,
     participantBId,
+    participantAName: firstDefined(raw.participantAName, raw.participant_a_name, null),
+    participantBName: firstDefined(raw.participantBName, raw.participant_b_name, null),
     winnerId,
     matchId,
     replayId: pickId(raw.replayId, raw.replay_id),
     score,
     replayCount: toNumber(firstDefined(raw.replayCount, raw.replay_count), 0),
     startedAt: firstDefined(raw.startedAt, raw.started_at, null),
+    scheduledAt: firstDefined(raw.scheduledAt, raw.scheduled_at, null),
     status: normalizeSlotStatus(raw.status, {
       winnerId,
       participantAId,
@@ -730,5 +739,8 @@ export function normalizeTournament(rawInput, fallback = {}, options = {}) {
     championId,
     notice: firstDefined(raw.notice, STATUS_NOTICES[status]),
     config: firstDefined(raw.config, {}),
+    participantMode: firstDefined(raw.participantMode, raw.participant_mode, "INDIVIDUAL"),
+    minTeamSize: toNumber(firstDefined(raw.minTeamSize, raw.min_team_size), 1),
+    maxTeamSize: toNumber(firstDefined(raw.maxTeamSize, raw.max_team_size), 5),
   };
 }

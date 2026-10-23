@@ -45,8 +45,22 @@ export const getTournament = (idOrCode) => get(`/api/tournaments/${encodeURIComp
 export const createTournament = (payload, token) => post("/api/tournaments", payload, token);
 export const registerTournament = (idOrCode, token) =>
     post(`/api/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
+export const registerTournamentTeam = (idOrCode, teamId, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/entries`, { team_id: teamId }, token);
 export const startTournament = (idOrCode, token) =>
     post(`/api/tournaments/${encodeURIComponent(idOrCode)}/start`, {}, token);
+export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
+    request(`/api/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
+        method: "PATCH", body: { scheduled_at: scheduledAt }, token,
+    });
+export const updateRoundSchedule = (idOrCode, roundId, scheduledAt, autoStart, token) =>
+    request(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds`, {
+        method: "PATCH", body: { round_id: roundId, scheduled_at: scheduledAt, auto_start: autoStart }, token,
+    });
+export const triggerRoundStart = (idOrCode, roundId, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds/trigger-start`, { round_id: roundId }, token);
+export const rescheduleMatch = (matchId, scheduledAt, token) =>
+    post(`/api/matches/${encodeURIComponent(matchId)}/reschedule`, { scheduled_at: scheduledAt }, token);
 export const attachTournamentSlotResult = (idOrCode, roundNo, slotIndex, matchId, token) =>
     post(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
         { match_id: matchId }, token);

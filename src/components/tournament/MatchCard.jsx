@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { resolveEntry } from "../../utils/tournamentView.js";
 
 const STATUS_META = {
@@ -8,14 +9,54 @@ const STATUS_META = {
   bye: { label: "Bye", tone: "bye" },
 };
 
-function TeamRow({ entry, score, isWinner, isMe }) {
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+// Đếm ngược tới scheduled_at của trận đấu
+function useCountdown(target) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!target) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [target]);
+
+  if (!target) return null;
+  const diff = new Date(target).getTime() - now;
+  if (Number.isNaN(diff)) return null;
+  if (diff <= 0) return { ended: true, hours: 0, minutes: 0, seconds: 0 };
+  return {
+    ended: false,
+    hours: Math.floor((diff / 3600000) % 24),
+    minutes: Math.floor((diff / 60000) % 60),
+    seconds: Math.floor((diff / 1000) % 60),
+  };
+}
+
+function CountdownChip({ target }) {
+  const countdown = useCountdown(target);
+  if (!countdown) return null;
+  if (countdown.ended) {
+    return <span className="tl-match__countdown is-ended">▶ Đã bắt đầu</span>;
+  }
+  return (
+    <span className="tl-match__countdown" title={`Bắt đầu: ${new Date(target).toLocaleString("vi-VN")}`}>
+      ⏱ {pad(countdown.hours)}:{pad(countdown.minutes)}:{pad(countdown.seconds)}
+    </span>
+  );
+}
+
+function TeamRow({ entry, fallbackName, score, isWinner, isMe }) {
+  const name = entry ? entry.teamName : fallbackName;
   return (
     <div
       className={[
         "tl-team-row",
         isWinner ? "is-winner" : "",
         isMe ? "is-me" : "",
-        !entry ? "is-empty" : "",
+        !entry && !fallbackName ? "is-empty" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -26,7 +67,7 @@ function TeamRow({ entry, score, isWinner, isMe }) {
         <span className="tl-team-row__avatar tl-team-row__avatar--empty">?</span>
       )}
 
-      <span className="tl-team-row__name">{entry ? entry.teamName : "Chờ xác định"}</span>
+      <span className="tl-team-row__name">{name ?? "Chờ xác định"}</span>
       {isMe && <span className="tl-me-tag">Bạn</span>}
       <b className={`tl-team-row__score ${isWinner ? "is-win" : ""}`}>
         {score === null || score === undefined ? "–" : score}
@@ -42,6 +83,7 @@ export default function MatchCard({
   match,
   title,
   isFinal = false,
+  isThirdPlace = false,
   myEntryId = null,
   entryMap = null,
   onSpectate,
@@ -57,7 +99,7 @@ export default function MatchCard({
   const entryB = resolveEntry(entryMap, match.participantBId);
 
   return (
-    <article className={`tl-match tl-match--${meta.tone} ${isFinal ? "tl-match--final" : ""}`}>
+    <article className={`tl-match tl-match--${meta.tone} ${isFinal ? "tl-match--final" : ""} ${isThirdPlace ? "tl-match--third" : ""}`}>
       <header className="tl-match__head">
         <span className="tl-match__label">
           {title ?? `Trận ${match.matchIndex + 1}`}
@@ -71,12 +113,14 @@ export default function MatchCard({
       <div className="tl-match__teams">
         <TeamRow
           entry={entryA}
+          fallbackName={match.participantAName}
           score={scoreA}
           isWinner={winnerA}
           isMe={match.participantAId === myEntryId}
         />
         <TeamRow
           entry={entryB}
+          fallbackName={match.participantBName}
           score={scoreB}
           isWinner={winnerB}
           isMe={match.participantBId === myEntryId}
@@ -106,7 +150,13 @@ export default function MatchCard({
         )}
 
         {match.status === "ready" && (
-          <span className="tl-match__waiting">⏳ Chờ kết quả trận đấu</span>
+          <>
+            {match.scheduledAt ? (
+              <CountdownChip target={match.scheduledAt} />
+            ) : (
+              <span className="tl-match__waiting">⏳ Chờ kết quả trận đấu</span>
+            )}
+          </>
         )}
 
         {match.status === "pending" && (

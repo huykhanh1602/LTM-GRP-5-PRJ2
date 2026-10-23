@@ -47,7 +47,7 @@ function isBye(id) {
   return id === BYE_ID || id === null || id === undefined;
 }
 
-function slotFromRow(row, roundIndex, matchIndex) {
+function slotFromRow(row, roundIndex, matchIndex, scheduledAt = null) {
   const result = row.result ?? null;
   const bye = Boolean(result?.bye);
   const winnerId = row.winner_id ?? null;
@@ -66,11 +66,12 @@ function slotFromRow(row, roundIndex, matchIndex) {
     matchId: row.match_id ?? null,
     result,
     playedAt: row.played_at ?? null,
+    scheduledAt,
     status: bye ? 'bye' : winnerId ? 'done' : 'ready',
   };
 }
 
-function pendingSlot(roundIndex, matchIndex, roundId, a, b) {
+function pendingSlot(roundIndex, matchIndex, roundId, a, b, scheduledAt = null) {
   const known = [a, b].filter(Boolean).length;
   return {
     slotId: null,
@@ -87,6 +88,7 @@ function pendingSlot(roundIndex, matchIndex, roundId, a, b) {
     matchId: null,
     result: null,
     playedAt: null,
+    scheduledAt,
     status: known === 2 ? 'ready' : 'pending',
   };
 }
@@ -101,6 +103,7 @@ export function buildBracket({ rounds = [], entryCount = 0 } = {}) {
     const roundNo = roundIndex + 1;
     const round = byRound.get(roundNo) ?? null;
     const expected = Math.max(1, size / 2 ** roundNo);
+    const scheduledAt = round?.scheduled_at ?? null;
     const rows = new Map(
       (round?.matches ?? []).map((row) => [Number(row.slot_index ?? 0), row]),
     );
@@ -109,12 +112,12 @@ export function buildBracket({ rounds = [], entryCount = 0 } = {}) {
     for (let matchIndex = 0; matchIndex < expected; matchIndex += 1) {
       const row = rows.get(matchIndex);
       if (row) {
-        slots.push(slotFromRow(row, roundIndex, matchIndex));
+        slots.push(slotFromRow(row, roundIndex, matchIndex, scheduledAt));
         continue;
       }
       const previous = built[roundIndex - 1];
       if (!previous) {
-        slots.push(pendingSlot(roundIndex, matchIndex, round?.id ?? null, null, null));
+        slots.push(pendingSlot(roundIndex, matchIndex, round?.id ?? null, null, null, scheduledAt));
         continue;
       }
       const feederA = previous[matchIndex * 2];
@@ -128,7 +131,7 @@ export function buildBracket({ rounds = [], entryCount = 0 } = {}) {
         };
       };
       slots.push(
-        pendingSlot(roundIndex, matchIndex, round?.id ?? null, advance(feederA), advance(feederB)),
+        pendingSlot(roundIndex, matchIndex, round?.id ?? null, advance(feederA), advance(feederB), scheduledAt),
       );
     }
 
