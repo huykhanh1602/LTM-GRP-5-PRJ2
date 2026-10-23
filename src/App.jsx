@@ -11,6 +11,7 @@ import AuthModal from "./components/AuthModal.jsx";
 import TrophyIcon from "./components/TrophyIcon.jsx";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
+import { GAME_CATALOG } from "./games/catalog.js";
 import "./styles/pages.css";
 import "./styles/home.css";
 import "./styles/auth.css";
@@ -81,6 +82,17 @@ export default function App() {
   lobbyModeRef.current = lobbyMode;
   const roomRef = useRef(room);
   roomRef.current = room;
+
+  // Mỗi game một chủ đề màu: áp accentColor của game đang chọn lên :root.
+  // Ở trang chủ/profile (không có game) thì trả về màu hồng mặc định.
+  useEffect(() => {
+    const game = GAME_CATALOG.find((g) => g.id === selectedGameId);
+    const root = document.documentElement;
+    if (game?.accentColor) root.style.setProperty("--accent", game.accentColor);
+    else root.style.removeProperty("--accent");
+    if (game?.cover) root.style.setProperty("--lobby-bg", `url("${game.cover}")`);
+    else root.style.removeProperty("--lobby-bg");
+  }, [selectedGameId]);
 
   // Áp route vào state (không đẩy history) — dùng cho popstate & lần đầu.
   const applyRoute = useCallback((route) => {

@@ -1025,7 +1025,7 @@
   background: var(--c-bg-purple);
 }
 .tl-tab.is-active {
-  background: linear-gradient(135deg, var(--accent), #ff9fc4);
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff));
   color: #fff;
   box-shadow: 0 4px 12px rgba(242, 127, 186, 0.35);
 }

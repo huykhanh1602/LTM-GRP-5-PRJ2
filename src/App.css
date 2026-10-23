@@ -69,6 +69,7 @@
   --muted: #8B7B9A;
   --accent: #F27FBA;
   --accent-2: #A987D9;
+  --accent-dark: color-mix(in srgb, var(--accent), #000 14%);
   --gold: #F7CF72;
 
   --cell-a: #FEDEE9;
@@ -329,13 +330,13 @@ button, select { font: inherit; color: inherit; }
 .controls-buttons { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .controls button:disabled { opacity: .4; cursor: default; transform: none !important; }
 .controls button.primary {
-  background: linear-gradient(135deg, var(--accent), #ff8fa3) !important; color: #ffffff !important;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff)) !important; color: #ffffff !important;
   border: 1.5px solid rgba(255, 255, 255, 0.6) !important; font-weight: 800; min-width: 108px;
-  box-shadow: 0 4px 15px rgba(255, 101, 132, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--accent) 45%, transparent), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
 }
 .controls button.primary:hover:not(:disabled) {
   filter: brightness(1.06);
-  box-shadow: 0 6px 18px rgba(255, 101, 132, 0.5), inset 0 1px 1px #ffffff !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1px 1px #ffffff !important;
   transform: translateY(-1px);
 }
 .speed { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; font-weight: 600; }

@@ -11,7 +11,7 @@
   cursor: pointer; color: var(--muted); font-weight: 700; transition: all .2s;
 }
 .tabs button.on {
-  background: linear-gradient(135deg, var(--accent), #ff8fa3); color: #ffffff;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff)); color: #ffffff;
   box-shadow: 0 3px 10px rgba(255, 101, 132, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.7);
 }
 .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -50,13 +50,13 @@
 }
 .btn:disabled, .btn.disabled { opacity: .4; cursor: default; transform: none !important; }
 .btn.primary {
-  background: linear-gradient(135deg, var(--accent), #ff8fa3) !important; color: #ffffff !important;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff)) !important; color: #ffffff !important;
   border: 1.5px solid rgba(255, 255, 255, 0.6) !important; font-weight: 800;
-  box-shadow: 0 4px 15px rgba(255, 101, 132, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--accent) 45%, transparent), inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
 }
 .btn.primary:hover:not(:disabled) {
   filter: brightness(1.06);
-  box-shadow: 0 6px 18px rgba(255, 101, 132, 0.5), inset 0 1px 1px #fff !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1px 1px #fff !important;
   transform: translateY(-1px);
 }
 .btn.big { padding: 12px 28px; font-size: 18px; font-family: var(--font-display); }
@@ -91,7 +91,11 @@ input[type="text"]:focus, .field input:focus, .code-input:focus {
   width: 100%;
   max-width: 1100px;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.94); border: 1px solid rgba(148, 163, 184, 0.24);
+  /* Ảnh bìa game làm nền chìm, phủ 1 lớp trắng mờ lên trên cho rõ chữ */
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
+    var(--lobby-bg, none) center / cover no-repeat;
+  border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 16px; backdrop-filter: none; -webkit-backdrop-filter: none;
   box-shadow: 0 8px 24px rgba(30, 41, 59, 0.08);
 }
@@ -107,10 +111,10 @@ input[type="text"]:focus, .field input:focus, .code-input:focus {
 .lobby-card .btn:not(.primary) { background: #f8fafc; border-color: #cbd5e1; }
 .lobby-card .btn:not(.primary):hover:not(:disabled):not(.disabled) { background: #ffffff; border-color: #94a3b8; color: var(--text); }
 .lobby-card .btn.primary {
-  background: #e95479 !important; border: 1px solid #e95479 !important;
+  background: var(--accent) !important; border: 1px solid var(--accent) !important;
   box-shadow: none !important; font-size: 15px;
 }
-.lobby-card .btn.primary:hover:not(:disabled) { background: #d94368 !important; filter: none; }
+.lobby-card .btn.primary:hover:not(:disabled) { background: var(--accent-dark, #d94368) !important; filter: none; }
 .lobby-actions .btn { width: 100%; flex: 1; }
 .or { margin: 22px 0 14px; text-align: center; color: #64748b; font-size: 13px; display: flex; align-items: center; gap: 12px; font-weight: 500; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
