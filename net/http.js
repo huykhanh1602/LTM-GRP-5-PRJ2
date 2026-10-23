@@ -105,6 +105,21 @@ function buildTournamentConfig(body, organizer) {
             config.maxTeamSize = maxSize;
         }
     }
+    // Chế độ nộp bot: SINGLE (mặc định) / PER_ROUND
+    if (body.config?.roundSubmissionMode !== undefined) {
+      const mode = body.config.roundSubmissionMode;
+      if (!['SINGLE', 'PER_ROUND'].includes(mode)) {
+        throw new StorageError('INVALID_INPUT', 'roundSubmissionMode phải là SINGLE hoặc PER_ROUND');
+      }
+      config.roundSubmissionMode = mode;
+    }
+    if (body.config?.submissionWindowMinutes !== undefined) {
+      const minutes = Number(body.config.submissionWindowMinutes);
+      if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > 60) {
+        throw new StorageError('INVALID_INPUT', 'submissionWindowMinutes phải là số nguyên từ 1 đến 60');
+      }
+      config.submissionWindowMinutes = minutes;
+    }
     return config;
 }
 

@@ -106,6 +106,8 @@ export function toTournamentInput(api, currentUserId) {
     minTeamSize: config.minTeamSize ?? 1,
     maxTeamSize: config.maxTeamSize ?? 5,
     startType: config.startType ?? "AUTO",
+    roundSubmissionMode: config.roundSubmissionMode ?? "SINGLE",
+    submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
     myEntryId:
       currentUserId && entries.some((entry) => String(entry.user_id) === String(currentUserId))
         ? String(currentUserId)

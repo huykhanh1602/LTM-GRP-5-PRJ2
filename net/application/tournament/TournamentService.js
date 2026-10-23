@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { TournamentFormat, ParticipantMode } from '../../../shared/domain/tournament.js';
+import { TournamentFormat, ParticipantMode, RoundSubmissionMode } from '../../../shared/domain/tournament.js';
 import {
   BracketError,
   findSlotByMatchId,
@@ -112,7 +112,28 @@ export function createTournamentService({
       return { tournament: current, ready: format.readySlots(bracket) };
     });
 
-    await enqueueReadyMatches(tournament, ready);
+    const isPerRound = tournament.config.roundSubmissionMode === RoundSubmissionMode.PER_ROUND;
+
+    if (isPerRound) {
+      // PER_ROUND: mở cửa sổ nộp bot cho vòng 1 thay vì enqueue ngay
+      const deadline = new Date(clock().getTime() + (tournament.config.submissionWindowMinutes ?? 10) * 60 * 1000);
+      await tournaments.transaction(async (tx) => {
+        const current = await tx.getForUpdate(id);
+        current.submissionDeadline = deadline.toISOString();
+        current.currentRound = 1;
+        await tx.save(current);
+      });
+      events?.publish?.('ROUND_SUBMISSION_OPENED', {
+        tournamentId: id,
+        roundNo: 1,
+        deadline: deadline.toISOString(),
+        gameId: tournament.gameId,
+      });
+    } else {
+      // SINGLE: enqueue match ngay
+      await enqueueReadyMatches(tournament, ready);
+    }
+
     events?.publish?.('TOURNAMENT_STARTED', {
       tournamentId: id,
       gameId: tournament.gameId,
@@ -199,7 +220,28 @@ export function createTournamentService({
       events?.publish?.('TOURNAMENT_TIEBREAK_REQUIRED', { tournamentId: id });
     }
 
-    await enqueueReadyMatches(tournament, ready);
+    const isPerRound = tournament.config.roundSubmissionMode === RoundSubmissionMode.PER_ROUND;
+
+    if (isPerRound && ready.length > 0) {
+      // PER_ROUND: mở cửa sổ nộp bot cho vòng tiếp theo
+      const nextRoundNo = (tournament.currentRound ?? 1) + 1;
+      const deadline = new Date(clock().getTime() + (tournament.config.submissionWindowMinutes ?? 10) * 60 * 1000);
+      await tournaments.transaction(async (tx) => {
+        const current = await tx.getForUpdate(id);
+        current.submissionDeadline = deadline.toISOString();
+        current.currentRound = nextRoundNo;
+        await tx.save(current);
+      });
+      events?.publish?.('ROUND_SUBMISSION_OPENED', {
+        tournamentId: id,
+        roundNo: nextRoundNo,
+        deadline: deadline.toISOString(),
+        gameId: tournament.gameId,
+      });
+    } else {
+      await enqueueReadyMatches(tournament, ready);
+    }
+
     events?.publish?.('TOURNAMENT_MATCH_REPORTED', {
       tournamentId: id,
       matchId: report.matchId,
@@ -261,6 +303,78 @@ export function createTournamentService({
 
   async function list(query = {}) {
     return tournaments.list(query);
+  }
+
+  async function submitRoundBot(tournamentId, userId, roundNo, submissionId) {
+    await tournaments.transaction(async (tx) => {
+      const current = await tx.getForUpdate(tournamentId);
+      if (current.config.roundSubmissionMode !== RoundSubmissionMode.PER_ROUND) {
+        throw new TournamentError('INVALID_MODE', 'Giải không ở chế độ nộp bot theo vòng.');
+      }
+      if (current.status !== 'in_progress') {
+        throw new TournamentError('INVALID_STATE', 'Giải chưa bắt đầu hoặc đã kết thúc.');
+      }
+      if (!current.entries.some((e) => e.userId === userId)) {
+        throw new TournamentError('NOT_ENTRY', 'Bạn chưa đăng ký giải này.');
+      }
+      // Lưu bot submission cho round
+      current.roundSubmissions ??= {};
+      current.roundSubmissions[`round_${roundNo}`] ??= {};
+      current.roundSubmissions[`round_${roundNo}`][userId] = submissionId;
+      await tx.save(current);
+    });
+    events?.publish?.('ROUND_BOT_SUBMITTED', {
+      tournamentId,
+      userId,
+      roundNo,
+      submissionId,
+    });
+  }
+
+  async function closeSubmissionWindow(tournamentId) {
+    const { tournament, ready } = await tournaments.transaction(async (tx) => {
+      const current = await tx.getForUpdate(tournamentId);
+      if (current.config.roundSubmissionMode !== RoundSubmissionMode.PER_ROUND) {
+        throw new TournamentError('INVALID_MODE', 'Giải không ở chế độ nộp bot theo vòng.');
+      }
+      const roundNo = current.currentRound;
+      const submissions = current.roundSubmissions?.[`round_${roundNo}`] ?? {};
+
+      // Forfeit những ai chưa nộp bot
+      const format = formats.get(current.format);
+      const bracket = current.bracket;
+      const roundSlots = format.readySlots(bracket);
+
+      for (const slot of roundSlots) {
+        const aSubmitted = !slot.participantAId || submissions[slot.participantAId];
+        const bSubmitted = !slot.participantBId || submissions[slot.participantBId];
+        if (!aSubmitted) {
+          // Forfeit A → B thắng
+          format.applyResult(bracket, {
+            matchId: slot.matchId,
+            outcome: slot.participantBId ? 'b' : 'draw',
+            reason: 'forfeit',
+          });
+        } else if (!bSubmitted) {
+          // Forfeit B → A thắng
+          format.applyResult(bracket, {
+            matchId: slot.matchId,
+            outcome: 'a',
+            reason: 'forfeit',
+          });
+        }
+      }
+
+      current.submissionDeadline = null;
+      await tx.save(current);
+      return { tournament: current, ready: format.readySlots(bracket) };
+    });
+
+    await enqueueReadyMatches(tournament, ready);
+    events?.publish?.('ROUND_SUBMISSION_CLOSED', {
+      tournamentId,
+      roundNo: tournament.currentRound,
+    });
   }
 
   async function enqueueReadyMatches(tournament, ready) {
@@ -327,5 +441,7 @@ export function createTournamentService({
     standings,
     handleMatchFinished,
     list,
+    submitRoundBot,
+    closeSubmissionWindow,
   };
 }
