@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
   team_id TEXT REFERENCES teams(id),
   seed INTEGER CHECK(seed IS NULL OR seed > 0),
   points REAL NOT NULL DEFAULT 0,
+  bot_submission_id TEXT,
   PRIMARY KEY(tournament_id, user_id),
   UNIQUE(tournament_id, team_id),
   CHECK(user_id IS NOT NULL OR team_id IS NOT NULL)

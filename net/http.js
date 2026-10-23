@@ -1,5 +1,5 @@
 import http from "node:http";
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { StorageError } from "./storage/matchStore.js";
 import { applyCorsHeaders, handleCorsPreflight } from "./cors.js";
 
@@ -119,6 +119,8 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
         if (handleCorsPreflight(request, response)) return;
 
         const url = new URL(request.url, "http://localhost");
+        // Tương thích phiên bản: chấp nhận cả /api/v1/* lẫn /api/*.
+        url.pathname = url.pathname.replace(/^\/api\/v1(?=\/|$)/, "/api");
 
         if (authService && (url.pathname === "/api/me" || url.pathname.startsWith("/api/auth/"))) {
             authService
@@ -197,8 +199,13 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isSlotResult = Boolean(slotRoute) && request.method === "POST";
             const isTriggerStart = Boolean(triggerStartRoute) && request.method === "POST";
             const isReschedule = url.pathname.startsWith("/api/matches/") && url.pathname.endsWith("/reschedule") && request.method === "POST";
+            const isTeamCreate = url.pathname === "/api/teams" && request.method === "POST";
+            const teamMemberRoute = url.pathname.match(/^\/api\/teams\/([^/]+)\/members$/);
+            const isTeamMember = Boolean(teamMemberRoute) && request.method === "POST";
+            const entrySubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries\/submission$/);
+            const isEntrySubmission = Boolean(entrySubmissionRoute) && request.method === "PATCH";
             const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
-            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule) {
+            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                 if (actor.banned) { send(403, { error: "USER_BANNED" }); return; }
@@ -221,11 +228,40 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         response.setHeader("Location", `/api/tournaments/${encodeURIComponent(tournament.id)}`);
                         send(201, tournament); return;
                     }
+                    if (isTeamCreate) {
+                        const name = limitedText(body.name ?? "", "name", 60);
+                        if (!name) throw new StorageError("INVALID_INPUT", "Tên Đội không được để trống");
+                        const team = await matchStore.registerTeam({ id: randomUUID(), name });
+                        await matchStore.addTeamMember(team.id, actor.id, "captain");
+                        send(201, team); return;
+                    }
+                    if (isTeamMember) {
+                        const teamId = decodePathId(teamMemberRoute[1]);
+                        const targetUserId = body.user_id ?? body.userId;
+                        if (!targetUserId) throw new StorageError("INVALID_INPUT", "user_id là bắt buộc");
+                        send(201, await matchStore.addTeamMember(teamId, targetUserId,
+                            body.role === "captain" ? "captain" : "member")); return;
+                    }
+                    if (isEntrySubmission) {
+                        const tournamentId = decodePathId(entrySubmissionRoute[1]);
+                        const teamId = body.team_id ?? body.teamId ?? null;
+                        if (teamId) {
+                            const members = await matchStore.getTeamMembers(teamId);
+                            const me = members.find((member) => member.user_id === actor.id);
+                            if (!me) { send(403, { error: "TEAM_REQUIRED", message: "Chỉ thành viên Đội mới đổi được bot đại diện" }); return; }
+                        }
+                        send(200, await matchStore.setEntrySubmission(tournamentId, {
+                            userId: body.user_id ?? body.userId ?? (teamId ? null : actor.id),
+                            teamId,
+                            submissionId: body.submission_id ?? body.submissionId,
+                        })); return;
+                    }
                     if (isEntry) {
                         const tournamentId = decodePathId(entryRoute[1]);
                         // Kiểm tra config để biết chế độ Đơn / Đội
                         const tournament = await matchStore.getTournament(tournamentId);
                         const participantMode = tournament.config?.participantMode ?? 'INDIVIDUAL';
+                        const botSubmissionId = body.submission_id ?? body.bot_submission_id ?? null;
                         let entry;
                         if (participantMode === 'TEAM') {
                             const teamId = body.team_id ?? body.teamId;
@@ -233,10 +269,10 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                                 send(400, { error: 'TEAM_REQUIRED', message: 'Chế độ Đội yêu cầu teamId' }); return;
                             }
                             entry = await matchStore.addTournamentEntry(tournamentId,
-                                { seed: body.seed ?? null, userId: actor.id, teamId });
+                                { seed: body.seed ?? null, userId: actor.id, teamId, botSubmissionId });
                         } else {
                             entry = await matchStore.addTournamentEntry(tournamentId,
-                                { seed: body.seed ?? null, userId: actor.id });
+                                { seed: body.seed ?? null, userId: actor.id, botSubmissionId });
                         }
                         send(201, entry); return;
                     }
@@ -334,6 +370,14 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)$/);
                 if (userRoute) {
                     send(200, await matchStore.getUserPublicProfile(decodePathId(userRoute[1])));
+                    return;
+                }
+                const teamRoute = url.pathname.match(/^\/api\/teams\/([^/]+)$/);
+                if (teamRoute) {
+                    const teamId = decodePathId(teamRoute[1]);
+                    const team = await matchStore.getTeam(teamId);
+                    const members = await matchStore.getTeamMembers(teamId);
+                    send(200, { ...team, members });
                     return;
                 }
                 if (url.pathname === "/api/rankings") {

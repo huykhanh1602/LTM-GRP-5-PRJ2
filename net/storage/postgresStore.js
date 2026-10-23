@@ -243,7 +243,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return { items:rows.map(r=>({...r,starts_at:r.starts_at?.toISOString()??null,created_at:r.created_at.toISOString()})),total,limit,offset };
   }
   async function listTournamentEntries(tournamentId, client = pool) {
-    const entries = (await query(`SELECT e.tournament_id,e.user_id,e.team_id,e.seed,e.points,
+    const entries = (await query(`SELECT e.tournament_id,e.user_id,e.team_id,e.seed,e.points,e.bot_submission_id,
       u.display_name AS user_display_name,u.avatar_url,u.role,
       t.name AS team_name
       FROM tournament_entries e
@@ -299,7 +299,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return (await query(sql,[id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
   }
   async function recordTournamentMatch(input) { return transaction(client=>recordTournamentMatchInternal(input,client)); }
-  async function addTournamentEntry(tournamentId,{userId=null,teamId=null,seed=null}) {
+  async function addTournamentEntry(tournamentId,{userId=null,teamId=null,seed=null,botSubmissionId=null}) {
     if(!userId && !teamId) throw new StorageError('INVALID_INPUT','Either userId or teamId is required');
     if(seed!==null&&(!Number.isSafeInteger(seed)||seed<1)) throw new StorageError('INVALID_INPUT','seed must be a positive integer');
     return transaction(async client=>{
@@ -314,8 +314,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       seed ??= Number((await query('SELECT COUNT(*)::int AS total FROM tournament_entries WHERE tournament_id=$1',[tournamentId],client)).rows[0].total)+1;
       try{
         if(teamId) {
-          return (await query('INSERT INTO tournament_entries(tournament_id,user_id,team_id,seed) VALUES($1,$2,$3,$4) RETURNING tournament_id,user_id,team_id,seed,points',
-            [tournamentId,userId,teamId,seed],client)).rows[0];
+          return (await query('INSERT INTO tournament_entries(tournament_id,user_id,team_id,seed,bot_submission_id) VALUES($1,$2,$3,$4,$5) RETURNING tournament_id,user_id,team_id,seed,points,bot_submission_id',
+            [tournamentId,userId,teamId,seed,botSubmissionId],client)).rows[0];
         }
         return (await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',
           [tournamentId,userId,seed],client)).rows[0];
@@ -329,6 +329,16 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         throw error;
       }
     });
+  }
+  async function setEntrySubmission(tournamentId,{userId=null,teamId=null,submissionId}) {
+    if(!teamId && !userId) throw new StorageError('INVALID_INPUT','teamId or userId is required');
+    if(!submissionId) throw new StorageError('INVALID_INPUT','submissionId is required');
+    const result=await query(`UPDATE tournament_entries SET bot_submission_id=$1
+      WHERE tournament_id=$2 AND (team_id=$3 OR user_id=$4)
+      RETURNING tournament_id,user_id,team_id,bot_submission_id`,
+      [submissionId,tournamentId,teamId,userId]);
+    if(!result.rows[0]) throw new StorageError('ENTRY_NOT_FOUND','Tournament entry not found',404);
+    return result.rows[0];
   }
   async function updateTournamentStatus(id,status,championId=null) {
     const transitions={draft:['open','cancelled'],open:['in_progress','cancelled'],in_progress:['completed','cancelled'],completed:[],cancelled:[]};
@@ -511,21 +521,22 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       COALESCE(SUM(CASE WHEN winner_id=$1 THEN 1 ELSE 0 END),0)::int AS wins,
       COALESCE(SUM(CASE WHEN winner_id IS NULL THEN 1 ELSE 0 END),0)::int AS draws
       FROM matches WHERE status='finished' AND (team_a_id=$1 OR team_b_id=$1)`,[id])).rows[0];
-    const tournaments=(await query(`SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
+    // created_at phải nằm trong danh sách SELECT của UNION thì mới dùng được trong ORDER BY.
+    const tournaments=(await query(`SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at,t.created_at FROM tournament_entries e
       JOIN tournaments t ON t.id=e.tournament_id WHERE e.user_id=$1
       UNION
-      SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
+      SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at,t.created_at FROM tournament_entries e
       JOIN tournaments t ON t.id=e.tournament_id
       JOIN team_members tm ON tm.team_id=e.team_id AND tm.user_id=$1
       ORDER BY starts_at NULLS LAST,created_at DESC`,[id])).rows
-      .map(row=>({...row,starts_at:row.starts_at?.toISOString()??null}));
+      .map(({created_at,...row})=>({...row,starts_at:row.starts_at?.toISOString()??null}));
     return {...user,created_at:user.created_at instanceof Date?user.created_at.toISOString():user.created_at,
       stats:{played:stats.played,wins:stats.wins,draws:stats.draws,losses:stats.played-stats.wins-stats.draws},tournaments};
   }
   return { initialize, registerTeam, addTeamMember, getTeamMembers, getTeam,
     startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
-    listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry,
+    listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, importReplay,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
     updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,

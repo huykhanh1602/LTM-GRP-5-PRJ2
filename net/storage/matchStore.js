@@ -77,6 +77,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   if (!entryColumns.has('team_id')) db.exec('ALTER TABLE tournament_entries ADD COLUMN team_id TEXT REFERENCES teams(id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL');
+  if (!entryColumns.has('bot_submission_id')) db.exec('ALTER TABLE tournament_entries ADD COLUMN bot_submission_id TEXT');
   const historyColumns = new Set(db.prepare('PRAGMA table_info(tournament_match_history)').all().map(column => column.name));
   if (!historyColumns.has('slot_index')) db.exec('ALTER TABLE tournament_match_history ADD COLUMN slot_index INTEGER NOT NULL DEFAULT 0');
   db.exec("UPDATE matches SET game_id = 'rps_chess' WHERE game_id = 'ltm-strategy';");
@@ -401,7 +402,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
 
   function listTournamentEntries(tournamentId) {
-    const entries = db.prepare(`SELECT e.tournament_id,e.user_id,e.team_id,e.seed,e.points,
+    const entries = db.prepare(`SELECT e.tournament_id,e.user_id,e.team_id,e.seed,e.points,e.bot_submission_id,
       u.display_name AS user_display_name,u.avatar_url,u.role,
       t.name AS team_name
       FROM tournament_entries e
@@ -517,7 +518,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
   function recordTournamentMatch(input) { return transaction(()=>recordTournamentMatchInternal(input)); }
 
-  function addTournamentEntry(tournamentId, { userId = null, teamId = null, seed = null }) {
+  function addTournamentEntry(tournamentId, { userId = null, teamId = null, seed = null, botSubmissionId = null }) {
     if (!userId && !teamId) throw new StorageError('INVALID_INPUT', 'Either userId or teamId is required');
     if (seed !== null && (!Number.isSafeInteger(seed) || seed < 1)) throw new StorageError('INVALID_INPUT', 'seed must be a positive integer');
     const tournament = db.prepare('SELECT id, status, config_json FROM tournaments WHERE id = ?').get(tournamentId);
@@ -531,9 +532,9 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     seed ??= db.prepare('SELECT COUNT(*) AS total FROM tournament_entries WHERE tournament_id = ?').get(tournamentId).total + 1;
     try {
       if (teamId) {
-        db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, team_id, seed) VALUES (?, ?, ?, ?)')
-          .run(tournamentId, userId, teamId, seed);
-        return db.prepare('SELECT tournament_id, user_id, team_id, seed, points FROM tournament_entries WHERE tournament_id = ? AND team_id = ?')
+        db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, team_id, seed, bot_submission_id) VALUES (?, ?, ?, ?, ?)')
+          .run(tournamentId, userId, teamId, seed, botSubmissionId);
+        return db.prepare('SELECT tournament_id, user_id, team_id, seed, points, bot_submission_id FROM tournament_entries WHERE tournament_id = ? AND team_id = ?')
           .get(tournamentId, teamId);
       }
       db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, seed) VALUES (?, ?, ?)').run(tournamentId, userId, seed);
@@ -546,6 +547,16 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (constraintKind(error) === 'PRIMARYKEY' || constraintKind(error) === 'UNIQUE') throw new StorageError('ENTRY_EXISTS', 'User already joined this tournament', 409);
       throw error;
     }
+  }
+
+  function setEntrySubmission(tournamentId, { userId = null, teamId = null, submissionId }) {
+    if (!teamId && !userId) throw new StorageError('INVALID_INPUT', 'teamId or userId is required');
+    if (!submissionId) throw new StorageError('INVALID_INPUT', 'submissionId is required');
+    const info = db.prepare(`UPDATE tournament_entries SET bot_submission_id = ?
+      WHERE tournament_id = ? AND (team_id = ? OR user_id = ?)`).run(submissionId, tournamentId, teamId, userId);
+    if (!info.changes) throw new StorageError('ENTRY_NOT_FOUND', 'Tournament entry not found', 404);
+    return db.prepare('SELECT tournament_id, user_id, team_id, bot_submission_id FROM tournament_entries WHERE tournament_id = ? AND (team_id = ? OR user_id = ?)')
+      .get(tournamentId, teamId, userId);
   }
 
   function updateTournamentStatus(id, status, championId = null) {
@@ -782,7 +793,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     startMatch, appendTurn, finishMatch, getMatch, listMatches,
     getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
-    createTournamentRound, addTournamentEntry, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
+    createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
     updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
     listBotSubmissions, getBotSubmission, importReplay, abortInterruptedMatches, close: () => db.close() };

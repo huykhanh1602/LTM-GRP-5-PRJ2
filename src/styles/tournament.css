@@ -138,6 +138,14 @@
   background: linear-gradient(135deg, var(--c-purple-deep), var(--accent));
   box-shadow: 0 4px 12px rgba(169, 135, 217, 0.4);
 }
+.tl-mode-badge--team {
+  background: linear-gradient(135deg, var(--c-purple-deep), #e11d48);
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.35);
+}
+.tl-mode-badge--solo {
+  background: linear-gradient(135deg, var(--c-purple-deep), #0ea5e9);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
+}
 .tl-hero__format {
   font-size: 11.5px;
   font-weight: 700;
@@ -2522,4 +2530,53 @@ button.tour-card-item:hover {
 .tl-admin-title + .tl-form-label,
 .tl-admin-title + .tl-form-input {
   margin-top: 8px;
+}
+
+/* ── Bảng xác nhận lập Đội + Quản lý Đội ─────────────────── */
+.tl-team-confirm {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tl-team-confirm caption {
+  text-align: left;
+  font-weight: 800;
+  color: var(--c-purple-deep);
+  padding-bottom: 6px;
+}
+.tl-team-confirm th,
+.tl-team-confirm td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.15);
+  vertical-align: top;
+}
+.tl-team-confirm th {
+  width: 40%;
+  color: var(--muted);
+  font-weight: 600;
+}
+.tl-team-panel .tl-team-members {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tl-team-panel .tl-team-members li {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.06);
+  font-size: 13px;
+}
+.tl-team-panel .tl-team-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+.tl-team-panel .tl-team-actions .tl-form-input {
+  flex: 1;
 }
