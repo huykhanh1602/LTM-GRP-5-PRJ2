@@ -7,8 +7,8 @@ export const manifest = defineGameManifest({
   modes: ['casual', 'ranked', 'tournament'],
   capabilities: ['ranked', 'tournament', 'spectator'],
   ui: {
-    cover: '/game/kbb_game.png',
-    icon: '/logo/kbb_logo.webp',
+    cover: '/game/rsm_game.png',
+    icon: '/logo/rsm_logo.png',
     categories: ['chien_thuat', 'tri_tue', '2_nguoi'],
   },
   config: {
