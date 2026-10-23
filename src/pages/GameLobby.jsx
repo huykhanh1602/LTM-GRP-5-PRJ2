@@ -52,7 +52,6 @@ export default function GameLobby({
     if (modeProp === undefined) return;
     onModeChange?.(m);
   };
-  const [teamName, setTeamName] = useState(user?.display_name || "");
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState("");
 
@@ -96,18 +95,16 @@ export default function GameLobby({
     });
   }, [tournaments, game.id, tourFilter, tourSearch]);
 
-  // Tự động điền tên người dùng nếu vừa đăng nhập
-  useEffect(() => {
-    if (user?.display_name && !teamName) {
-      setTeamName(user.display_name);
-    }
-  }, [user]);
-
   const modeCfg = game.modes[mode] ?? {};
 
   // ── Actions ──────────────────────────────────────────────
   function findMatch() {
-    const playerName = isLoggedIn ? user?.display_name?.trim() : teamName.trim();
+    if (!isLoggedIn) {
+      setProblem("Hãy đăng nhập để dùng tài khoản của bạn làm người chơi.");
+      onOpenLogin?.();
+      return;
+    }
+    const playerName = user?.display_name?.trim();
     if (!playerName) return setProblem("Tài khoản chưa có tên hiển thị. Hãy cập nhật tên trong hồ sơ.");
     setProblem("");
     onJoin({
@@ -131,7 +128,12 @@ export default function GameLobby({
     if (mode === "tournament") {
       return openTournament();
     }
-    const playerName = isLoggedIn ? user?.display_name?.trim() : teamName.trim();
+    if (role === "player" && !isLoggedIn) {
+      setProblem("Hãy đăng nhập để dùng tài khoản của bạn làm người chơi.");
+      onOpenLogin?.();
+      return;
+    }
+    const playerName = role === "player" ? user?.display_name?.trim() : "";
     if (role === "player" && !playerName)
       return setProblem("Tài khoản chưa có tên hiển thị. Hãy cập nhật tên trong hồ sơ.");
     if (!roomCode.trim()) return setProblem("Hãy nhập mã phòng.");
@@ -331,26 +333,12 @@ export default function GameLobby({
           <>
             {isLoggedIn ? (
               <div className="field" aria-label={`Tài khoản thi đấu: ${user?.display_name}`}>
-                Đang chơi với tài khoản
+                Người chơi
                 <strong>{user?.display_name}</strong>
               </div>
             ) : (
-              <label className="field">
-                Tên đội / Tên Bot
-                <input
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  maxLength={30}
-                  placeholder="Ví dụ: Naruto Bot"
-                  disabled={connecting}
-                  onKeyDown={(e) => e.key === "Enter" && findMatch()}
-                />
-              </label>
-            )}
-
-            {!isLoggedIn && (
               <div style={{ fontSize: "12.5px", color: "var(--muted)", margin: "-4px 0 8px" }}>
-                💡 Đang chơi với tư cách Khách.{" "}
+                💡 Đăng nhập để tìm trận bằng tên tài khoản và lưu lịch sử, điểm xếp hạng.{" "}
                 <button
                   type="button"
                   style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontWeight: "600", textDecoration: "underline" }}

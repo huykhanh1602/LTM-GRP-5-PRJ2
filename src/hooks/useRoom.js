@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { connect } from "../api/index.js";
 import { appendTurn, createFrames, endFrames } from "../utils/replayEngine.js";
 import { appendLiveReplayTurn, createLiveReplay, finishLiveReplay } from "../utils/liveReplay.js";
+import { sound } from "../audio/soundManager.js";
 
 const INITIAL = {
   phase: "idle", // idle | connecting | queue | room | match
@@ -22,6 +23,7 @@ export function useRoom() {
   const chanRef = useRef(null);
   const liveReplayRef = useRef(null);
   const lastReplayRef = useRef(null);
+  const countdownSfxRef = useRef(false); // đã phát tiếng đếm cho ván này chưa
   const [state, setState] = useState(INITIAL);
 
   const handle = useCallback((m) => {
@@ -41,6 +43,7 @@ export function useRoom() {
         }
         break;
       case "match_found":
+        sound.play("match_found");
         setState((p) => ({ ...p, phase: "connecting", queue: null, opponent: m.opponent ?? null }));
         break;
       case "room_state":
@@ -55,9 +58,15 @@ export function useRoom() {
         }));
         break;
       case "countdown":
+        if (!countdownSfxRef.current) {
+          countdownSfxRef.current = true;
+          sound.play("countdown");
+        }
         setState((p) => ({ ...p, countdown: m.seconds }));
         break;
       case "match_start": {
+        countdownSfxRef.current = false;
+        sound.play("scare");
         try {
           const replay = createLiveReplay(m);
           liveReplayRef.current = replay;
@@ -120,6 +129,7 @@ export function useRoom() {
         if (chanRef.current === ch) handle(m);
       });
       liveReplayRef.current = null;
+      countdownSfxRef.current = false;
       setState({ ...INITIAL, phase: "connecting", params, replay: lastReplayRef.current });
     },
     [handle]
@@ -129,6 +139,7 @@ export function useRoom() {
     chanRef.current?.close();
     chanRef.current = null;
     liveReplayRef.current = null;
+    countdownSfxRef.current = false;
     setState({ ...INITIAL, replay: lastReplayRef.current });
   }, []);
 

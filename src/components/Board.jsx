@@ -2,6 +2,7 @@ import { toCell } from "../utils/coords.js";
 import Piece from "./Piece.jsx";
 import ClashEffect from "./ClashEffect.jsx";
 import Media from "./Media.jsx";
+import { computeSnakeLayout } from "../utils/snakeLayout.js";
 import { theme } from "../theme/theme.js";
 
 const TILE_ICONS = { BASE: "🏁", OBSTACLE: "🧱", TRAP: "🕳️" };
@@ -42,6 +43,7 @@ export default function Board({ board, frame, colorOf }) {
     }
   }
 
+  const snakeLayout = computeSnakeLayout(frame.pieces, board);
   const flash = frame.flash?.pos ? toCell(frame.flash.pos, board) : null;
 
   return (
@@ -70,6 +72,7 @@ export default function Board({ board, frame, colorOf }) {
               height={height}
               color={colorOf(p.owner)}
               isMover={frame.mover === p.id}
+              snake={snakeLayout.get(p.id) ?? null}
             />
           ))}
           {flash && (

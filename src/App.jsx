@@ -9,6 +9,8 @@ import ProfilePage from "./pages/ProfilePage.jsx";
 import TournamentLobby from "./pages/TournamentLobby.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import TrophyIcon from "./components/TrophyIcon.jsx";
+import SoundControl from "./components/SoundControl.jsx";
+import { sound } from "./audio/soundManager.js";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { GAME_CATALOG } from "./games/catalog.js";
@@ -94,11 +96,45 @@ export default function App() {
     else root.style.removeProperty("--lobby-bg");
   }, [selectedGameId]);
 
+  // Nhạc nền theo ngữ cảnh: trang chủ → lobby; vào game (chờ/đếm) → pc; đang đánh → battle của game đó.
+  useEffect(() => {
+    let key = "lobby";
+    if (view === "lobby") {
+      if (room.phase === "match") {
+        key = selectedGameId === "snake_battle" ? "battle_rsm"
+            : selectedGameId === "rps_chess" ? "battle_kbb"
+            : "pc";
+      } else {
+        key = "pc";
+      }
+    }
+    sound.setBgm(key);
+  }, [view, room.phase, selectedGameId]);
+
+  // Tiếng "click" cho mọi nút trên toàn app (delegate, bắt ở pha capture).
+  useEffect(() => {
+    const onDown = (e) => {
+      if (e.target?.closest?.("button, a, .btn, [role='button'], .tabs button")) sound.play("click");
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, []);
+
   // Áp route vào state (không đẩy history) — dùng cho popstate & lần đầu.
   const applyRoute = useCallback((route) => {
+    const phase = roomRef.current.phase;
     if (route.view === "home") {
-      const phase = roomRef.current.phase;
+      // Roi phong khi ve trang chu o cac giai doan chua vao match
       if (phase === "idle" || phase === "connecting" || phase === "queue") roomRef.current.leave();
+    } else if (route.view === "lobby") {
+      // Roi phong khi chuyen sang game khac trong khi dang trong phong/match
+      const currentGameId = selectedGameIdRef.current;
+      if (
+        currentGameId !== route.gameId &&
+        (phase === "match" || phase === "room" || phase === "connecting" || phase === "queue")
+      ) {
+        roomRef.current.leave();
+      }
     }
     setSelectedGameId(route.gameId ?? null);
     setTournamentId(route.tournamentId ?? null);
@@ -337,8 +373,9 @@ export default function App() {
           </nav>
         )}
 
-        {/* ── Khu vực Phải: nút tài khoản ── */}
+        {/* ── Khu vực Phải: âm thanh + nút tài khoản ── */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+          <SoundControl />
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */
             <button
