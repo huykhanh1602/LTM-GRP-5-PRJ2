@@ -2602,6 +2602,85 @@ button.tour-card-item:hover {
   border-color: var(--c-purple-deep);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
 }
+/* Modal đăng ký Đội: chips thành viên + ô tìm nick có gợi ý avatar */
+.tl-member-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 8px;
+}
+.tl-member-chips:empty {
+  display: none;
+}
+.tl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text-main);
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 999px;
+}
+.tl-chip img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.tl-chip button {
+  border: none;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--c-purple-deep);
+}
+.tl-member-search {
+  position: relative;
+}
+.tl-member-suggest {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: -2px 0 10px;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.15);
+}
+.tl-member-suggest button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.tl-member-suggest button:hover {
+  background: rgba(124, 58, 237, 0.1);
+}
+.tl-member-suggest img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
 .tl-code-input {
   font-family: "Consolas", "Courier New", monospace;
   font-size: 13px;

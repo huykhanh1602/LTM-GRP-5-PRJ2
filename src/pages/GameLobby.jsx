@@ -2,7 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
 import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../config.js";
 import { getTournaments } from "../api.js";
-import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
+import {
+  apiErrorText,
+  participantUnit,
+  registrationWindowState,
+  toTournamentCard,
+  tournamentScheduleLines,
+} from "../utils/tournamentApi.js";
 import { languageLabels } from "../utils/botLanguages.js";
 import TrophyIcon from "../components/TrophyIcon.jsx";
 
@@ -96,6 +102,9 @@ export default function GameLobby({
   }, [tournaments, game.id, tourFilter, tourSearch]);
 
   const modeCfg = game.modes[mode] ?? {};
+
+  // Dùng cho nhãn trạng thái khung đăng ký trên card giải đấu.
+  const now = Date.now();
 
   // ── Actions ──────────────────────────────────────────────
   function findMatch() {
@@ -277,11 +286,18 @@ export default function GameLobby({
                 filteredTournaments.map((t) => {
                   const badge = STATUS_BADGE[t.status] ?? { className: "", label: t.status };
                   const hasTrophy = !["open", "in_progress"].includes(t.status);
+
+                  const windowState = registrationWindowState(t, now);
+                  const scheduleLines = tournamentScheduleLines(t);
+                  // Ngoài khung đăng ký thì card chỉ mời xem, không mời đăng ký.
+                  const regLocked = windowState?.cls === "locked";
                   const actionLabel =
-                    t.status === "open"
-                      ? "Đăng ký tham gia 📝"
-                      : t.status === "in_progress"
-                        ? "Vào xem ⚔️"
+                    t.status === "in_progress"
+                      ? "Vào xem ⚔️"
+                      : t.status === "open"
+                        ? regLocked
+                          ? "Xem giải 🔍"
+                          : "Đăng ký tham gia 📝"
                         : "Xem kết quả";
 
                   return (
@@ -305,10 +321,22 @@ export default function GameLobby({
                         <span>👑 {t.organizerName}</span>
                         <span>
                           👥 {t.registered}
-                          {t.capacity ? `/${t.capacity}` : ""} người
+                          {t.capacity ? `/${t.capacity}` : ""} {participantUnit(t.participantMode)}
                         </span>
-                        <span>⏰ {formatStartsAt(t.startsAt)}</span>
                         {t.languages?.length > 0 && <span>🌐 {languageLabels(t.languages)}</span>}
+                      </div>
+
+                      <div className="tour-card-schedule">
+                        {scheduleLines.map((line) => (
+                          <span key={line.label}>
+                            {line.icon} {line.label}: <b>{line.value}</b>
+                          </span>
+                        ))}
+                        {windowState && (
+                          <span className={`tour-window-state tour-window-state--${windowState.cls}`}>
+                            {windowState.text}
+                          </span>
+                        )}
                       </div>
 
                       <div className="tour-card-footer">
@@ -316,7 +344,7 @@ export default function GameLobby({
                           🎁 {t.prize || "Cúp vinh danh"}
                         </span>
                         <button
-                          className={`btn small ${t.status === "open" ? "primary" : ""}`}
+                          className={`btn small ${t.status === "open" && !regLocked ? "primary" : ""}`}
                           onClick={() => openTournament(t.id)}
                         >
                           {actionLabel}{hasTrophy && <> <TrophyIcon size="20px" /></>}

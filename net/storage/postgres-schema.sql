@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS games (
 INSERT INTO games (id, name, default_config, active)
 VALUES ('rps_chess', 'Kéo · Búa · Bao Cờ', '{}'::jsonb, TRUE)
 ON CONFLICT (id) DO NOTHING;
+INSERT INTO games (id, name, default_config, active)
+VALUES ('snake_battle', 'Rắn Săn Mồi (Snake Bot)', '{}'::jsonb, TRUE)
+ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS matches (
   id TEXT PRIMARY KEY, room_id TEXT NOT NULL,
   game_id TEXT NOT NULL DEFAULT 'rps_chess' REFERENCES games(id),

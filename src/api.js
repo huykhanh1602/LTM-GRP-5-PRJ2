@@ -84,6 +84,7 @@ export const updateTournamentStatus = (tournamentId, { status, champion_id = nul
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/status`, {
         method: "PATCH", body: { status, champion_id }, token,
     });
+export const searchUsers = (q) => get(`${V1}/users/search?q=${encodeURIComponent(q)}`);
 export const getUserProfile = (userId) => get(`/api/users/${encodeURIComponent(userId)}`);
 export const getBotSubmissions = (roomCode, token, { limit = 20, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });

@@ -164,6 +164,25 @@ server.on("upgrade", (request, socket, head) => {
     socket.destroy();
 });
 
+// ── Bộ đếm giờ khởi tranh AUTO (System A) ──
+// Quét giải AUTO tới hạn + đã đóng đơn + chưa có sơ đồ → tự gen nhánh.
+const AUTO_START_INTERVAL_MS = 30_000;
+setInterval(async () => {
+  try {
+    const due = await matchStore.listAutoStartDue();
+    for (const tournamentId of due) {
+      try {
+        await matchStore.generateTournamentBracket(tournamentId);
+        console.log(`[AutoStart] Đã khởi tranh giải ${tournamentId}`);
+      } catch (error) {
+        console.error(`[AutoStart] Bỏ qua giải ${tournamentId}: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error(`[AutoStart] Lỗi quét: ${error.message}`);
+  }
+}, AUTO_START_INTERVAL_MS);
+
 // Khởi động server.
 server.listen(config.port,"0.0.0.0", () => {
     console.log(

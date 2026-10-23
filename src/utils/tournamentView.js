@@ -536,29 +536,32 @@ function buildSchedule(raw, status) {
   }
 
   const schedule = [];
-  const deadline = firstDefined(raw.registrationDeadline, raw.registration_deadline);
+  const now = Date.now();
+  const opens = firstDefined(raw.registrationOpensAt, raw.registration_opens_at);
+  const deadline = firstDefined(raw.registrationDeadline, raw.registration_deadline, raw.registrationClosesAt);
   const start = firstDefined(raw.startAt, raw.start_at, raw.start_time, raw.startTime);
   const ended = firstDefined(raw.endedAt, raw.ended_at, raw.end_time);
+  // Mốc đã trôi qua thì đánh dấu hoàn thành; giải không còn mở đơn coi như đã qua mốc đăng ký.
+  const doneAt = (value, fallback) => {
+    const at = Date.parse(value ?? "");
+    return Number.isNaN(at) ? fallback : at <= now;
+  };
+  const started = status === "in_progress" || status === "completed";
 
+  if (opens) {
+    schedule.push({ label: "Mở đơn", time: formatDateTime(opens), done: doneAt(opens, status !== "open") });
+  }
   if (deadline) {
-    schedule.push({
-      label: "Khóa đăng ký",
-      time: formatDateTime(deadline),
-      done: status !== "open" && status !== "draft",
-    });
+    schedule.push({ label: "Đóng đơn", time: formatDateTime(deadline), done: doneAt(deadline, started) });
   }
   if (start) {
-    schedule.push({
-      label: "Khởi tranh",
-      time: formatDateTime(start),
-      done: status === "in_progress" || status === "completed",
-    });
+    schedule.push({ label: "Khai mạc", time: formatDateTime(start), done: doneAt(start, started) });
   }
   if (ended) {
     schedule.push({
       label: "Kết thúc",
       time: formatDateTime(ended),
-      done: status === "completed",
+      done: doneAt(ended, status === "completed"),
     });
   }
   return schedule;

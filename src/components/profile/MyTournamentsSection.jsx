@@ -1,5 +1,5 @@
 import { languageLabels } from "../../utils/botLanguages.js";
-import { formatStartsAt } from "../../utils/tournamentApi.js";
+import { participantUnit, tournamentScheduleLines } from "../../utils/tournamentApi.js";
 import { TOUR_STATUS } from "../../utils/tournamentStatus.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -42,10 +42,16 @@ export default function MyTournamentsSection({
                 <span>🎮 Game: {t.gameName}</span>
                 <span>
                   👥 {t.registered}
-                  {t.capacity ? `/${t.capacity}` : ""} người
+                  {t.capacity ? `/${t.capacity}` : ""} {participantUnit(t.participantMode)}
                 </span>
-                <span>⏰ Khởi tranh: {formatStartsAt(t.startsAt)}</span>
                 {t.languages?.length > 0 && <span>🌐 {languageLabels(t.languages)}</span>}
+              </div>
+              <div className="tour-card-schedule">
+                {tournamentScheduleLines(t).map((line) => (
+                  <span key={line.label}>
+                    {line.icon} {line.label}: <b>{line.value}</b>
+                  </span>
+                ))}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

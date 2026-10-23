@@ -5,6 +5,7 @@
 export default function RegistrationSlots({
   entries = [],
   capacity = 0,
+  unit = "người",
   myEntryId = null,
   title = "Sơ đồ nhánh sẽ được xếp sau khi chủ giải khởi tranh",
   emptyText = "Suất trống",
@@ -21,7 +22,7 @@ export default function RegistrationSlots({
           <strong>{title}</strong>
           <p>
             Hiện có {entries.length}
-            {capacity ? `/${total}` : ""} người đã xác nhận tham gia.
+            {capacity ? `/${total}` : ""} {unit} đã xác nhận tham gia.
           </p>
         </div>
       </div>

@@ -120,6 +120,24 @@ function buildTournamentConfig(body, organizer) {
       }
       config.submissionWindowMinutes = minutes;
     }
+    // Khung thời gian đăng ký (mở đơn / đóng đơn) — lưu ISO trong config.
+    const isoOrNull = (value, field) => {
+      if (value === undefined || value === null || value === "") return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        throw new StorageError('INVALID_INPUT', `${field} không hợp lệ`);
+      }
+      return date.toISOString();
+    };
+    const regOpen = isoOrNull(body.config?.registrationOpensAt, "registrationOpensAt");
+    const regClose = isoOrNull(body.config?.registrationClosesAt, "registrationClosesAt");
+    if (regOpen && regClose && new Date(regClose) <= new Date(regOpen)) {
+      throw new StorageError('INVALID_INPUT', 'registrationClosesAt phải sau registrationOpensAt');
+    }
+    // Mở đơn luôn có mốc bắt đầu: mặc định là lúc tạo giải.
+    if (regOpen) config.registrationOpensAt = regOpen;
+    else config.registrationOpensAt = new Date().toISOString();
+    if (regClose) config.registrationClosesAt = regClose;
     return config;
 }
 
@@ -434,6 +452,11 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     const actor = request.auth?.user;
                     if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                     send(200, await matchStore.getTournamentMyMatch(decodePathId(myMatchRoute[1]), actor.id));
+                    return;
+                }
+                // Gợi ý nick khi thêm đồng đội (phải khớp trước route /api/users/:id).
+                if (url.pathname === "/api/users/search") {
+                    send(200, await matchStore.searchUsers(url.searchParams.get("q") ?? ""));
                     return;
                 }
                 const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)$/);

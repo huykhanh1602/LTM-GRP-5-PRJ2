@@ -636,6 +636,39 @@
   align-items: center;
   gap: 4px;
 }
+/* Khung mở/đóng đơn + giờ khởi tranh trên card giải đấu */
+.tour-card-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 9px 0;
+  padding: 9px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.05);
+  font-size: 13.5px;
+  color: var(--text);
+}
+.tour-card-schedule b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.tour-window-state {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.tour-window-state--live {
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+}
+.tour-window-state--locked {
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.12);
+}
 .tour-card-footer {
   display: flex;
   justify-content: space-between;
