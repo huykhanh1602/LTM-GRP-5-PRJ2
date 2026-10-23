@@ -1,6 +1,7 @@
 import TournamentLayout from "../layouts/TournamentLayout.jsx";
 import TournamentHeader from "../components/tournament/TournamentHeader.jsx";
 import BracketView from "../components/tournament/BracketView.jsx";
+import RoundRobinView from "../components/tournament/RoundRobinView.jsx";
 import RegistrationSlots from "../components/tournament/RegistrationSlots.jsx";
 import StandingsTable from "../components/tournament/StandingsTable.jsx";
 import MatchFeed from "../components/tournament/MatchFeed.jsx";
@@ -193,6 +194,19 @@ export function PageTournamentLobby({
                     ⚔️ Khởi tranh & xếp nhánh
                   </button>
                 )}
+                {registrationOpen && isOrganizer && tournament.startType === "MANUAL" && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={busy || tournament.registered < 2}
+                    title={tournament.registered < 2 ? "Cần ít nhất 2 người đăng ký" : undefined}
+                    onClick={() =>
+                      run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
+                    }
+                  >
+                    🏁 Bắt đầu giải đấu
+                  </button>
+                )}
                 {isOrganizer && hasBracket && (
                   <button
                     type="button"
@@ -208,6 +222,13 @@ export function PageTournamentLobby({
                 )}
               </div>
             </section>
+          ) : tournament.format === "round_robin" ? (
+            <RoundRobinView
+              tournament={tournament}
+              rounds={tournament.rounds}
+              onReplay={(slot) => openReplay(slot.matchId ?? slot.replayId)}
+              onOpenProfile={setProfileId}
+            />
           ) : (
             <BracketView
               tournament={tournament}

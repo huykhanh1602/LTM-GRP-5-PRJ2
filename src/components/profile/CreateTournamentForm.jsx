@@ -42,6 +42,8 @@ export default function CreateTournamentForm({ form, onCancel }) {
     setMinTeamSize,
     maxTeamSize,
     setMaxTeamSize,
+    startType,
+    setStartType,
     msg,
     handleCreateTour,
   } = form;
@@ -165,6 +167,35 @@ export default function CreateTournamentForm({ form, onCancel }) {
               <option value="TEAM">Đội nhóm</option>
             </select>
           </div>
+        </div>
+
+        <div className="reg-field">
+          <label>Hình thức khởi tranh</label>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <label className={`reg-lang ${startType === "AUTO" ? "is-checked" : ""}`}>
+              <input
+                type="radio"
+                name="startType"
+                checked={startType === "AUTO"}
+                onChange={() => setStartType("AUTO")}
+              />
+              <span>⚡ Tự động</span>
+            </label>
+            <label className={`reg-lang ${startType === "MANUAL" ? "is-checked" : ""}`}>
+              <input
+                type="radio"
+                name="startType"
+                checked={startType === "MANUAL"}
+                onChange={() => setStartType("MANUAL")}
+              />
+              <span>✋ Thủ công (chủ giải bấm)</span>
+            </label>
+          </div>
+          <p className="reg-hint">
+            {startType === "AUTO"
+              ? "Giải tự động khởi tranh khi đến giờ hoặc đủ số người chơi tối đa."
+              : "Chủ giải/người tổ chức cần bấm nút khởi tranh để bắt đầu giải."}
+          </p>
         </div>
 
         {participantMode === "TEAM" && (

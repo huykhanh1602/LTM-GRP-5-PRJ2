@@ -37,7 +37,9 @@ export function createTournamentScheduler({
       try {
         const list = await tournaments.list({ status: 'open' });
         for (const t of list) {
-          if (t.config.auto_start && t.config.scheduled_at && new Date(t.config.scheduled_at) <= new Date()) {
+          const startType = t.config?.startType ?? 'AUTO';
+          const startsAt = t.config?.scheduled_at ?? t.startsAt ?? t.config?.startsAt;
+          if (startType === 'AUTO' && startsAt && new Date(startsAt) <= new Date()) {
             await tournamentService.start(t.id);
           }
         }

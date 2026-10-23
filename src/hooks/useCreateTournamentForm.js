@@ -24,6 +24,7 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
   const [participantMode, setParticipantMode] = useState("INDIVIDUAL");
   const [minTeamSize, setMinTeamSize] = useState(1);
   const [maxTeamSize, setMaxTeamSize] = useState(5);
+  const [startType, setStartType] = useState("AUTO");
   const [msg, setMsg] = useState("");
 
   // Nạp danh sách game hợp lệ từ backend; nếu game đang chọn không tồn tại
@@ -97,6 +98,7 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
           rules: ruleLines,
           prize: prize.trim(),
           description: description.trim(),
+          startType,
           config: {
             participantMode,
             minTeamSize: participantMode === "TEAM" ? Math.max(1, Number(minTeamSize) || 1) : 1,
@@ -159,6 +161,8 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     setMinTeamSize,
     maxTeamSize,
     setMaxTeamSize,
+    startType,
+    setStartType,
     msg,
     setMsg,
     handleCreateTour,
