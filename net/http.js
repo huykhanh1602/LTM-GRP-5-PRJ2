@@ -85,6 +85,26 @@ function buildTournamentConfig(body, organizer) {
         }
         config.maxParticipants = max;
     }
+    // Chế độ thi đấu: Cá nhân / Đội nhóm
+    if (body.config?.participantMode !== undefined) {
+        const mode = body.config.participantMode;
+        if (!['INDIVIDUAL', 'TEAM'].includes(mode)) {
+            throw new StorageError('INVALID_INPUT', 'participantMode phải là INDIVIDUAL hoặc TEAM');
+        }
+        config.participantMode = mode;
+        if (mode === 'TEAM') {
+            const minSize = Number(body.config.minTeamSize ?? 1);
+            const maxSize = Number(body.config.maxTeamSize ?? 5);
+            if (!Number.isSafeInteger(minSize) || minSize < 1) {
+                throw new StorageError('INVALID_INPUT', 'minTeamSize phải >= 1');
+            }
+            if (!Number.isSafeInteger(maxSize) || maxSize < minSize) {
+                throw new StorageError('INVALID_INPUT', 'maxTeamSize phải >= minTeamSize');
+            }
+            config.minTeamSize = minSize;
+            config.maxTeamSize = maxSize;
+        }
+    }
     return config;
 }
 

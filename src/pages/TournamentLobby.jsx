@@ -172,7 +172,10 @@ export function PageTournamentLobby({
                     className="btn primary"
                     disabled={busy}
                     onClick={() =>
-                      run(() => registerTournament(tournament.id, token), "🎉 Bạn đã đăng ký tham gia giải đấu.")
+                      run(async () => {
+                        await registerTournament(tournament.id, token);
+                        return load();
+                      }, "🎉 Bạn đã đăng ký tham gia giải đấu.")
                     }
                   >
                     📝 Đăng ký tham gia
