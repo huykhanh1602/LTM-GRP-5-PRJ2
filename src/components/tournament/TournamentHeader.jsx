@@ -36,7 +36,8 @@ function pad(value) {
 export default function TournamentHeader({ tournament }) {
   const countdown = useCountdown(tournament.countdownTarget);
 
-  const statusClass = tournament.status.replace("_", "-");
+  const STATUS_CLASS_MAP = { open: "open", in_progress: "running", completed: "ended", draft: "draft", cancelled: "cancelled" };
+  const statusClass = STATUS_CLASS_MAP[tournament.status] ?? tournament.status;
 
   return (
     <section className="tl-hero">
@@ -54,15 +55,12 @@ export default function TournamentHeader({ tournament }) {
 
           <div className="tl-hero__text">
             <div className="tl-hero__eyebrow">
-              <span className="tl-mode-badge"><TrophyIcon size="18px" /> Tournament</span>
               <span className={`tl-mode-badge tl-mode-badge--${tournament.participantMode === "TEAM" ? "team" : "solo"}`}>
-                {tournament.participantMode === "TEAM"
-                  ? `Giải Đội Nhóm (${tournament.minTeamSize}-${tournament.maxTeamSize} thành viň)`
-                  : "Giải Cá Nhân"}
+                {tournament.participantMode === "TEAM" ? "Giải Đội" : "Giải Cá Nhân"}
               </span>
               <span className={`tl-status tl-status--${statusClass}`}>
                 <i aria-hidden="true" />
-                {tournament.statusLabel}
+                {tournament.status === "open" ? "Đang mở đăng ký" : tournament.status === "in_progress" ? "Đã khởi tranh" : tournament.status === "completed" ? "Đã kết thúc" : tournament.statusLabel}
               </span>
               <span className="tl-hero__format">{tournament.formatLabel}</span>
             </div>
