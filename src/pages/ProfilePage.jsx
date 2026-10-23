@@ -551,7 +551,10 @@ export default function ProfilePage({
 
                 <div className="reg-field">
                   <label>
-                    Số lượng người tham gia (Tối đa: <strong>128</strong>)
+                    {participantMode === "TEAM"
+                      ? "Số lượng ĐỘI tham gia"
+                      : "Số lượng người chơi"}{" "}
+                    (Tối đa: <strong>128</strong>)
                   </label>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                     <input
@@ -564,7 +567,9 @@ export default function ProfilePage({
                       style={{ width: "120px" }}
                       required
                     />
-                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>người</span>
+                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>
+                      {participantMode === "TEAM" ? "đội" : "người"}
+                    </span>
                   </div>
                   {/* Các nút bấm chọn nhanh quy mô */}
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
@@ -581,7 +586,7 @@ export default function ProfilePage({
                         }}
                         onClick={() => setMaxTeams(num)}
                       >
-                        {num} người
+                        {num} {participantMode === "TEAM" ? "đội" : "người"}
                       </button>
                     ))}
                   </div>
@@ -617,7 +622,7 @@ export default function ProfilePage({
               {participantMode === "TEAM" && (
                 <div className="form-grid-2">
                   <div className="reg-field">
-                    <label>Min thành viň / đội</label>
+                    <label>Số thành viên tối thiểu/đội</label>
                     <input
                       type="number"
                       min={1}
@@ -629,7 +634,7 @@ export default function ProfilePage({
                     />
                   </div>
                   <div className="reg-field">
-                    <label>Max thành viň / đội</label>
+                    <label>Số thành viên tối đa/đội</label>
                     <input
                       type="number"
                       min={1}

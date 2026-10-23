@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   name TEXT NOT NULL, format TEXT NOT NULL CHECK(format IN ('single_elimination','round_robin','swiss')),
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','open','in_progress','completed','cancelled')),
   config JSONB NOT NULL DEFAULT '{}'::jsonb, starts_at TIMESTAMPTZ, champion_id TEXT,
+  bracket_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS tournament_rounds (
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
   team_id TEXT REFERENCES teams(id),
   seed INTEGER CHECK(seed IS NULL OR seed > 0),
   points DOUBLE PRECISION NOT NULL DEFAULT 0,
+  bot_submission_id TEXT,
   CHECK(user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS tournament_match_history (
@@ -102,6 +104,8 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
 ALTER TABLE tournament_match_history ADD COLUMN IF NOT EXISTS slot_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS champion_id TEXT;
+-- Domain bracket snapshot (TournamentService/PostgresTournamentRepository).
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_json JSONB;
 CREATE TABLE IF NOT EXISTS bot_submissions (
   id TEXT PRIMARY KEY, room_id TEXT NOT NULL, team_id TEXT NOT NULL REFERENCES teams(id),
   filename TEXT NOT NULL, source TEXT NOT NULL, source_sha256 TEXT NOT NULL,
@@ -140,5 +144,6 @@ ALTER TABLE tournament_entries DROP CONSTRAINT IF EXISTS tournament_entries_tour
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_entries_user ON tournament_entries(tournament_id, user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_entries_team ON tournament_entries(tournament_id, team_id);
 
+ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS bot_submission_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id);
 CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL;

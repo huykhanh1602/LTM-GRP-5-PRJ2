@@ -49,8 +49,18 @@ export const getTournament = (idOrCode) => get(`${V1}/tournaments/${encodeURICom
 export const createTournament = (payload, token) => post(`${V1}/tournaments`, payload, token);
 export const registerTournament = (idOrCode, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
-export const registerTournamentTeam = (idOrCode, teamId, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`, { team_id: teamId }, token);
+export const registerTournamentTeam = (idOrCode, teamId, token, submissionId = null) =>
+    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`,
+        { team_id: teamId, submission_id: submissionId }, token);
+// ── Đội: tạo Đội, xem thành viên, thêm thành viên, đổi bot đại diện ──
+export const createTeam = (name, token) => post(`${V1}/teams`, { name }, token);
+export const getTeam = (id, token) => get(`${V1}/teams/${encodeURIComponent(id)}`, { token });
+export const addTeamMember = (id, userId, token) =>
+    post(`${V1}/teams/${encodeURIComponent(id)}/members`, { user_id: userId }, token);
+export const setEntrySubmission = (tournamentId, { teamId = null, userId = null, submissionId }, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/entries/submission`, {
+        method: "PATCH", body: { team_id: teamId, user_id: userId, submission_id: submissionId }, token,
+    });
 export const startTournament = (idOrCode, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/start`, {}, token);
 export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
