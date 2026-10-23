@@ -60,6 +60,10 @@ export default function ProfilePage({
   const [creating, setCreating] = useState(false);
   const [prize, setPrize] = useState("");
   const [description, setDescription] = useState("");
+  const [format, setFormat] = useState("single_elimination");
+  const [participantMode, setParticipantMode] = useState("INDIVIDUAL");
+  const [minTeamSize, setMinTeamSize] = useState(1);
+  const [maxTeamSize, setMaxTeamSize] = useState(5);
   const [myTournaments, setMyTournaments] = useState([]);
   const [msg, setMsg] = useState("");
   const [linkMessage, setLinkMessage] = useState("");
@@ -146,12 +150,20 @@ export default function ProfilePage({
         {
           name: tourName.trim(),
           gameId: selectedGame,
+          format,
           startsAt: startsAt.toISOString(),
           maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
           languages,
           rules: ruleLines,
           prize: prize.trim(),
           description: description.trim(),
+          config: {
+            participantMode,
+            minTeamSize: participantMode === "TEAM" ? Math.max(1, Number(minTeamSize) || 1) : 1,
+            maxTeamSize: participantMode === "TEAM"
+              ? Math.max(Number(maxTeamSize) || 5, Number(minTeamSize) || 1)
+              : 1,
+          },
         },
         token,
       );
@@ -545,7 +557,62 @@ export default function ProfilePage({
                   </div>
                 </div>
               </div>
-
+    
+              <div className="form-grid-2">
+                <div className="reg-field">
+                  <label>Kiểu giải đấu (Format)</label>
+                  <select
+                    className="reg-select"
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value)}
+                  >
+                    <option value="single_elimination">Loại trực tiếp (Single Elimination)</option>
+                    <option value="round_robin">Đấu vòng tròn (Round Robin)</option>
+                  </select>
+                </div>
+    
+                <div className="reg-field">
+                  <label>Chế mode thi đấu</label>
+                  <select
+                    className="reg-select"
+                    value={participantMode}
+                    onChange={(e) => setParticipantMode(e.target.value)}
+                  >
+                    <option value="INDIVIDUAL">Cá nhân 1v1</option>
+                    <option value="TEAM">Đội nhóm</option>
+                  </select>
+                </div>
+              </div>
+    
+              {participantMode === "TEAM" && (
+                <div className="form-grid-2">
+                  <div className="reg-field">
+                    <label>Min thành viň / đội</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={128}
+                      className="reg-input"
+                      value={minTeamSize}
+                      onChange={(e) => setMinTeamSize(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="reg-field">
+                    <label>Max thành viň / đội</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={128}
+                      className="reg-input"
+                      value={maxTeamSize}
+                      onChange={(e) => setMaxTeamSize(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+    
               <div className="reg-field">
                 <label>Ngôn ngữ bot được phép *</label>
                 <div className="reg-lang-options">
