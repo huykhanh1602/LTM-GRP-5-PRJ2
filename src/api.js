@@ -89,6 +89,23 @@ export const getBotSubmissions = (roomCode, token, { limit = 20, offset = 0 } = 
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     return get(`/api/rooms/${encodeURIComponent(roomCode)}/submissions?${params}`, { token });
 }
+export const createBotSubmission = (roomCode, filename, source, token) => {
+    const url = `${baseUrl}/api/rooms/${encodeURIComponent(roomCode)}/submissions?filename=${encodeURIComponent(filename)}`;
+    return fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: source,
+    }).then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+            const error = new Error(data.message || data.error || `HTTP ${response.status}`);
+            error.code = data.error;
+            error.status = response.status;
+            throw error;
+        }
+        return data;
+    });
+}
 export function getMatches({ teamId, status, limit = 20, offset = 0 } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (teamId !== undefined) params.set("teamId", teamId);

@@ -2602,6 +2602,17 @@ button.tour-card-item:hover {
   border-color: var(--c-purple-deep);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
 }
+.tl-code-input {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 2;
+  resize: vertical;
+  min-height: 120px;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
 .tl-form-note {
   margin: 8px 0 0;
   font-size: 11.5px;
