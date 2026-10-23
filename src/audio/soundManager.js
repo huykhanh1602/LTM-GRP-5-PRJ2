@@ -15,6 +15,7 @@ const SFX_SRC = {
   win:         "/Sound/win.ogg",
   lose:        "/Sound/lose.ogg",
   match_found: "/Sound/match_found.mp3",
+  countdown:   "/Sound/countdown.mp3",
   trap:        "/Sound/trap.mp3",
 };
 
