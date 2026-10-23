@@ -119,6 +119,8 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
         if (handleCorsPreflight(request, response)) return;
 
         const url = new URL(request.url, "http://localhost");
+        // Tương thích phiên bản: chấp nhận cả /api/v1/* lẫn /api/*.
+        url.pathname = url.pathname.replace(/^\/api\/v1(?=\/|$)/, "/api");
 
         if (authService && (url.pathname === "/api/me" || url.pathname.startsWith("/api/auth/"))) {
             authService

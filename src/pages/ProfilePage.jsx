@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
 import TrophyIcon from "../components/TrophyIcon.jsx";
 import { BOT_LANGUAGES, languageLabels } from "../utils/botLanguages.js";
-import { createTournament, getTournaments } from "../api.js";
+import { createTournament, getGames, getTournaments } from "../api.js";
 import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
 import "../styles/auth.css";
 
@@ -50,6 +50,10 @@ export default function ProfilePage({
 
   // State mở giải đấu
   const [tourName, setTourName] = useState("");
+  // Danh sách game hợp lệ lấy từ backend (đảm bảo game_id tồn tại trong DB).
+  const [gameOptions, setGameOptions] = useState(
+    GAME_CATALOG.map((g) => ({ id: g.id, name: g.name })),
+  );
   const [selectedGame, setSelectedGame] = useState(GAME_CATALOG[0]?.id || "rps_chess");
   const [maxTeams, setMaxTeams] = useState(16);
   const [startDate, setStartDate] = useState("");
@@ -91,6 +95,25 @@ export default function ProfilePage({
 
   // Tài khoản đăng nhập qua Google/Facebook sẽ chưa có mật khẩu → hiện "Thêm mật khẩu".
   const hasPassword = !!user?.has_password;
+
+  // Nạp danh sách game hợp lệ từ backend; nếu game đang chọn không tồn tại
+  // (ví dụ "snake_battle" chưa seed trong bảng games) thì tự gán game_id hợp lệ.
+  useEffect(() => {
+    let active = true;
+    getGames()
+      .then((data) => {
+        if (!active) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (items.length === 0) return;
+        const options = items.map((g) => ({ id: g.id, name: g.name || g.id }));
+        setGameOptions(options);
+        setSelectedGame((current) =>
+          options.some((g) => g.id === current) ? current : options[0].id,
+        );
+      })
+      .catch(() => { /* giữ danh sách mặc định khi API lỗi */ });
+    return () => { active = false; };
+  }, []);
 
   // Danh sách giải đấu do chính người này tổ chức (lọc từ API thật)
   useEffect(() => {
@@ -138,6 +161,13 @@ export default function ProfilePage({
     if (languages.length === 0) {
       return setFormError("Hãy chọn ít nhất một ngôn ngữ cho bot dự thi.");
     }
+    if (gameOptions.length === 0) {
+      return setFormError("Chưa có game hợp lệ để tổ chức giải đấu.");
+    }
+    // Đảm bảo luôn gửi game_id hợp lệ đang tồn tại trong DB.
+    const gameId = gameOptions.some((g) => g.id === selectedGame)
+      ? selectedGame
+      : gameOptions[0].id;
 
     const ruleLines = rules
       .split("\n")
@@ -149,7 +179,7 @@ export default function ProfilePage({
       const created = await createTournament(
         {
           name: tourName.trim(),
-          gameId: selectedGame,
+          gameId,
           format,
           startsAt: startsAt.toISOString(),
           maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
@@ -511,9 +541,9 @@ export default function ProfilePage({
                     value={selectedGame}
                     onChange={(e) => setSelectedGame(e.target.value)}
                   >
-                    {GAME_CATALOG.map((g) => (
+                    {gameOptions.map((g) => (
                       <option key={g.id} value={g.id}>
-                        {g.name} {!g.available ? "(Sắp ra mắt)" : ""}
+                        {g.name}
                       </option>
                     ))}
                   </select>
