@@ -55,11 +55,6 @@ export default function TournamentHeader({ tournament }) {
           <div className="tl-hero__text">
             <div className="tl-hero__eyebrow">
               <span className="tl-mode-badge"><TrophyIcon size="18px" /> Tournament</span>
-              <span className={`tl-mode-badge tl-mode-badge--${tournament.participantMode === "TEAM" ? "team" : "solo"}`}>
-                {tournament.participantMode === "TEAM"
-                  ? `Giải Đội Nhóm (${tournament.minTeamSize}-${tournament.maxTeamSize} thành viň)`
-                  : "Giải Cá Nhân"}
-              </span>
               <span className={`tl-status tl-status--${statusClass}`}>
                 <i aria-hidden="true" />
                 {tournament.statusLabel}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
 import TrophyIcon from "../components/TrophyIcon.jsx";
 import { BOT_LANGUAGES, languageLabels } from "../utils/botLanguages.js";
-import { createTournament, getGames, getTournaments } from "../api.js";
+import { createTournament, getTournaments } from "../api.js";
 import { apiErrorText, formatStartsAt, toTournamentCard } from "../utils/tournamentApi.js";
 import "../styles/auth.css";
 
@@ -50,10 +50,6 @@ export default function ProfilePage({
 
   // State mở giải đấu
   const [tourName, setTourName] = useState("");
-  // Danh sách game hợp lệ lấy từ backend (đảm bảo game_id tồn tại trong DB).
-  const [gameOptions, setGameOptions] = useState(
-    GAME_CATALOG.map((g) => ({ id: g.id, name: g.name })),
-  );
   const [selectedGame, setSelectedGame] = useState(GAME_CATALOG[0]?.id || "rps_chess");
   const [maxTeams, setMaxTeams] = useState(16);
   const [startDate, setStartDate] = useState("");
@@ -64,10 +60,6 @@ export default function ProfilePage({
   const [creating, setCreating] = useState(false);
   const [prize, setPrize] = useState("");
   const [description, setDescription] = useState("");
-  const [format, setFormat] = useState("single_elimination");
-  const [participantMode, setParticipantMode] = useState("INDIVIDUAL");
-  const [minTeamSize, setMinTeamSize] = useState(1);
-  const [maxTeamSize, setMaxTeamSize] = useState(5);
   const [myTournaments, setMyTournaments] = useState([]);
   const [msg, setMsg] = useState("");
   const [linkMessage, setLinkMessage] = useState("");
@@ -95,25 +87,6 @@ export default function ProfilePage({
 
   // Tài khoản đăng nhập qua Google/Facebook sẽ chưa có mật khẩu → hiện "Thêm mật khẩu".
   const hasPassword = !!user?.has_password;
-
-  // Nạp danh sách game hợp lệ từ backend; nếu game đang chọn không tồn tại
-  // (ví dụ "snake_battle" chưa seed trong bảng games) thì tự gán game_id hợp lệ.
-  useEffect(() => {
-    let active = true;
-    getGames()
-      .then((data) => {
-        if (!active) return;
-        const items = Array.isArray(data?.items) ? data.items : [];
-        if (items.length === 0) return;
-        const options = items.map((g) => ({ id: g.id, name: g.name || g.id }));
-        setGameOptions(options);
-        setSelectedGame((current) =>
-          options.some((g) => g.id === current) ? current : options[0].id,
-        );
-      })
-      .catch(() => { /* giữ danh sách mặc định khi API lỗi */ });
-    return () => { active = false; };
-  }, []);
 
   // Danh sách giải đấu do chính người này tổ chức (lọc từ API thật)
   useEffect(() => {
@@ -161,13 +134,6 @@ export default function ProfilePage({
     if (languages.length === 0) {
       return setFormError("Hãy chọn ít nhất một ngôn ngữ cho bot dự thi.");
     }
-    if (gameOptions.length === 0) {
-      return setFormError("Chưa có game hợp lệ để tổ chức giải đấu.");
-    }
-    // Đảm bảo luôn gửi game_id hợp lệ đang tồn tại trong DB.
-    const gameId = gameOptions.some((g) => g.id === selectedGame)
-      ? selectedGame
-      : gameOptions[0].id;
 
     const ruleLines = rules
       .split("\n")
@@ -179,21 +145,13 @@ export default function ProfilePage({
       const created = await createTournament(
         {
           name: tourName.trim(),
-          gameId,
-          format,
+          gameId: selectedGame,
           startsAt: startsAt.toISOString(),
           maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
           languages,
           rules: ruleLines,
           prize: prize.trim(),
           description: description.trim(),
-          config: {
-            participantMode,
-            minTeamSize: participantMode === "TEAM" ? Math.max(1, Number(minTeamSize) || 1) : 1,
-            maxTeamSize: participantMode === "TEAM"
-              ? Math.max(Number(maxTeamSize) || 5, Number(minTeamSize) || 1)
-              : 1,
-          },
         },
         token,
       );
@@ -541,9 +499,9 @@ export default function ProfilePage({
                     value={selectedGame}
                     onChange={(e) => setSelectedGame(e.target.value)}
                   >
-                    {gameOptions.map((g) => (
+                    {GAME_CATALOG.map((g) => (
                       <option key={g.id} value={g.id}>
-                        {g.name}
+                        {g.name} {!g.available ? "(Sắp ra mắt)" : ""}
                       </option>
                     ))}
                   </select>
@@ -551,10 +509,7 @@ export default function ProfilePage({
 
                 <div className="reg-field">
                   <label>
-                    {participantMode === "TEAM"
-                      ? "Số lượng ĐỘI tham gia"
-                      : "Số lượng người chơi"}{" "}
-                    (Tối đa: <strong>128</strong>)
+                    Số lượng người tham gia (Tối đa: <strong>128</strong>)
                   </label>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                     <input
@@ -567,9 +522,7 @@ export default function ProfilePage({
                       style={{ width: "120px" }}
                       required
                     />
-                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>
-                      {participantMode === "TEAM" ? "đội" : "người"}
-                    </span>
+                    <span style={{ fontSize: "13px", color: "var(--muted)" }}>người</span>
                   </div>
                   {/* Các nút bấm chọn nhanh quy mô */}
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
@@ -586,67 +539,12 @@ export default function ProfilePage({
                         }}
                         onClick={() => setMaxTeams(num)}
                       >
-                        {num} {participantMode === "TEAM" ? "đội" : "người"}
+                        {num} người
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
-
-              <div className="form-grid-2">
-                <div className="reg-field">
-                  <label>Kiểu giải đấu (Format)</label>
-                  <select
-                    className="reg-select"
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value)}
-                  >
-                    <option value="single_elimination">Loại trực tiếp (Single Elimination)</option>
-                    <option value="round_robin">Đấu vòng tròn (Round Robin)</option>
-                  </select>
-                </div>
-
-                <div className="reg-field">
-                  <label>Chế mode thi đấu</label>
-                  <select
-                    className="reg-select"
-                    value={participantMode}
-                    onChange={(e) => setParticipantMode(e.target.value)}
-                  >
-                    <option value="INDIVIDUAL">Cá nhân 1v1</option>
-                    <option value="TEAM">Đội nhóm</option>
-                  </select>
-                </div>
-              </div>
-
-              {participantMode === "TEAM" && (
-                <div className="form-grid-2">
-                  <div className="reg-field">
-                    <label>Số thành viên tối thiểu/đội</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={128}
-                      className="reg-input"
-                      value={minTeamSize}
-                      onChange={(e) => setMinTeamSize(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="reg-field">
-                    <label>Số thành viên tối đa/đội</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={128}
-                      className="reg-input"
-                      value={maxTeamSize}
-                      onChange={(e) => setMaxTeamSize(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-              )}
 
               <div className="reg-field">
                 <label>Ngôn ngữ bot được phép *</label>

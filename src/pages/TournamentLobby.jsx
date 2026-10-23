@@ -8,20 +8,16 @@ import MatchFeed from "../components/tournament/MatchFeed.jsx";
 import TournamentInfoPanel from "../components/tournament/TournamentInfoPanel.jsx";
 import TrophyIcon from "../components/TrophyIcon.jsx";
 import {
-  addTeamMember,
   attachTournamentSlotResult,
-  createTeam,
   getBotSubmissions,
   getMatchReplay,
   getMatches,
-  getTeam,
   getTournament,
   getTournaments,
   getUserProfile,
   registerTournament,
   registerTournamentTeam,
   rescheduleMatch,
-  setEntrySubmission,
   startTournament,
   triggerRoundStart,
   updateRoundSchedule,
@@ -240,12 +236,12 @@ function AttachResultModal({ slot, nameA, nameB, onClose, onAttached }) {
 // Đăng ký Đội: đặt tên Đội, mời thành viên (có thể trống),
 // chọn Bot Submission đại diện dla Đội, rồi đăng ký với team_id.
 // ─────────────────────────────────────────────────────────────
-function TeamRegistrationModal({ tournament, user, token, onClose, onRegistered }) {
+function TeamRegistrationModal({ tournament, token, onClose, onRegistered }) {
   const [roomCode, setRoomCode] = useState(tournament.code ?? "");
   const [teamName, setTeamName] = useState("");
   const [members, setMembers] = useState("");
   const [submissions, setSubmissions] = useState(null);
-  const [pickedSubmissionId, setPickedSubmissionId] = useState(null);
+  const [pickedTeamId, setPickedTeamId] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -270,22 +266,14 @@ function TeamRegistrationModal({ tournament, user, token, onClose, onRegistered 
       setError("Đặt tên Đội trước đăng ký tham gia.");
       return;
     }
-    if (!pickedSubmissionId) {
+    if (!pickedTeamId) {
       setError("Chọn Bot Submission đại diện dla Đội.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      // 1) Lập Đội (người đăng ký trở thành đội trưởng).
-      const team = await createTeam(teamName.trim(), token);
-      // 2) Mời thêm thành viên (nhập user_id, phân tách dấu phẩy).
-      const invited = members.split(",").map((m) => m.trim()).filter(Boolean);
-      for (const userId of invited) {
-        try { await addTeamMember(team.id, userId, token); } catch { /* bỏ qua thành viên lỗi */ }
-      }
-      // 3) Đăng ký giải với team_id thật + bot đại diện.
-      onRegistered(await registerTournamentTeam(tournament.id, team.id, token, pickedSubmissionId));
+      onRegistered(await registerTournamentTeam(tournament.id, pickedTeamId, token));
     } catch (err) {
       setError(apiErrorText(err));
     } finally {
@@ -366,8 +354,8 @@ function TeamRegistrationModal({ tournament, user, token, onClose, onRegistered 
                 <input
                   type="radio"
                   name="tl-team-submission"
-                  checked={pickedSubmissionId === item.id}
-                  onChange={() => setPickedSubmissionId(item.id)}
+                  checked={pickedTeamId === item.team_id}
+                  onChange={() => setPickedTeamId(item.team_id)}
                 />
                 <span>
                   <strong>{item.filename}</strong>
@@ -381,153 +369,13 @@ function TeamRegistrationModal({ tournament, user, token, onClose, onRegistered 
         </ul>
       )}
 
-      <table className="tl-team-confirm">
-        <caption>Bảng xác nhận lập Đội</caption>
-        <tbody>
-          <tr><th scope="row">Tên Đội</th><td>{teamName.trim() || <em>chưa đặt</em>}</td></tr>
-          <tr>
-            <th scope="row">Đội trưởng</th>
-            <td>{user?.display_name ?? "Bạn"}</td>
-          </tr>
-          <tr>
-            <th scope="row">Số thành viên</th>
-            <td>{members.split(",").map((m) => m.trim()).filter(Boolean).length + 1}
-              {" "}({tournament.minTeamSize}–{tournament.maxTeamSize} người)
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Bot đại diện</th>
-            <td>{submissions?.find((s) => s.id === pickedSubmissionId)?.filename ?? <em>chưa chọn</em>}</td>
-          </tr>
-        </tbody>
-      </table>
       {members.trim() && (
         <p className="tl-form-note">
-          👥 Thành viên: {members.split(",").map((m) => m.trim()).filter(Boolean).join(", ")}
+          👥 Đội sẽ có {members.split(",").map((m) => m.trim()).filter(Boolean).length + 1} người
+          (bao hán bạn). Thành viên được mời tham gia khi giải khởi tranh.
         </p>
       )}
     </Modal>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Đội của tôi: đội trưởng xem/thêm thành viên và đổi Bot Submission
-// đại diện trước khi giải khởi tranh.
-// ─────────────────────────────────────────────────────────────
-function TeamManagementPanel({ tournament, user, token, onUpdated }) {
-  const entry = (tournament.raw?.entries ?? []).find(
-    (item) => item.team_id && String(item.user_id) === String(user?.id),
-  );
-  const teamId = entry?.team_id ?? null;
-  const [team, setTeam] = useState(null);
-  const [memberId, setMemberId] = useState("");
-  const [submissions, setSubmissions] = useState([]);
-  const [submissionId, setSubmissionId] = useState(entry?.bot_submission_id ?? "");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    if (!teamId) return undefined;
-    getTeam(teamId, token).then((data) => active && setTeam(data)).catch(() => {});
-    return () => { active = false; };
-  }, [teamId, token]);
-
-  useEffect(() => {
-    let active = true;
-    if (!tournament.code) return undefined;
-    getBotSubmissions(tournament.code, token, { limit: 50 })
-      .then((data) => active && setSubmissions(data.items ?? []))
-      .catch(() => active && setSubmissions([]));
-    return () => { active = false; };
-  }, [tournament.code, token]);
-
-  if (!teamId) return null;
-
-  async function addMember() {
-    if (!memberId.trim()) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await addTeamMember(teamId, memberId.trim(), token);
-      setTeam(await getTeam(teamId, token));
-      setMemberId("");
-      setMsg({ tone: "ok", text: "Đã thêm thành viên vào Đội." });
-    } catch (err) {
-      setMsg({ tone: "err", text: apiErrorText(err) });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveSubmission() {
-    if (!submissionId) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await setEntrySubmission(tournament.id, { teamId, submissionId }, token);
-      onUpdated?.();
-      setMsg({ tone: "ok", text: "Đã đổi Bot Submission đại diện cho Đội." });
-    } catch (err) {
-      setMsg({ tone: "err", text: apiErrorText(err) });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="tl-card tl-team-panel" aria-label="Đội của tôi">
-      <header className="tl-card__head">
-        <div>
-          <h2 className="tl-card__title">👥 Đội của tôi</h2>
-          <p className="tl-card__desc">Đội: <strong>{team?.name ?? teamId}</strong></p>
-        </div>
-      </header>
-
-      <ul className="tl-team-members">
-        {(team?.members ?? []).map((member) => (
-          <li key={member.user_id}>
-            {member.display_name ?? member.user_id}
-            {" · "}
-            <small>{member.role === "captain" ? "Đội trưởng" : "Thành viên"}</small>
-          </li>
-        ))}
-      </ul>
-
-      <div className="tl-team-actions">
-        <input
-          className="tl-form-input"
-          placeholder="user_id thành viên muốn mời"
-          value={memberId}
-          onChange={(event) => setMemberId(event.target.value)}
-        />
-        <button type="button" className="btn small" disabled={busy} onClick={addMember}>
-          ➕ Thêm thành viên
-        </button>
-      </div>
-
-      <div className="tl-form-label">Bot Submission đại diện cho Đội</div>
-      <select
-        className="tl-form-input"
-        value={submissionId}
-        onChange={(event) => setSubmissionId(event.target.value)}
-      >
-        <option value="">— chọn bot đại diện —</option>
-        {submissions.map((item) => (
-          <option key={item.id} value={item.id}>{item.filename}</option>
-        ))}
-      </select>
-      <button
-        type="button"
-        className="btn small primary"
-        disabled={busy || !submissionId}
-        onClick={saveSubmission}
-      >
-        💾 Lưu bot đại diện
-      </button>
-
-      {msg && <p className={msg.tone === "ok" ? "ok" : "err"}>{msg.text}</p>}
-    </section>
   );
 }
 
@@ -1052,16 +900,6 @@ export function PageTournamentLobby({
             />
           )}
 
-          {isRegistered && tournament.participantMode === "TEAM" && !isOrganizer
-            && status !== "completed" && status !== "cancelled" && (
-            <TeamManagementPanel
-              tournament={tournament}
-              user={user}
-              token={token}
-              onUpdated={() => { load().then(setRaw).catch(() => {}); }}
-            />
-          )}
-
           {isOrganizer && status === "in_progress" && (
             <section className="tl-card" aria-label="Trận chờ kết quả">
               <header className="tl-card__head">
@@ -1208,7 +1046,6 @@ export function PageTournamentLobby({
       {teamModal && (
         <TeamRegistrationModal
           tournament={tournament}
-          user={user}
           token={token}
           onClose={() => setTeamModal(false)}
           onRegistered={(data) => {

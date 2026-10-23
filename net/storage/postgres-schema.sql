@@ -1,14 +1,6 @@
 CREATE TABLE IF NOT EXISTS teams (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- users phải tạo TRƯỚC team_members (FK tới users).
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY, display_name TEXT NOT NULL, avatar_url TEXT,
-  email TEXT UNIQUE, phone TEXT UNIQUE, password_salt TEXT, password_hash TEXT,
-  student_id TEXT UNIQUE, role TEXT NOT NULL DEFAULT 'player'
-    CHECK (role IN ('player','organizer','admin')),
-  banned BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 CREATE TABLE IF NOT EXISTS team_members (
   team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -17,6 +9,13 @@ CREATE TABLE IF NOT EXISTS team_members (
   PRIMARY KEY(team_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY, display_name TEXT NOT NULL, avatar_url TEXT,
+  email TEXT UNIQUE, phone TEXT UNIQUE, password_salt TEXT, password_hash TEXT,
+  student_id TEXT UNIQUE, role TEXT NOT NULL DEFAULT 'player'
+    CHECK (role IN ('player','organizer','admin')),
+  banned BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS auth_sessions (
   token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -64,7 +63,6 @@ CREATE TABLE IF NOT EXISTS tournaments (
   name TEXT NOT NULL, format TEXT NOT NULL CHECK(format IN ('single_elimination','round_robin','swiss')),
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','open','in_progress','completed','cancelled')),
   config JSONB NOT NULL DEFAULT '{}'::jsonb, starts_at TIMESTAMPTZ, champion_id TEXT,
-  bracket_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS tournament_rounds (
@@ -81,13 +79,13 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE TABLE IF NOT EXISTS tournament_entries (
-  id TEXT NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   user_id TEXT REFERENCES users(id),
   team_id TEXT REFERENCES teams(id),
   seed INTEGER CHECK(seed IS NULL OR seed > 0),
   points DOUBLE PRECISION NOT NULL DEFAULT 0,
-  bot_submission_id TEXT,
+  PRIMARY KEY(tournament_id,user_id),
+  UNIQUE(tournament_id,team_id),
   CHECK(user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS tournament_match_history (
@@ -104,8 +102,6 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
 ALTER TABLE tournament_match_history ADD COLUMN IF NOT EXISTS slot_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS champion_id TEXT;
--- Domain bracket snapshot (TournamentService/PostgresTournamentRepository).
-ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_json JSONB;
 CREATE TABLE IF NOT EXISTS bot_submissions (
   id TEXT PRIMARY KEY, room_id TEXT NOT NULL, team_id TEXT NOT NULL REFERENCES teams(id),
   filename TEXT NOT NULL, source TEXT NOT NULL, source_sha256 TEXT NOT NULL,
@@ -121,29 +117,8 @@ ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
 ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS auto_start BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS auto_start BOOLEAN NOT NULL DEFAULT TRUE;
-
--- tournament_entries (chế độ TEAM): PK cũ (tournament_id,user_id) chặn user_id NULL
--- -> lỗi 42P16. Bỏ PK cũ, thêm khóa surrogate `id`, rồi mới drop NOT NULL.
 ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS team_id TEXT REFERENCES teams(id);
-ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS id TEXT;
-UPDATE tournament_entries SET id = md5(random()::text || clock_timestamp()::text) WHERE id IS NULL;
-ALTER TABLE tournament_entries ALTER COLUMN id SET DEFAULT md5(random()::text || clock_timestamp()::text);
-ALTER TABLE tournament_entries ALTER COLUMN id SET NOT NULL;
-ALTER TABLE tournament_entries DROP CONSTRAINT IF EXISTS tournament_entries_pkey;
 ALTER TABLE tournament_entries ALTER COLUMN user_id DROP NOT NULL;
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'tournament_entries'::regclass AND contype = 'p'
-  ) THEN
-    ALTER TABLE tournament_entries ADD PRIMARY KEY (id);
-  END IF;
-END $$;
--- Ràng buộc duy nhất thay cho PK/UNIQUE cũ (NULL vẫn được phép nhờ unique index).
-ALTER TABLE tournament_entries DROP CONSTRAINT IF EXISTS tournament_entries_tournament_id_team_id_key;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_entries_user ON tournament_entries(tournament_id, user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_entries_team ON tournament_entries(tournament_id, team_id);
 
-ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS bot_submission_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id);
 CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL;

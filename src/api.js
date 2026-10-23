@@ -5,10 +5,6 @@ import { API_URL } from "./api/index.js";
 
 const baseUrl = (API_URL ?? "").replace(/\/+$/, "");
 
-// Tiền tố phiên bản cho các endpoint dữ liệu giải đấu / game.
-// Backend chấp nhận cả /api/v1/* và /api/* (xem net/http.js).
-const V1 = "/api/v1";
-
 async function request(path, { method = "GET", token, body } = {}) {
     const response = await fetch(`${baseUrl}${path}`, {
         method,
@@ -39,49 +35,39 @@ export function sessionToken() {
 }
 
 export const getMe = () => get("/api/me", { token: sessionToken() });
-export const getGames = () => get(`${V1}/games`);
+export const getGames = () => get("/api/games");
 export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (status !== undefined) params.set("status", status);
-    return get(`${V1}/tournaments?${params}`);
+    return get(`/api/tournaments?${params}`);
 }
-export const getTournament = (idOrCode) => get(`${V1}/tournaments/${encodeURIComponent(idOrCode)}`);
-export const createTournament = (payload, token) => post(`${V1}/tournaments`, payload, token);
+export const getTournament = (idOrCode) => get(`/api/tournaments/${encodeURIComponent(idOrCode)}`);
+export const createTournament = (payload, token) => post("/api/tournaments", payload, token);
 export const registerTournament = (idOrCode, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
-export const registerTournamentTeam = (idOrCode, teamId, token, submissionId = null) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`,
-        { team_id: teamId, submission_id: submissionId }, token);
-// ── Đội: tạo Đội, xem thành viên, thêm thành viên, đổi bot đại diện ──
-export const createTeam = (name, token) => post(`${V1}/teams`, { name }, token);
-export const getTeam = (id, token) => get(`${V1}/teams/${encodeURIComponent(id)}`, { token });
-export const addTeamMember = (id, userId, token) =>
-    post(`${V1}/teams/${encodeURIComponent(id)}/members`, { user_id: userId }, token);
-export const setEntrySubmission = (tournamentId, { teamId = null, userId = null, submissionId }, token) =>
-    request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/entries/submission`, {
-        method: "PATCH", body: { team_id: teamId, user_id: userId, submission_id: submissionId }, token,
-    });
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
+export const registerTournamentTeam = (idOrCode, teamId, token) =>
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/entries`, { team_id: teamId }, token);
 export const startTournament = (idOrCode, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/start`, {}, token);
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/start`, {}, token);
 export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
-    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
+    request(`/api/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
         method: "PATCH", body: { scheduled_at: scheduledAt }, token,
     });
 export const updateRoundSchedule = (idOrCode, roundId, scheduledAt, autoStart, token) =>
-    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds`, {
+    request(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds`, {
         method: "PATCH", body: { round_id: roundId, scheduled_at: scheduledAt, auto_start: autoStart }, token,
     });
 export const triggerRoundStart = (idOrCode, roundId, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/trigger-start`, { round_id: roundId }, token);
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds/trigger-start`, { round_id: roundId }, token);
 export const rescheduleMatch = (matchId, scheduledAt, token) =>
-    post(`${V1}/matches/${encodeURIComponent(matchId)}/reschedule`, { scheduled_at: scheduledAt }, token);
+    post(`/api/matches/${encodeURIComponent(matchId)}/reschedule`, { scheduled_at: scheduledAt }, token);
 export const attachTournamentSlotResult = (idOrCode, roundNo, slotIndex, matchId, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
+    post(`/api/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
         { match_id: matchId }, token);
 export const recordTournamentMatch = (tournamentId, result, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/matches`, result, token);
+    post(`/api/tournaments/${encodeURIComponent(tournamentId)}/matches`, result, token);
 export const updateTournamentStatus = (tournamentId, { status, champion_id = null }, token) =>
-    request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/status`, {
+    request(`/api/tournaments/${encodeURIComponent(tournamentId)}/status`, {
         method: "PATCH", body: { status, champion_id }, token,
     });
 export const getUserProfile = (userId) => get(`/api/users/${encodeURIComponent(userId)}`);
