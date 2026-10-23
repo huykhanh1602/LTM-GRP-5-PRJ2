@@ -20,6 +20,10 @@ const GAMES = {
         defaultConfig: { max_turns: 100, bot_time_ms: 1000 },
         limits: { max_turns: [1, 300], bot_time_ms: [100, 5000] },
     },
+    snake_battle: {
+        defaultConfig: { max_turns: 200, bot_time_ms: 1000, food_count: 5 },
+        limits: { max_turns: [20, 500], bot_time_ms: [100, 5000], food_count: [1, 20] },
+    },
 };
 
 function send(conn, message) {
@@ -187,6 +191,7 @@ export function createWsGateway({
         try {
             const replay = await runMatch({
                 roomCode: room.code,
+                gameId: room.gameId,
                 teamA: { name: slotA.displayName, code: slotA.source },
                 teamB: { name: slotB.displayName, code: slotB.source },
                 configPatch: { limits: room.config },

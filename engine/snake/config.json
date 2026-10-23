@@ -1,0 +1,13 @@
+{
+  "board": {
+    "width": 16,
+    "height": 16,
+    "coordinate_system": "TOP_LEFT_ORIGIN_X_RIGHT_Y_DOWN",
+    "special_tiles": []
+  },
+  "limits": {
+    "max_turns": 200,
+    "bot_time_ms": 1000,
+    "food_count": 5
+  }
+}

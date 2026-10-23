@@ -6,6 +6,9 @@ const ICONS = {
   PAPER: "✋",
   SCISSORS: "✌️",
   UNKNOWN: "❓",
+  HEAD: "🐍",
+  BODY: "🟢",
+  FOOD: "🍎",
 };
 
 export function pieceIcon(type) {

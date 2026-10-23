@@ -16,6 +16,10 @@ export const REASON_LABELS = {
   CRASH: "code đối phương bị lỗi",
   INVALID_MOVE: "đối phương đi sai luật",
   DRAW: "hòa",
+  SCORE_LEAD: "nhiều điểm hơn khi hết lượt",
+  SNAKE_HIT_WALL: "đối phương đâm vào tường",
+  SNAKE_HIT_BODY: "đối phương đâm vào thân rắn",
+  ILLEGAL_MOVE: "đối phương đi sai luật",
 };
 
 export function teamName(replay, id) {
@@ -71,6 +75,23 @@ function applyEvent(prev, ev, step, index) {
 
     case "BASE_CAPTURED":
       next.flash = { kind: "base", pos: ev.location };
+      break;
+
+    case "SNAKE_STATE": {
+      // Game rắn: engine gửi ảnh chụp toàn bộ quân cờ sau mỗi lượt nên thay thế hẳn bàn cờ.
+      const rebuilt = {};
+      for (const p of ev.pieces ?? []) rebuilt[p.id] = { ...p };
+      next.pieces = rebuilt;
+      next.scores = { ...prev.scores, ...ev.scores };
+      break;
+    }
+
+    case "FOOD_EATEN":
+      next.flash = { kind: "combat", pos: ev.pos };
+      break;
+
+    case "SNAKE_CRASH":
+      next.flash = { kind: "trap", pos: ev.pos };
       break;
 
     case "SCORE_UPDATED":
@@ -176,6 +197,12 @@ export function describeEvent(ev, replay) {
       return { icon: "☠️", text: `${ev.piece_id} dính bẫy tại ${pos(ev.location)}` };
     case "BASE_CAPTURED":
       return { icon: "🚩", text: `${tn(ev.team_id)} chiếm căn cứ ${pos(ev.location)}` };
+    case "SNAKE_STATE":
+      return { icon: "🐍", text: "Cập nhật bàn cờ" };
+    case "FOOD_EATEN":
+      return { icon: "🍎", text: `${tn(ev.team)} ăn mồi ${pos(ev.pos)} (${ev.score} điểm)` };
+    case "SNAKE_CRASH":
+      return { icon: "💥", text: `${tn(ev.team)} đâm ${ev.reason === "HIT_WALL" ? "vào tường" : "vào thân rắn"} ${pos(ev.pos)}` };
     case "SCORE_UPDATED":
       return { icon: "🔢", text: "Cập nhật điểm" };
     case "BOT_TIMEOUT":

@@ -29,6 +29,41 @@ export const CATEGORIES_ROW_2 = [
 export const ALL_CATEGORIES = [...CATEGORIES_ROW_1, ...CATEGORIES_ROW_2];
 
 export const GAME_CATALOG = [
+  // ── Game 2: Rắn Săn Mồi (Snake Bot) ─────────────────────
+  {
+    id: "snake_battle",
+    name: "Rắn Săn Mồi (Snake Bot)",
+    shortDesc: "Lập trình bot điều khiển rắn săn mồi và tránh va chạm — người chơi nhiều điểm hơn sẽ thắng cuộc.",
+    cover: "/game/kbb_game.png",
+    icon: "/logo/kbb_logo.webp",
+    accentColor: "#22c55e",
+    categories: ["all", "hot", "hay", "chien_thuat", "tri_tue", "2_nguoi"],
+    tags: ["Snake", "Bot", "2 người", "Điểm số"],
+    playerCount: "2 người",
+    ageBadge: "6+",
+    available: true,
+    modes: {
+      casual: {
+        enabled: true,
+        label: "Chơi vui",
+        badge: "casual",
+        desc: "Ghép ngẫu nhiên hoặc tạo phòng riêng. Không tính Elo. Thử nghiệm bot thoải mái.",
+      },
+      ranked: {
+        enabled: true,
+        label: "Đua hạng",
+        badge: "ranked",
+        desc: "Ghép tự động theo Elo. Kết quả được lưu vào bảng xếp hạng máy chủ.",
+      },
+      tournament: {
+        enabled: true,
+        label: "Giải đấu",
+        badge: "tournament",
+        desc: "Thi đấu loại trực tiếp hoặc tính điểm vòng tròn chọn nhà vô địch.",
+      },
+    },
+  },
+
   // ── Game 1: Kéo Búa Bao Cờ ──────────────────────────────
   {
     id: "rps_chess",

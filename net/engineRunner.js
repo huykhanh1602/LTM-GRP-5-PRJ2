@@ -7,9 +7,21 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const engineDirectory = join(projectRoot, "engine");
-const configTemplatePath = join(engineDirectory, "config.json");
 
-export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPatch = null }) {
+const GAME_ENGINES = {
+    rps_chess: {
+        entry: join(engineDirectory, "match_runner.py"),
+        configTemplate: join(engineDirectory, "config.json"),
+    },
+    snake_battle: {
+        entry: join(engineDirectory, "snake", "match_runner.py"),
+        configTemplate: join(engineDirectory, "snake", "config.json"),
+    },
+};
+
+export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPatch = null, gameId = "rps_chess" }) {
+    const engineConfig = GAME_ENGINES[gameId] ?? GAME_ENGINES.rps_chess;
+    const configTemplatePath = engineConfig.configTemplate;
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "ltm-match-"));
     const botAPath = join(temporaryDirectory, "team_a.py");
     const botBPath = join(temporaryDirectory, "team_b.py");
@@ -35,7 +47,7 @@ export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPa
         const python = process.env.PYTHON_EXECUTABLE || (process.platform === "win32" ? "python" : "python3");
         await new Promise((resolvePromise, rejectPromise) => {
             const child = spawn(python, [
-                join(engineDirectory, "match_runner.py"),
+                engineConfig.entry,
                 "--bot-a", botAPath,
                 "--bot-b", botBPath,
                 "--config", configPath,
