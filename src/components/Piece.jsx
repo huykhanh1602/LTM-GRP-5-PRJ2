@@ -1,5 +1,6 @@
 import Media from "./Media.jsx";
 import { theme } from "../theme/theme.js";
+import SnakeSegment, { SnakeFood } from "./SnakeSegment.jsx";
 
 const ICONS = {
   ROCK: "✊",
@@ -15,7 +16,7 @@ export function pieceIcon(type) {
   return ICONS[type] ?? String(type ?? "?").slice(0, 2).toUpperCase();
 }
 
-export default function Piece({ piece, cell, width, height, color, isMover }) {
+export default function Piece({ piece, cell, width, height, color, isMover, snake = null }) {
   const style = {
     width: `${100 / width}%`,
     height: `${100 / height}%`,
@@ -23,6 +24,14 @@ export default function Piece({ piece, cell, width, height, color, isMover }) {
     zIndex: isMover ? 5 : 2,
     "--team": color,
   };
+  // Game rắn: vẽ đốt rắn liền nhau và mồi, không dùng bong bóng + nhãn id của game cờ.
+  if (piece.type === "FOOD" || (snake && (piece.type === "HEAD" || piece.type === "BODY"))) {
+    return (
+      <div className="piece snake-piece" data-owner={piece.owner} style={style}>
+        {piece.type === "FOOD" ? <SnakeFood /> : <SnakeSegment piece={piece} layout={snake} />}
+      </div>
+    );
+  }
   return (
     <div className="piece" style={style}>
       <div className={`piece-body ${piece.alive ? "" : "dead"}`} title={`${piece.id} · ${piece.type}`}>
