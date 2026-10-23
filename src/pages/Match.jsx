@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Board from "../components/Board.jsx";
 import Controls from "../components/Controls.jsx";
 import ResultBanner from "../components/ResultBanner.jsx";
@@ -6,6 +6,18 @@ import TeamInfo from "../components/TeamInfo.jsx";
 import TurnList from "../components/TurnList.jsx";
 import { useLivePlayback } from "../hooks/useLivePlayback.js";
 import { makeColorOf } from "../utils/colors.js";
+import { sound } from "../audio/soundManager.js";
+
+// event.type → tên hiệu ứng âm thanh (khớp map SFX_SRC trong soundManager).
+const SFX_BY_EVENT = {
+  PIECE_MOVED: "move",
+  REVEAL: "reveal",
+  COMBAT_RESOLVED: "hit",
+  TRAP_TRIGGERED: "trap",
+  BASE_CAPTURED: "capture",
+  FOOD_EATEN: "eat",
+  SNAKE_CRASH: "crash",
+};
 
 // Xem trận TRỰC TIẾP (frames tăng dần khi server gửi lượt mới).
 export default function Match({ state, onReturnToRoom, onLeave }) {
@@ -13,6 +25,23 @@ export default function Match({ state, onReturnToRoom, onLeave }) {
   const player = useLivePlayback(frames);
   const colorOf = makeColorOf(Object.keys(init.match_info.teams));
   const [showHistory, setShowHistory] = useState(false);
+
+  // Phát SFX khi khung hình mới xuất hiện (khi tua lại sẽ không phát trùng cùng 1 frame).
+  const lastSfxIndex = useRef(-1);
+  useEffect(() => {
+    const frame = player.frame;
+    if (!frame || frame.index === lastSfxIndex.current) return;
+    lastSfxIndex.current = frame.index;
+    const cue = frame.event && SFX_BY_EVENT[frame.event.type];
+    if (cue) sound.play(cue);
+    if (frame.over) {
+      const myTeam = state.params?.teamId;
+      const winner = frame.over.winner;
+      if (!winner) sound.play("draw");
+      else if (myTeam) sound.play(winner === myTeam ? "win" : "lose");
+      else sound.play("win"); // người xem không phải người chơi → tiếng thắng chung
+    }
+  }, [player.frame, state.params]);
 
   return (
     <div>
