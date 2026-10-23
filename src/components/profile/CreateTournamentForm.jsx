@@ -44,6 +44,10 @@ export default function CreateTournamentForm({ form, onCancel }) {
     setMaxTeamSize,
     startType,
     setStartType,
+    roundSubmissionMode,
+    setRoundSubmissionMode,
+    submissionWindowMinutes,
+    setSubmissionWindowMinutes,
     msg,
     handleCreateTour,
   } = form;
@@ -197,6 +201,72 @@ export default function CreateTournamentForm({ form, onCancel }) {
               : "Chủ giải/người tổ chức cần bấm nút khởi tranh để bắt đầu giải."}
           </p>
         </div>
+
+        <div className="reg-field">
+          <label>Chế độ nộp Bot</label>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <label className={`reg-lang ${roundSubmissionMode === "SINGLE" ? "is-checked" : ""}`}>
+              <input
+                type="radio"
+                name="roundSubmissionMode"
+                checked={roundSubmissionMode === "SINGLE"}
+                onChange={() => setRoundSubmissionMode("SINGLE")}
+              />
+              <span>📄 Nộp 1 lần (SINGLE)</span>
+            </label>
+            <label className={`reg-lang ${roundSubmissionMode === "PER_ROUND" ? "is-checked" : ""}`}>
+              <input
+                type="radio"
+                name="roundSubmissionMode"
+                checked={roundSubmissionMode === "PER_ROUND"}
+                onChange={() => setRoundSubmissionMode("PER_ROUND")}
+              />
+              <span>🔄 Nộp theo vòng (PER_ROUND)</span>
+            </label>
+          </div>
+          <p className="reg-hint">
+            {roundSubmissionMode === "SINGLE"
+              ? "Nộp code 1 lần khi đăng ký, có thể cập nhật trước khi giải bắt đầu."
+              : "Nộp code riêng cho từng vòng đấu, có thời gian chờ giữa các vòng."}
+          </p>
+        </div>
+
+        {roundSubmissionMode === "PER_ROUND" && (
+          <div className="reg-field">
+            <label>Thời gian chờ nộp code mỗi vòng (phút)</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                className="reg-input"
+                value={submissionWindowMinutes}
+                onChange={(e) => setSubmissionWindowMinutes(e.target.value)}
+                style={{ width: "120px" }}
+                required
+              />
+              <span style={{ fontSize: "13px", color: "var(--muted)" }}>phút</span>
+            </div>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
+              {[5, 10, 15, 30].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  className="btn small"
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 8px",
+                    background: Number(submissionWindowMinutes) === num ? "var(--accent)" : undefined,
+                    color: Number(submissionWindowMinutes) === num ? "#fff" : undefined,
+                  }}
+                  onClick={() => setSubmissionWindowMinutes(num)}
+                >
+                  {num} phút
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {participantMode === "TEAM" && (
           <div className="form-grid-2">

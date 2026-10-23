@@ -25,6 +25,8 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
   const [minTeamSize, setMinTeamSize] = useState(1);
   const [maxTeamSize, setMaxTeamSize] = useState(5);
   const [startType, setStartType] = useState("AUTO");
+  const [roundSubmissionMode, setRoundSubmissionMode] = useState("SINGLE");
+  const [submissionWindowMinutes, setSubmissionWindowMinutes] = useState(10);
   const [msg, setMsg] = useState("");
 
   // Nạp danh sách game hợp lệ từ backend; nếu game đang chọn không tồn tại
@@ -105,6 +107,10 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
             maxTeamSize: participantMode === "TEAM"
               ? Math.max(Number(maxTeamSize) || 5, Number(minTeamSize) || 1)
               : 1,
+            roundSubmissionMode,
+            submissionWindowMinutes: roundSubmissionMode === "PER_ROUND"
+              ? Math.max(1, Math.min(60, Number(submissionWindowMinutes) || 10))
+              : undefined,
           },
         },
         token,
@@ -163,6 +169,10 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     setMaxTeamSize,
     startType,
     setStartType,
+    roundSubmissionMode,
+    setRoundSubmissionMode,
+    submissionWindowMinutes,
+    setSubmissionWindowMinutes,
     msg,
     setMsg,
     handleCreateTour,

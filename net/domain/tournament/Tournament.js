@@ -1,6 +1,7 @@
 import {
   TournamentStatus,
   ParticipantMode,
+  RoundSubmissionMode,
   assertTournamentTransition,
 } from '../../../shared/domain/tournament.js';
 
@@ -37,6 +38,8 @@ export function createTournament({
       minTeamSize: 1,
       maxTeamSize: 5,
       startType: 'AUTO',
+      roundSubmissionMode: RoundSubmissionMode.SINGLE,
+      submissionWindowMinutes: 10,
       ...config,
     },
     entries: entries.map((entry) => ({ ...entry })),

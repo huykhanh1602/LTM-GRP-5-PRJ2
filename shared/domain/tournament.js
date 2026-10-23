@@ -25,6 +25,11 @@ export const ParticipantMode = Object.freeze({
   TEAM: 'TEAM',
 });
 
+export const RoundSubmissionMode = Object.freeze({
+  SINGLE: 'SINGLE',
+  PER_ROUND: 'PER_ROUND',
+});
+
 export const OUTCOMES = Object.freeze(['a', 'b', 'draw']);
 
 export const TRANSITIONS = Object.freeze({
