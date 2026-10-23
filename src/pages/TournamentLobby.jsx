@@ -12,6 +12,10 @@ import TeamRegistrationModal from "../components/tournament/TeamRegistrationModa
 import TeamManagementPanel from "../components/tournament/TeamManagementPanel.jsx";
 import AdminControlModal from "../components/tournament/AdminControlModal.jsx";
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
+import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
+import { SubmissionModal } from "../components/tournament/SubmissionModal.jsx";
+import { useTopMatch } from "../hooks/useTopMatch.js";
+import { useState } from "react";
 import { attachTournamentSlotResult, registerTournament, startTournament } from "../api.js";
 import { apiErrorText } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
@@ -54,6 +58,12 @@ export function PageTournamentLobby({
     run,
     openReplay,
   } = useTournamentLobby({ tournamentId, user, token, onOpenReplay, onRequireLogin });
+  const [showSubmit, setShowSubmit] = useState(false);
+  const top = useTopMatch({
+    tournamentId: activeId,
+    token,
+    enabled: Boolean(user?.id) && tournament?.status === "in_progress",
+  });
 
   if (!activeId) {
     return <TournamentPicker gameId={gameId} onPick={setPickedId} onBack={onBack} />;
@@ -124,6 +134,39 @@ export function PageTournamentLobby({
         <p className={`tl-banner tl-banner--${message.tone}`} role="status">
           {message.text}
         </p>
+      )}
+
+      {top.error && (
+        <p className="tl-banner tl-banner--err" role="status">
+          {top.error}
+        </p>
+      )}
+
+      <TopMatchBanner
+        match={top.match}
+        deadline={top.deadline}
+        busy={top.busy}
+        submitting={top.submitting}
+        onSetReady={(ready) => {
+          top.setReady(ready).then((data) => {
+            if (data?.matchStarting) load().catch(() => {});
+          });
+        }}
+        onSubmitCode={() => setShowSubmit(true)}
+        onOpenReplay={(matchId) => openReplay(matchId)}
+      />
+
+      {showSubmit && top.match?.found && (
+        <SubmissionModal
+          roundNo={top.match.roundNo}
+          deadline={top.deadline}
+          submitting={top.submitting}
+          onClose={() => setShowSubmit(false)}
+          onSubmit={async (payload) => {
+            const submitted = await top.submitRoundBot(payload);
+            if (submitted) setShowSubmit(false);
+          }}
+        />
       )}
 
       <div className="tl-main">

@@ -114,3 +114,14 @@ export function getMatches({ teamId, status, limit = 20, offset = 0 } = {}) {
 }
 export const getMatch = (id) => get(`/api/matches/${encodeURIComponent(id)}`);
 export const getMatchReplay = (id) => get(`/api/matches/${encodeURIComponent(id)}/replay`);
+// ── My Match Banner: trận hiện tại của tôi trong giải đang diễn ra ──
+export const getMyTournamentMatch = (idOrCode, token) =>
+    get(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/my-match`, { token });
+export const setMyMatchReady = (idOrCode, ready, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/my-match/ready`, {
+        method: "POST", body: { ready }, token,
+    });
+export const submitMyMatchRoundBot = (idOrCode, roundNo, { filename, source }, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/my-match/submission`, {
+        method: "POST", body: { round_no: roundNo, filename, source }, token,
+    });

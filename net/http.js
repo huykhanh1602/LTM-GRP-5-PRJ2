@@ -235,6 +235,9 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const entryRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries$/);
             const slotRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/slots\/(\d+)\/result$/);
             const triggerStartRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/trigger-start$/);
+            const myMatchRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match$/);
+            const myMatchReadyRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match\/ready$/);
+            const myMatchSubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match\/submission$/);
             const isCreate = url.pathname === "/api/tournaments" && request.method === "POST";
             const isEntry = Boolean(entryRoute) && request.method === "POST";
             const isSlotResult = Boolean(slotRoute) && request.method === "POST";
@@ -246,7 +249,10 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const entrySubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries\/submission$/);
             const isEntrySubmission = Boolean(entrySubmissionRoute) && request.method === "PATCH";
             const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
-            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission) {
+            const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
+            const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
+            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission ||
+                isMyMatchReady || isMyMatchSubmission) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                 if (actor.banned) { send(403, { error: "USER_BANNED" }); return; }
@@ -296,6 +302,21 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                             teamId,
                             submissionId: body.submission_id ?? body.submissionId,
                         })); return;
+                    }
+                    if (isMyMatchReady) {
+                        const tournamentId = decodePathId(myMatchReadyRoute[1]);
+                        send(200, await matchStore.setTournamentReady(tournamentId, actor.id, {
+                            ready: body.ready !== false,
+                        }));
+                        return;
+                    }
+                    if (isMyMatchSubmission) {
+                        const tournamentId = decodePathId(myMatchSubmissionRoute[1]);
+                        send(200, await matchStore.submitTournamentRoundBot(tournamentId, actor.id, Number(body.round_no ?? body.roundNo), {
+                            filename: body.filename ?? null,
+                            source: body.source ?? null,
+                        }));
+                        return;
                     }
                     if (isEntry) {
                         const tournamentId = decodePathId(entryRoute[1]);
@@ -406,6 +427,13 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 const tournamentRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)$/);
                 if (tournamentRoute) {
                     send(200, await matchStore.getTournament(decodePathId(tournamentRoute[1])));
+                    return;
+                }
+                // My Match Banner: trận hiện tại của người dùng đang đăng nhập.
+                if (myMatchRoute && request.method === "GET") {
+                    const actor = request.auth?.user;
+                    if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
+                    send(200, await matchStore.getTournamentMyMatch(decodePathId(myMatchRoute[1]), actor.id));
                     return;
                 }
                 const userRoute = url.pathname.match(/^\/api\/users\/([^/]+)$/);

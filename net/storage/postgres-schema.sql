@@ -103,6 +103,23 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
 ALTER TABLE tournament_match_history ADD COLUMN IF NOT EXISTS slot_index INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS tournament_readiness (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL CHECK(round_no > 0),
+  slot_index INTEGER NOT NULL CHECK(slot_index >= 0),
+  participant_id TEXT NOT NULL,
+  ready BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(tournament_id,round_no,slot_index,participant_id)
+);
+CREATE TABLE IF NOT EXISTS tournament_round_submissions (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL CHECK(round_no > 0),
+  entry_id TEXT NOT NULL,
+  submission_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(tournament_id,round_no,entry_id)
+);
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS champion_id TEXT;
 -- Domain bracket snapshot (TournamentService/PostgresTournamentRepository).
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS bracket_json JSONB;

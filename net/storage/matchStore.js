@@ -731,6 +731,159 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     });
   }
 
+  // ── Đọc 1 bot submission theo id (không cần biết room/team) ──
+  function getBotSubmissionById(id) {
+    if (!id) return null;
+    const row = db.prepare(`SELECT id, room_id, team_id, filename, source, source_sha256, created_at
+      FROM bot_submissions WHERE id = ?`).get(id);
+    if (!row) throw new StorageError('SUBMISSION_NOT_FOUND', 'Bot submission not found', 404);
+    return row;
+  }
+
+  // ── Tập participant-id của user (userId hoặc team mà user là thành viên) ──
+  function myEntryIdSet(entries, userId) {
+    const ids = new Set();
+    for (const entry of entries) {
+      if (entry.user_id && String(entry.user_id) === String(userId)) ids.add(entry.user_id);
+      if (entry.team_id) {
+        const member = db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?').get(entry.team_id, userId);
+        if (member) ids.add(entry.team_id);
+      }
+    }
+    return ids;
+  }
+
+  function submissionOf(tournamentId, config, entryId, roundNo) {
+    let submissionId = null;
+    if (config.roundSubmissionMode === 'PER_ROUND') {
+      const row = db.prepare(`SELECT submission_id FROM tournament_round_submissions
+        WHERE tournament_id = ? AND round_no = ? AND entry_id = ?`).get(tournamentId, roundNo, entryId);
+      submissionId = row?.submission_id ?? null;
+    } else {
+      const entry = db.prepare(`SELECT bot_submission_id FROM tournament_entries
+        WHERE tournament_id = ? AND (team_id = ? OR (user_id = ? AND team_id IS NULL))`)
+        .get(tournamentId, entryId, entryId);
+      submissionId = entry?.bot_submission_id ?? null;
+    }
+    if (!submissionId) return null;
+    const row = getBotSubmissionById(submissionId);
+    return { id: row.id, filename: row.filename };
+  }
+
+  // Trận hiện tại của user ở vòng đang diễn ra (slot ready, chưa có winner/matchId).
+  function getTournamentMyMatch(tournamentId, userId) {
+    userId = requireText(userId, 'userId');
+    const tournament = db.prepare('SELECT id, format, status, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
+    if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    const config = JSON.parse(tournament.config_json);
+    const entries = listTournamentEntries(tournament.id);
+    const myIds = myEntryIdSet(entries, userId);
+    const rounds = listTournamentRounds(tournament.id);
+
+    for (const round of rounds) {
+      for (const slot of round.matches) {
+        if (slot.winner_id || slot.match_id || !slot.participant_a_id || !slot.participant_b_id) continue;
+        const meIsA = myIds.has(slot.participant_a_id);
+        const meIsB = myIds.has(slot.participant_b_id);
+        if (!meIsA && !meIsB) continue;
+        const me = meIsA ? slot.participant_a_id : slot.participant_b_id;
+        const opp = meIsA ? slot.participant_b_id : slot.participant_a_id;
+        const readinessRows = db.prepare(`SELECT participant_id, ready FROM tournament_readiness
+          WHERE tournament_id = ? AND round_no = ? AND slot_index = ?`)
+          .all(tournament.id, round.round_no, slot.slot_index);
+        const ready = new Map(readinessRows.map((row) => [row.participant_id, Boolean(row.ready)]));
+        const meSub = submissionOf(tournament.id, config, me, round.round_no);
+        const oppSub = submissionOf(tournament.id, config, opp, round.round_no);
+        const meReady = Boolean(ready.get(me));
+        const oppReady = Boolean(ready.get(opp));
+        return {
+          found: true,
+          tournamentId: tournament.id,
+          tournamentStatus: tournament.status,
+          roundNo: round.round_no,
+          slotIndex: slot.slot_index,
+          matchKey: `r${round.round_no}m${slot.slot_index}`,
+          mode: config.roundSubmissionMode ?? 'SINGLE',
+          submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
+          me: {
+            entryId: me,
+            name: meIsA ? slot.participant_a_name : slot.participant_b_name,
+            ready: meReady,
+            submitted: Boolean(meSub),
+            submissionId: meSub?.id ?? null,
+            filename: meSub?.filename ?? null,
+          },
+          opponent: {
+            entryId: opp,
+            name: meIsA ? slot.participant_b_name : slot.participant_a_name,
+            ready: oppReady,
+            submitted: Boolean(oppSub),
+            submissionId: oppSub?.id ?? null,
+            filename: oppSub?.filename ?? null,
+          },
+          bothReady: meReady && oppReady,
+          matchId: slot.match_id ?? null,
+        };
+      }
+    }
+    return { found: false, tournamentId: tournament.id, tournamentStatus: tournament.status };
+  }
+
+  // Bấm Sẵn sàng / Hủy sẵn sàng cho slot hiện tại của user.
+  function setTournamentReady(tournamentId, userId, { ready = true } = {}) {
+    const current = getTournamentMyMatch(tournamentId, userId);
+    const found = current.found;
+    if (!found) throw new StorageError('NO_ACTIVE_MATCH', 'Bạn chưa có trận đấu nào chờ sẵn sàng trong vòng hiện tại.', 409);
+    const config = JSON.parse(db.prepare('SELECT config_json FROM tournaments WHERE id = ?').get(current.tournamentId).config_json);
+    if (ready && current.mode === 'PER_ROUND' && !current.me.submitted) {
+      throw new StorageError('SUBMISSION_REQUIRED', 'Hãy nộp code cho vòng này trước khi bấm Sẵn sàng.');
+    }
+    if (ready && current.mode !== 'PER_ROUND' && !current.me.submissionId) {
+      throw new StorageError('SUBMISSION_REQUIRED', 'Bạn chưa đăng ký bot cho giải này.');
+    }
+    db.prepare(`INSERT INTO tournament_readiness (tournament_id, round_no, slot_index, participant_id, ready, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(tournament_id, round_no, slot_index, participant_id)
+      DO UPDATE SET ready = excluded.ready, updated_at = excluded.updated_at`)
+      .run(current.tournamentId, current.roundNo, current.slotIndex, current.me.entryId, Number(Boolean(ready)), new Date().toISOString());
+    const refreshed = getTournamentMyMatch(current.tournamentId, userId);
+    refreshed.ready = Boolean(ready);
+    refreshed.bothReady = refreshed.me.ready && refreshed.opponent.ready;
+    refreshed.matchStarting = refreshed.bothReady;
+    return refreshed;
+  }
+
+  // Nộp bot theo vòng (PER_ROUND). SUBMISSION_REQUIRED nếu mode không cho phép.
+  function submitTournamentRoundBot(tournamentId, userId, roundNo, { filename, source } = {}) {
+    const tournament = db.prepare('SELECT id, status, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
+    if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    const config = JSON.parse(tournament.config_json);
+    if (config.roundSubmissionMode !== 'PER_ROUND') {
+      throw new StorageError('INVALID_MODE', 'Giải không ở chế độ nộp bot theo vòng (PER_ROUND).');
+    }
+    if (tournament.status !== 'in_progress') {
+      throw new StorageError('INVALID_STATE', 'Giải chưa bắt đầu hoặc đã kết thúc.');
+    }
+    if (!Number.isSafeInteger(roundNo) || roundNo < 1) throw new StorageError('INVALID_INPUT', 'roundNo phải là số nguyên > 0');
+    const entries = listTournamentEntries(tournament.id);
+    const myIds = myEntryIdSet(entries, userId);
+    const round = db.prepare('SELECT round_no FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(tournament.id, roundNo);
+    if (!round) throw new StorageError('ROUND_NOT_FOUND', 'Không tìm thấy vòng đấu này.');
+
+    const entry = entries.find((entry) => myIds.has(entry.team_id ?? entry.user_id));
+    if (!entry) throw new StorageError('NOT_ENTRY', 'Bạn chưa đăng ký giải này.');
+    const entryId = entry.team_id ?? entry.user_id;
+    const roomId = `t-${tournament.id}-r${roundNo}`;
+    registerTeam({ id: entryId, name: entry.display_name ?? entryId });
+    const saved = saveBotSubmission({ roomId, teamId: entryId, filename: filename ?? 'bot.py', source });
+    db.prepare(`INSERT INTO tournament_round_submissions (tournament_id, round_no, entry_id, submission_id, created_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(tournament_id, round_no, entry_id)
+      DO UPDATE SET submission_id = excluded.submission_id, created_at = excluded.created_at`)
+      .run(tournament.id, roundNo, entryId, saved.id, new Date().toISOString());
+    return { id: saved.id, filename: saved.filename, roundNo };
+  }
+
   function getUserPublicProfile(id) {
     const user = db.prepare('SELECT id, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(id);
     if (!user) throw new StorageError('USER_NOT_FOUND', 'User not found', 404);
@@ -796,5 +949,6 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
     updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
-    listBotSubmissions, getBotSubmission, importReplay, abortInterruptedMatches, close: () => db.close() };
+    listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay, abortInterruptedMatches,
+    getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot, close: () => db.close() };
 }

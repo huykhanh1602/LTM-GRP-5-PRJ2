@@ -40,6 +40,10 @@ const ERROR_MESSAGES = {
   INVALID_WINNER: "Người thắng phải là một trong hai đấu thủ của nhánh.",
   TOURNAMENT_NOT_FOUND: "Không tìm thấy giải đấu.",
   USER_NOT_FOUND: "Không tìm thấy người chơi này.",
+  NO_ACTIVE_MATCH: "Bạn chưa có trận đấu nào chờ sẵn sàng trong vòng hiện tại.",
+  SUBMISSION_REQUIRED: "Hãy nộp code trước khi bấm Sẵn sàng.",
+  INVALID_MODE: "Giải không ở chế độ nộp bot theo vòng.",
+  ROUND_NOT_FOUND: "Không tìm thấy vòng đấu này.",
 };
 
 export function apiErrorText(error) {

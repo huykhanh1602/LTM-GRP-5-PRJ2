@@ -2679,3 +2679,220 @@ button.tour-card-item:hover {
 .tl-team-panel .tl-team-actions .tl-form-input {
   flex: 1;
 }
+
+/* =========================================================
+   TopMatchBanner — My Match Banner (giải đang diễn ra)
+   ========================================================= */
+.tm-banner {
+  position: relative;
+  border: 1.5px solid rgba(217, 70, 239, 0.35);
+  background:
+    linear-gradient(120deg, rgba(124, 58, 237, 0.1), rgba(255, 255, 255, 0.92)),
+    radial-gradient(420px 160px at 12% -10%, rgba(236, 72, 153, 0.16), transparent 70%);
+  box-shadow: 0 10px 32px rgba(124, 58, 237, 0.12);
+}
+.tm-banner__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tm-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
+.tm-vs {
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-purple-lavender);
+}
+.tm-desc {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.tm-countdown {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--c-purple-lavender);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tm-vs-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0 14px;
+}
+.tm-center {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: var(--c-pink);
+  text-shadow: 0 2px 10px rgba(236, 72, 153, 0.25);
+}
+.tm-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.tm-side--me {
+  justify-self: start;
+}
+.tm-side:last-child {
+  justify-self: end;
+}
+.tm-avatar {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--c-pink), var(--c-purple-lavender));
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.28);
+}
+.tm-side__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.tm-side__name {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.tm-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.tm-badge--ready {
+  background: #dcfce7;
+  color: #15803d;
+}
+.tm-badge--wait {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--muted);
+}
+.tm-file {
+  font-size: 11px;
+  color: var(--muted);
+}
+.tm-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.tm-hint {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.tm-live {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-top: 4px;
+  border-radius: 14px;
+  background: rgba(124, 58, 237, 0.08);
+  font-weight: 700;
+  color: var(--c-purple-lavender);
+}
+
+/* ---------- SubmissionModal ---------- */
+.tm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(30, 27, 40, 0.5);
+  backdrop-filter: blur(4px);
+}
+.tm-modal {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--card, #fff);
+  box-shadow: 0 24px 60px rgba(30, 27, 40, 0.3);
+}
+.tm-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tm-modal__head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.tm-file-drop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1.5px dashed rgba(124, 58, 237, 0.4);
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.05);
+  cursor: pointer;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.tm-file-drop input {
+  display: none;
+}
+.tm-code {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+.tm-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tm-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

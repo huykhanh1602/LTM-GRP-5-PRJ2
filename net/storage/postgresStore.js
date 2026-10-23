@@ -533,12 +533,114 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return {...user,created_at:user.created_at instanceof Date?user.created_at.toISOString():user.created_at,
       stats:{played:stats.played,wins:stats.wins,draws:stats.draws,losses:stats.played-stats.wins-stats.draws},tournaments};
   }
+  async function getBotSubmissionById(id) {
+    if (!id) return null;
+    const row=(await query('SELECT id,room_id,team_id,filename,source,source_sha256,created_at FROM bot_submissions WHERE id=$1',[id])).rows[0];
+    if(!row)throw new StorageError('SUBMISSION_NOT_FOUND','Bot submission not found',404);
+    return {...row,created_at:row.created_at instanceof Date?row.created_at.toISOString():row.created_at.toISOString()};
+  }
+  async function myEntryIdSet(tournamentId,userId) {
+    const entries=await listTournamentEntries(tournamentId);
+    const ids=new Set();
+    const memberRows=(await query('SELECT team_id FROM team_members WHERE user_id=$1',[userId])).rows;
+    for(const entry of entries){
+      if(entry.user_id&&String(entry.user_id)===String(userId))ids.add(entry.user_id);
+      if(entry.team_id&&memberRows.some(m=>m.team_id===entry.team_id))ids.add(entry.team_id);
+    }
+    return ids;
+  }
+  async function submissionOf(tournamentId,config,entryId,roundNo) {
+    let submissionId=null;
+    if(config.roundSubmissionMode==='PER_ROUND'){
+      const row=(await query('SELECT submission_id FROM tournament_round_submissions WHERE tournament_id=$1 AND round_no=$2 AND entry_id=$3',[tournamentId,roundNo,entryId])).rows[0];
+      submissionId=row?.submission_id??null;
+    } else {
+      const entry=(await query(`SELECT bot_submission_id FROM tournament_entries
+        WHERE tournament_id=$1 AND (team_id=$2 OR (user_id=$2 AND team_id IS NULL))`,[tournamentId,entryId])).rows[0];
+      submissionId=entry?.bot_submission_id??null;
+    }
+    if(!submissionId)return null;
+    const row=await getBotSubmissionById(submissionId);
+    return {id:row.id,filename:row.filename};
+  }
+  async function getTournamentMyMatch(tournamentId,userId) {
+    userId=required(userId,'userId');
+    const tournament=(await query('SELECT id,format,status,config FROM tournaments WHERE id=$1 OR code=$1',[tournamentId])).rows[0];
+    if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
+    const config=tournament.config??{};
+    const myIds=await myEntryIdSet(tournament.id,userId);
+    const rounds=await listTournamentRounds(tournament.id);
+    for(const round of rounds){
+      for(const slot of round.matches){
+        if(slot.winner_id||slot.match_id||!slot.participant_a_id||!slot.participant_b_id)continue;
+        const meIsA=myIds.has(slot.participant_a_id);
+        const meIsB=myIds.has(slot.participant_b_id);
+        if(!meIsA&&!meIsB)continue;
+        const me=meIsA?slot.participant_a_id:slot.participant_b_id;
+        const opp=meIsA?slot.participant_b_id:slot.participant_a_id;
+        const readyRows=(await query('SELECT participant_id,ready FROM tournament_readiness WHERE tournament_id=$1 AND round_no=$2 AND slot_index=$3',[tournament.id,round.round_no,slot.slot_index])).rows;
+        const ready=new Map(readyRows.map(r=>[r.participant_id,Boolean(r.ready)]));
+        const meSub=await submissionOf(tournament.id,config,me,round.round_no);
+        const oppSub=await submissionOf(tournament.id,config,opp,round.round_no);
+        const meReady=Boolean(ready.get(me));
+        const oppReady=Boolean(ready.get(opp));
+        return {
+          found:true,tournamentId:tournament.id,tournamentStatus:tournament.status,
+          roundNo:round.round_no,slotIndex:slot.slot_index,matchKey:`r${round.round_no}m${slot.slot_index}`,
+          mode:config.roundSubmissionMode??'SINGLE',submissionWindowMinutes:config.submissionWindowMinutes??10,
+          me:{entryId:me,name:meIsA?slot.participant_a_name:slot.participant_b_name,ready:meReady,submitted:Boolean(meSub),submissionId:meSub?.id??null,filename:meSub?.filename??null},
+          opponent:{entryId:opp,name:meIsA?slot.participant_b_name:slot.participant_a_name,ready:oppReady,submitted:Boolean(oppSub),submissionId:oppSub?.id??null,filename:oppSub?.filename??null},
+          bothReady:meReady&&oppReady,matchId:slot.match_id??null,
+        };
+      }
+    }
+    return {found:false,tournamentId:tournament.id,tournamentStatus:tournament.status};
+  }
+  async function setTournamentReady(tournamentId,userId,{ready=true}={}) {
+    const current=await getTournamentMyMatch(tournamentId,userId);
+    if(!current.found)throw new StorageError('NO_ACTIVE_MATCH','Bạn chưa có trận đấu nào chờ sẵn sàng trong vòng hiện tại.',409);
+    const config=(await query('SELECT config FROM tournaments WHERE id=$1',[current.tournamentId])).rows[0].config??{};
+    if(ready&&current.mode==='PER_ROUND'&&!current.me.submitted)throw new StorageError('SUBMISSION_REQUIRED','Hãy nộp code cho vòng này trước khi bấm Sẵn sàng.');
+    if(ready&&current.mode!=='PER_ROUND'&&!current.me.submissionId)throw new StorageError('SUBMISSION_REQUIRED','Bạn chưa đăng ký bot cho giải này.');
+    await query(`INSERT INTO tournament_readiness(tournament_id,round_no,slot_index,participant_id,ready,updated_at)
+      VALUES($1,$2,$3,$4,$5,now())
+      ON CONFLICT(tournament_id,round_no,slot_index,participant_id) DO UPDATE SET ready=excluded.ready,updated_at=now()`,
+      [current.tournamentId,current.roundNo,current.slotIndex,current.me.entryId,Boolean(ready)]);
+    const refreshed=await getTournamentMyMatch(current.tournamentId,userId);
+    refreshed.ready=Boolean(ready);
+    refreshed.bothReady=refreshed.me.ready&&refreshed.opponent.ready;
+    refreshed.matchStarting=refreshed.bothReady;
+    return refreshed;
+  }
+  async function submitTournamentRoundBot(tournamentId,userId,roundNo,{filename,source}={}) {
+    const tournament=(await query('SELECT id,status,config FROM tournaments WHERE id=$1 OR code=$1',[tournamentId])).rows[0];
+    if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
+    const config=tournament.config??{};
+    if(config.roundSubmissionMode!=='PER_ROUND')throw new StorageError('INVALID_MODE','Giải không ở chế độ nộp bot theo vòng (PER_ROUND).');
+    if(tournament.status!=='in_progress')throw new StorageError('INVALID_STATE','Giải chưa bắt đầu hoặc đã kết thúc.');
+    if(!Number.isSafeInteger(roundNo)||roundNo<1)throw new StorageError('INVALID_INPUT','roundNo phải là số nguyên > 0');
+    const myIds=await myEntryIdSet(tournament.id,userId);
+    const round=(await query('SELECT round_no FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournament.id,roundNo])).rows[0];
+    if(!round)throw new StorageError('ROUND_NOT_FOUND','Không tìm thấy vòng đấu này.');
+    const entries=await listTournamentEntries(tournament.id);
+    const entry=entries.find(e=>myIds.has(e.team_id??e.user_id));
+    if(!entry)throw new StorageError('NOT_ENTRY','Bạn chưa đăng ký giải này.');
+    const entryId=entry.team_id??entry.user_id;
+    await registerTeam({id:entryId,name:entry.display_name??entryId});
+    const saved=await saveBotSubmission({roomId:`t-${tournament.id}-r${roundNo}`,teamId:entryId,filename:filename??'bot.py',source});
+    await query(`INSERT INTO tournament_round_submissions(tournament_id,round_no,entry_id,submission_id,created_at)
+      VALUES($1,$2,$3,$4,now())
+      ON CONFLICT(tournament_id,round_no,entry_id) DO UPDATE SET submission_id=excluded.submission_id,created_at=now()`,
+      [tournament.id,roundNo,entryId,saved.id]);
+    return {id:saved.id,filename:saved.filename,roundNo};
+  }
   return { initialize, registerTeam, addTeamMember, getTeamMembers, getTeam,
     startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
-    recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, importReplay,
+    recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
+    getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
     abortInterruptedMatches, close:()=>pool.end() };
 

@@ -132,6 +132,25 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
   CHECK(winner_id IS NULL OR winner_id IN (participant_a_id,participant_b_id))
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
+-- Sẵn sàng thi đấu theo slot (My Match Banner): 1 dòng / 1 phía / 1 lượt bấm Sẵn sàng.
+CREATE TABLE IF NOT EXISTS tournament_readiness (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL CHECK(round_no > 0),
+  slot_index INTEGER NOT NULL CHECK(slot_index >= 0),
+  participant_id TEXT NOT NULL,
+  ready INTEGER NOT NULL DEFAULT 0 CHECK(ready IN (0, 1)),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(tournament_id, round_no, slot_index, participant_id)
+);
+-- Bot đã nộp theo vòng (PER_ROUND): 1 dòng / entry / vòng.
+CREATE TABLE IF NOT EXISTS tournament_round_submissions (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round_no INTEGER NOT NULL CHECK(round_no > 0),
+  entry_id TEXT NOT NULL,
+  submission_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY(tournament_id, round_no, entry_id)
+);
 CREATE TABLE IF NOT EXISTS bot_submissions (
   id TEXT PRIMARY KEY,
   room_id TEXT NOT NULL,
