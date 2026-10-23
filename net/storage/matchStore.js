@@ -73,6 +73,8 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   const roundColumns = new Set(db.prepare('PRAGMA table_info(tournament_rounds)').all().map(column => column.name));
   if (!roundColumns.has('scheduled_at')) db.exec('ALTER TABLE tournament_rounds ADD COLUMN scheduled_at TEXT');
   if (!roundColumns.has('auto_start')) db.exec("ALTER TABLE tournament_rounds ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 1 CHECK(auto_start IN (0, 1));");
+  if (!roundColumns.has('submission_deadline')) db.exec('ALTER TABLE tournament_rounds ADD COLUMN submission_deadline TEXT');
+  if (!roundColumns.has('submission_started_at')) db.exec('ALTER TABLE tournament_rounds ADD COLUMN submission_started_at TEXT');
   const entryColumns = new Set(db.prepare('PRAGMA table_info(tournament_entries)').all().map(column => column.name));
   if (!entryColumns.has('team_id')) db.exec('ALTER TABLE tournament_entries ADD COLUMN team_id TEXT REFERENCES teams(id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id)');
@@ -417,7 +419,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
 
   function listTournamentRounds(tournamentId) {
-    const rounds = db.prepare('SELECT id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE tournament_id = ? ORDER BY round_no').all(tournamentId);
+    const rounds = db.prepare('SELECT id, round_no, status, scheduled_at, auto_start, submission_started_at, submission_deadline FROM tournament_rounds WHERE tournament_id = ? ORDER BY round_no').all(tournamentId);
     for (const round of rounds) round.matches = db.prepare(`SELECT id,match_id,slot_index,participant_a_id,participant_a_name,
       participant_b_id,participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE round_id=? ORDER BY slot_index,id`)
       .all(round.id).map(item=>({id:item.id,match_id:item.match_id,slot_index:item.slot_index,round_id:round.id,
@@ -640,11 +642,16 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (entries.length < 2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS', 'Cần ít nhất 2 người đăng ký để tạo nhánh đấu', 409);
 
       const { totalRounds } = planSize(entries.length);
+      const config = JSON.parse(tournament.config_json ?? '{}');
+      const windowMinutes = Number(config.submissionWindowMinutes) || 10;
+      const nowIso = new Date().toISOString();
+      const deadlineIso = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
       const roundIds = [];
       for (let roundNo = 1; roundNo <= totalRounds; roundNo += 1) {
         const roundId = randomUUID();
-        db.prepare('INSERT INTO tournament_rounds (id, tournament_id, round_no, status) VALUES (?, ?, ?, ?)')
-          .run(roundId, tournamentId, roundNo, roundNo === 1 ? 'in_progress' : 'pending');
+        db.prepare('INSERT INTO tournament_rounds (id, tournament_id, round_no, status, submission_started_at, submission_deadline) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(roundId, tournamentId, roundNo, roundNo === 1 ? 'in_progress' : 'pending',
+            roundNo === 1 ? nowIso : null, roundNo === 1 ? deadlineIso : null);
         roundIds.push(roundId);
       }
 
@@ -724,6 +731,17 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
         });
       }
       refreshRoundStatuses({ tournamentId, totalRounds: bracket.totalRounds, entryCount: entries.length });
+      // Mở cửa sổ nộp code (10p mặc định) cho vòng kế tiếp khi vòng này đã xong.
+      const roundRow = db.prepare('SELECT status FROM tournament_rounds WHERE id = ?').get(round.id);
+      if (roundRow?.status === 'completed' && roundNo < bracket.totalRounds) {
+        const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
+        if (next) {
+          const tournamentCfg = JSON.parse(db.prepare('SELECT config_json FROM tournaments WHERE id = ?').get(tournamentId).config_json ?? '{}');
+          const windowMinutes = Number(tournamentCfg.submissionWindowMinutes) || 10;
+          db.prepare("UPDATE tournament_rounds SET status = 'in_progress', submission_started_at = ?, submission_deadline = ? WHERE id = ?")
+            .run(new Date().toISOString(), new Date(Date.now() + windowMinutes * 60 * 1000).toISOString(), next.id);
+        }
+      }
       if (winnerId && roundNo === bracket.totalRounds) {
         db.prepare("UPDATE tournaments SET status = 'completed', champion_id = ? WHERE id = ?").run(winnerId, tournamentId);
       }
@@ -805,6 +823,8 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
           matchKey: `r${round.round_no}m${slot.slot_index}`,
           mode: config.roundSubmissionMode ?? 'SINGLE',
           submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
+          submissionStartedAt: round.submission_started_at ?? null,
+          submissionDeadline: round.submission_deadline ?? null,
           me: {
             entryId: me,
             name: meIsA ? slot.participant_a_name : slot.participant_b_name,
@@ -884,6 +904,109 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return { id: saved.id, filename: saved.filename, roundNo };
   }
 
+  // Slot tổng quát theo (tournamentId, roundNo, slotIndex) — dùng cho phòng đấu.
+  function getTournamentSlot(tournamentId, roundNo, slotIndex) {
+    const tournament = db.prepare('SELECT id, status, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
+    if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    if (!Number.isSafeInteger(roundNo) || roundNo < 1 || !Number.isSafeInteger(slotIndex) || slotIndex < 0) {
+      throw new StorageError('INVALID_INPUT', 'roundNo/slotIndex không hợp lệ');
+    }
+    const round = db.prepare('SELECT id, round_no, status FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(tournament.id, roundNo);
+    if (!round) throw new StorageError('ROUND_NOT_FOUND', 'Không tìm thấy vòng đấu này.', 404);
+    const row = db.prepare(`SELECT id, match_id, participant_a_id, participant_a_name, participant_b_id, participant_b_name,
+      winner_id FROM tournament_match_history WHERE round_id = ? AND slot_index = ?`).get(round.id, slotIndex);
+    return {
+      tournamentId: tournament.id,
+      tournamentStatus: tournament.status,
+      config: JSON.parse(tournament.config_json),
+      roundNo,
+      slotIndex,
+      slotId: row?.id ?? null,
+      matchId: row?.match_id ?? null,
+      participantAId: row?.participant_a_id ?? null,
+      participantAName: row?.participant_a_name ?? null,
+      participantBId: row?.participant_b_id ?? null,
+      participantBName: row?.participant_b_name ?? null,
+      winnerId: row?.winner_id ?? null,
+    };
+  }
+
+  // Xử lý hết giờ nộp code vòng: ai chưa nộp → xử thua; cả 2 chưa nộp → chọn ngẫu nhiên.
+  function resolveRoundSubmissionDeadline(tournamentId, roundNo) {
+    roundNo = Number(roundNo);
+    if (!Number.isSafeInteger(roundNo) || roundNo < 1) throw new StorageError('INVALID_INPUT', 'roundNo phải là số nguyên > 0');
+    return transaction(() => {
+      const tournament = db.prepare('SELECT id, status, format, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
+      if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+      if (tournament.format !== 'single_elimination') {
+        throw new StorageError('FORMAT_NOT_SUPPORTED', 'Chỉ hỗ trợ xử lý hết giờ cho thể thức loại trực tiếp.');
+      }
+      const config = JSON.parse(tournament.config_json ?? '{}');
+      const entries = listTournamentEntries(tournament.id);
+      const rounds = listTournamentRounds(tournament.id);
+      const round = rounds.find((item) => Number(item.round_no) === roundNo);
+      if (!round) throw new StorageError('ROUND_NOT_FOUND', 'Không tìm thấy vòng đấu này.', 404);
+
+      const results = [];
+      const roundIds = rounds.map((item) => item.id);
+      const bracket = buildBracket({ rounds, entryCount: entries.length });
+      const totalRounds = bracket.totalRounds;
+
+      for (const slot of round.matches) {
+        if (slot.winner_id || slot.match_id || !slot.participant_a_id || !slot.participant_b_id) continue;
+        if (slot.participant_a_id === BYE_ID || slot.participant_b_id === BYE_ID) continue;
+        const aSub = submissionOf(tournament.id, config, slot.participant_a_id, roundNo);
+        const bSub = submissionOf(tournament.id, config, slot.participant_b_id, roundNo);
+        let winnerId = null;
+        let reason = null;
+        if (aSub && !bSub) {
+          winnerId = slot.participant_a_id;
+          reason = 'FORFEIT';
+        } else if (!aSub && bSub) {
+          winnerId = slot.participant_b_id;
+          reason = 'FORFEIT';
+        } else if (!aSub && !bSub) {
+          // Cả 2 chưa nộp: chọn ngẫu nhiên 1 người thắng.
+          winnerId = Math.random() < 0.5 ? slot.participant_a_id : slot.participant_b_id;
+          reason = 'RANDOM';
+        } else {
+          continue; // cả 2 đã nộp: để phòng đấu xử lý.
+        }
+        const winnerName = winnerId === slot.participant_a_id ? slot.participant_a_name : slot.participant_b_name;
+        const winner = { id: winnerId, name: winnerName };
+        const result = { reason, source_match_id: null, forfeit: true };
+        const playedAt = new Date().toISOString();
+        const history = db.prepare(`SELECT id FROM tournament_match_history WHERE round_id = ? AND slot_index = ?`).get(round.id, slot.slot_index);
+        if (history) {
+          db.prepare(`UPDATE tournament_match_history SET winner_id = ?, result_json = ?, played_at = ? WHERE id = ?`)
+            .run(winnerId, JSON.stringify(result), playedAt, history.id);
+        }
+        promoteWinner({ tournamentId: tournament.id, roundIds, totalRounds, roundNo, slotIndex: slot.slot_index, winner });
+        refreshRoundStatuses({ tournamentId: tournament.id, totalRounds, entryCount: entries.length });
+        results.push({ roundNo, slotIndex: slot.slot_index, winnerId, reason });
+      }
+      // Vòng tiếp theo nhận người thắng → mở cửa sổ nộp code mới.
+      const winnerIds = db.prepare(`SELECT DISTINCT winner_id FROM tournament_match_history
+        WHERE round_id = ? AND winner_id IS NOT NULL`).all(round.id).map((row) => row.winner_id);
+      const allSettled = winnerIds.length === bracket.rounds[roundNo - 1].length;
+      db.prepare('UPDATE tournament_rounds SET status = ? WHERE id = ?').run(allSettled ? 'completed' : 'in_progress', round.id);
+      if (allSettled && roundNo < totalRounds) {
+        const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
+        if (next) {
+          const windowMinutes = Number(config.submissionWindowMinutes) || 10;
+          const startedAt = new Date().toISOString();
+          const deadline = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+          db.prepare('UPDATE tournament_rounds SET status = ?, submission_started_at = ?, submission_deadline = ? WHERE id = ?')
+            .run('in_progress', startedAt, deadline, next.id);
+        }
+      }
+      if (roundNo === totalRounds && results.some((r) => r.winnerId)) {
+        db.prepare("UPDATE tournaments SET status = 'completed', champion_id = ? WHERE id = ?").run(results[0]?.winnerId ?? null, tournament.id);
+      }
+      return { tournamentId: tournament.id, roundNo, results, resolved: results.length };
+    });
+  }
+
   function getUserPublicProfile(id) {
     const user = db.prepare('SELECT id, display_name, avatar_url, role, created_at FROM users WHERE id = ?').get(id);
     if (!user) throw new StorageError('USER_NOT_FOUND', 'User not found', 404);
@@ -950,5 +1073,6 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
     updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
     listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay, abortInterruptedMatches,
-    getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot, close: () => db.close() };
+    getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
+    getTournamentSlot, resolveRoundSubmissionDeadline, close: () => db.close() };
 }

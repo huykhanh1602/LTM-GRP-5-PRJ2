@@ -73,8 +73,12 @@ CREATE TABLE IF NOT EXISTS tournament_rounds (
     CHECK(status IN ('pending','in_progress','completed')),
   scheduled_at TIMESTAMPTZ,
   auto_start BOOLEAN NOT NULL DEFAULT TRUE,
+  submission_started_at TIMESTAMPTZ,
+  submission_deadline TIMESTAMPTZ,
   UNIQUE(tournament_id,round_no)
 );
+ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS submission_started_at TIMESTAMPTZ;
+ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS submission_deadline TIMESTAMPTZ;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_matches_round') THEN
     ALTER TABLE matches ADD CONSTRAINT fk_matches_round FOREIGN KEY (round_id) REFERENCES tournament_rounds(id);

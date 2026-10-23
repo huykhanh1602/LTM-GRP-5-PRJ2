@@ -13,9 +13,7 @@ import TeamManagementPanel from "../components/tournament/TeamManagementPanel.js
 import AdminControlModal from "../components/tournament/AdminControlModal.jsx";
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
-import { SubmissionModal } from "../components/tournament/SubmissionModal.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
-import { useState } from "react";
 import { attachTournamentSlotResult, registerTournament, startTournament } from "../api.js";
 import { apiErrorText } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
@@ -33,6 +31,7 @@ export function PageTournamentLobby({
   onBack,
   onOpenReplay,
   onRequireLogin,
+  onEnterRoom = null,
 }) {
   const {
     setPickedId,
@@ -58,11 +57,11 @@ export function PageTournamentLobby({
     run,
     openReplay,
   } = useTournamentLobby({ tournamentId, user, token, onOpenReplay, onRequireLogin });
-  const [showSubmit, setShowSubmit] = useState(false);
   const top = useTopMatch({
     tournamentId: activeId,
     token,
     enabled: Boolean(user?.id) && tournament?.status === "in_progress",
+    onResolved: () => load().catch(() => {}),
   });
 
   if (!activeId) {
@@ -146,28 +145,28 @@ export function PageTournamentLobby({
         match={top.match}
         deadline={top.deadline}
         busy={top.busy}
-        submitting={top.submitting}
-        onSetReady={(ready) => {
-          top.setReady(ready).then((data) => {
-            if (data?.matchStarting) load().catch(() => {});
-          });
-        }}
-        onSubmitCode={() => setShowSubmit(true)}
+        onEnterRoom={() =>
+          onEnterRoom?.({
+            tournamentId: top.match.tournamentId,
+            roundNo: top.match.roundNo,
+            slotIndex: top.match.slotIndex,
+            gameId: tournament.gameId ?? tournament.raw?.game_id ?? "rps_chess",
+          })
+        }
+        onWatchRoom={
+          top.match?.found
+            ? () =>
+                onEnterRoom?.({
+                  tournamentId: top.match.tournamentId,
+                  roundNo: top.match.roundNo,
+                  slotIndex: top.match.slotIndex,
+                  gameId: tournament.gameId ?? tournament.raw?.game_id ?? "rps_chess",
+                  spectator: true,
+                })
+            : null
+        }
         onOpenReplay={(matchId) => openReplay(matchId)}
       />
-
-      {showSubmit && top.match?.found && (
-        <SubmissionModal
-          roundNo={top.match.roundNo}
-          deadline={top.deadline}
-          submitting={top.submitting}
-          onClose={() => setShowSubmit(false)}
-          onSubmit={async (payload) => {
-            const submitted = await top.submitRoundBot(payload);
-            if (submitted) setShowSubmit(false);
-          }}
-        />
-      )}
 
       <div className="tl-main">
         <div className="tl-main__primary">

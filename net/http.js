@@ -238,6 +238,7 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const myMatchRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match$/);
             const myMatchReadyRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match\/ready$/);
             const myMatchSubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match\/submission$/);
+            const resolveRoundRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/resolve$/);
             const isCreate = url.pathname === "/api/tournaments" && request.method === "POST";
             const isEntry = Boolean(entryRoute) && request.method === "POST";
             const isSlotResult = Boolean(slotRoute) && request.method === "POST";
@@ -251,8 +252,9 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
             const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
             const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
+            const isResolveRound = Boolean(resolveRoundRoute) && request.method === "POST";
             if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission ||
-                isMyMatchReady || isMyMatchSubmission) {
+                isMyMatchReady || isMyMatchSubmission || isResolveRound) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                 if (actor.banned) { send(403, { error: "USER_BANNED" }); return; }
@@ -302,6 +304,11 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                             teamId,
                             submissionId: body.submission_id ?? body.submissionId,
                         })); return;
+                    }
+                    if (isResolveRound) {
+                        const tournamentId = decodePathId(resolveRoundRoute[1]);
+                        send(200, await matchStore.resolveRoundSubmissionDeadline(tournamentId, Number(resolveRoundRoute[2])));
+                        return;
                     }
                     if (isMyMatchReady) {
                         const tournamentId = decodePathId(myMatchReadyRoute[1]);

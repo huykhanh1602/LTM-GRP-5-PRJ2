@@ -17,6 +17,7 @@ export function toUiRoom(m, myUserId) {
         mode: m.mode,
         game_id: m.game_id,
         spectators: m.spectators ?? 0,
+        tournament: m.tournament ?? null,
         teams: TEAM_IDS.map((id) => {
             const p = players.find((player) => player.team_id === id);
             return {
@@ -65,7 +66,7 @@ const SUBMIT_ERRORS = new Set([
     "INVALID_BOT", "BOT_TOO_LARGE", "UNSUPPORTED_LANGUAGE", "WRONG_STATE", "NOT_IN_ROOM", "INVALID_MESSAGE", "RATE_LIMITED",
 ]);
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken = null, role, create, find, mode = "casual", gameId = "rps_chess" }) {
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken = null, role, create, find, mode = "casual", gameId = "rps_chess", tournament = null }) {
     const listeners = new Set();
     const emit = (m) => listeners.forEach((l) => l(m));
     let ws = null;
@@ -78,7 +79,17 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken 
     const fail = (message) => emit({ type: "error", message });
 
     function enterRoom() {
-        if (role === "spectator") ws.send(JSON.stringify({ type: "watch_room", code }));
+        if (tournament?.tournamentId || tournament?.tournament_id) {
+            // Vào phòng đấu của một trận trong giải đấu (lobby → join_tournament_room).
+            ws.send(JSON.stringify({
+                type: "join_tournament_room",
+                game_id: gameId,
+                mode: "tournament",
+                tournament_id: tournament.tournamentId ?? tournament.tournament_id,
+                round_no: tournament.roundNo ?? tournament.round_no,
+                slot_index: tournament.slotIndex ?? tournament.slot_index,
+            }));
+        } else if (role === "spectator") ws.send(JSON.stringify({ type: "watch_room", code }));
         else if (find) ws.send(JSON.stringify({ type: "find_match", game_id: gameId, mode }));
         else if (create) ws.send(JSON.stringify({ type: "create_room", game_id: gameId, mode: "casual" }));
         // join_room dùng mode được truyền vào (thường là "casual" khi nhập mã phòng tay)

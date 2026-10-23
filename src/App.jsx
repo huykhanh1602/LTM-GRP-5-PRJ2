@@ -183,6 +183,24 @@ export default function App() {
     navigate({ view: "tournament", tournamentId: id });
   }
 
+  // "Vào phòng đấu" từ My Match Banner: mở phòng riêng của trận trên trang Lobby.
+  function enterMatchRoom({ tournamentId, roundNo, slotIndex, gameId, spectator = false } = {}) {
+    if (auth.isLoggedIn) {
+      room.join({
+        tournament: { tournamentId, roundNo, slotIndex },
+        gameId,
+        mode: "tournament",
+        teamName: auth.user?.display_name?.trim() ?? "",
+        role: spectator ? "spectator" : "player",
+        authToken: auth.token,
+      });
+    } else {
+      setIsAuthOpen(true);
+      return;
+    }
+    navigate({ view: "lobby", gameId, mode: "tournament" }, { replace: true });
+  }
+
   // Xem replay của một trận đấu trong giải
   function openReplay(replay) {
     setDatabaseReplay(replay);
@@ -227,6 +245,7 @@ export default function App() {
         onBack={goBack}
         onOpenReplay={openReplay}
         onRequireLogin={() => setIsAuthOpen(true)}
+        onEnterRoom={enterMatchRoom}
       />
     );
   } else if (view === "replay") {
@@ -272,7 +291,6 @@ export default function App() {
       page = (
         <GameLobby
           gameId={selectedGameId}
-          onJoin={room.join}
           onCancel={room.leave}
           onBack={goBack}
           connecting={room.phase === "connecting" || room.phase === "queue"}

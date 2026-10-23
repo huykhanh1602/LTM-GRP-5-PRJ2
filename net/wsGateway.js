@@ -71,6 +71,7 @@ export function createWsGateway({
     const rooms = new Map();
     const connections = new Map(); // userId -> conn đang hoạt động
     const userRoom = new Map(); // userId -> room mà người đó đang giữ chỗ
+    const tournamentRooms = new Map(); // "t{tournamentId}:r{round}:s{slot}" -> room.code (phòng cố định của 1 trận giải)
     let sweepTimer = null;
     let lastQueueStateAt = 0;
 
@@ -82,6 +83,55 @@ export function createWsGateway({
             if (!rooms.has(code)) return code;
         }
         throw new Error("Không còn mã phòng trống.");
+    }
+
+    // Mã phòng ổn định theo trận giải: cùng một trận luôn ra một phòng.
+    function tournamentRoomKey(tournamentId, roundNo, slotIndex) {
+        return `t${tournamentId}:r${roundNo}:s${slotIndex}`;
+    }
+
+    function tournamentRoomCode(key) {
+        const hash = createHash("sha1").update(key).digest("hex").toUpperCase();
+        const filtered = [...hash].filter((char) => ROOM_CODE_CHARS.includes(char)).join("");
+        return (filtered + "ABCD").slice(0, 4);
+    }
+
+    function getOrCreateTournamentRoom({ key, matchStore, tournamentId, roundNo, slotIndex, gameId, config, participants }) {
+        const existingCode = tournamentRooms.get(key);
+        if (existingCode) {
+            const room = rooms.get(existingCode);
+            if (room) return room;
+        }
+        // Chỉ 2 tuyển thủ của trận được ngồi ghế; người khác vào làm khán giả.
+        const reserved = new Set(Object.values(participants).filter(Boolean));
+        const code = tournamentRoomCode(key);
+        let room = rooms.get(code);
+        if (room) {
+            tournamentRooms.set(key, room.code);
+            if (room.tournament) Object.assign(room.tournament, { tournamentId, roundNo, slotIndex });
+            return room;
+        }
+        room = createRoom({
+            gameId,
+            mode: "tournament",
+            config: { ...(GAMES[gameId]?.defaultConfig ?? {}) },
+            reserved,
+        });
+        if (room.code !== code) {
+            rooms.delete(room.code); // bỏ mã random vừa sinh trước khi gán mã ổn định
+            room.code = code;
+        }
+        room.tournament = {
+            key,
+            tournamentId,
+            roundNo,
+            slotIndex,
+            participants,
+            matchStore,
+        };
+        rooms.set(code, room);
+        tournamentRooms.set(key, code);
+        return room;
     }
 
     function createRoom({ gameId, mode, config, reserved = null }) {
@@ -114,6 +164,15 @@ export function createWsGateway({
             mode: room.mode,
             status: room.status,
             config: room.config,
+            ...(room.tournament
+                ? {
+                      tournament: {
+                          tournament_id: room.tournament.tournamentId,
+                          round_no: room.tournament.roundNo,
+                          slot_index: room.tournament.slotIndex,
+                      },
+                  }
+                : {}),
             players: room.players
                 .filter((slot) => slot.userId)
                 .map((slot) => ({
@@ -267,6 +326,20 @@ export function createWsGateway({
                     historySaved = true;
                 } catch (error) {
                     console.error(`[History] Không lưu được replay trận ${room.matchId}:`, error);
+                }
+            }
+            // Trận của giải đấu: gắn kết quả vào nhánh đấu và mở vòng kế tiếp.
+            const tInfo = room.tournament;
+            if (historySaved && tInfo?.tournamentId && room.matchId) {
+                try {
+                    await matchStore.attachSlotResult(tInfo.tournamentId, {
+                        roundNo: tInfo.roundNo,
+                        slotIndex: tInfo.slotIndex,
+                        matchId: room.matchId,
+                    });
+                    console.log(`[Tournament] Đã gắn kết quả trận ${room.matchId} vào giải ${tInfo.tournamentId}`);
+                } catch (error) {
+                    console.error(`[Tournament] Không gắn được kết quả trận ${room.matchId}:`, error?.message ?? error);
                 }
             }
             if (room.pendingGameOver) {
@@ -558,6 +631,58 @@ export function createWsGateway({
             resetFinished(room);
             if (!seat(room, conn)) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người.");
             broadcastRoom(room);
+        },
+
+        // Vào phòng đấu của một trận trong giải đấu (My Match Banner).
+        // Chỉ 2 tuyển thủ của trận được vào ghế người chơi; người khác thành khán giả.
+        async join_tournament_room(conn, message) {
+            if (!isGame(message.game_id)) return sendError(conn, "UNKNOWN_GAME", "game_id không tồn tại.");
+            if (!matchStore) return sendError(conn, "SERVICE_UNAVAILABLE", "Dịch vụ giải đấu chưa khả dụng.");
+            const tournamentId = message.tournament_id ?? message.tournamentId;
+            const roundNo = Number(message.round_no ?? message.roundNo);
+            const slotIndex = Number(message.slot_index ?? message.slotIndex);
+            if (!tournamentId || !Number.isSafeInteger(roundNo) || roundNo < 1 || !Number.isSafeInteger(slotIndex) || slotIndex < 0) {
+                return sendError(conn, "INVALID_MESSAGE", "Thiếu thông tin trận đấu của giải.");
+            }
+            if (conn.room) return sendError(conn, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng.");
+            if (userRoom.has(conn.user.id)) return sendError(conn, "ALREADY_IN_ROOM", "Bạn đang giữ chỗ ở phòng khác.");
+
+            let slotInfo;
+            try {
+                slotInfo = await matchStore.getTournamentSlot(tournamentId, roundNo, slotIndex);
+            } catch (error) {
+                return sendError(conn, "TOURNAMENT_NOT_FOUND", error?.message ?? "Không tìm thấy trận đấu.");
+            }
+            if (!slotInfo.participantAId || !slotInfo.participantBId || slotInfo.winnerId) {
+                return sendError(conn, "WRONG_STATE", "Trận đấu chưa thể vào phòng hoặc đã có kết quả.");
+            }
+
+            const room = getOrCreateTournamentRoom({
+                key: tournamentRoomKey(tournamentId, roundNo, slotIndex),
+                matchStore,
+                tournamentId,
+                roundNo,
+                slotIndex,
+                gameId: message.game_id,
+                config: {},
+                participants: { a: slotInfo.participantAId, b: slotInfo.participantBId },
+            });
+
+            const isLivePlayer = room.reserved.has(conn.user.id) && !slotOf(room, conn.user.id) &&
+                room.players.some((slot) => !slot.userId);
+            if (isLivePlayer || slotOf(room, conn.user.id)) {
+                queue.remove(conn.user.id);
+                resetFinished(room);
+                if (!seat(room, conn)) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người chơi.");
+                broadcastRoom(room);
+            } else {
+                // Khán giả: xem mà không ngồi ghế.
+                queue.remove(conn.user.id);
+                room.spectators.add(conn);
+                conn.room = room;
+                sendCatchUp(conn, room);
+                broadcastRoom(room);
+            }
         },
 
         watch_room(conn, message) {

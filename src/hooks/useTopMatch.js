@@ -1,24 +1,26 @@
 // ─────────────────────────────────────────────────────────────
 // useTopMatch — My Match Banner hook.
 // Lấy trận hiện tại của user trong giải đang diễn ra, polling
-// realtime; cung cấp setReady + submitRoundBot + đếm ngược cửa sổ nộp code.
+// realtime; đếm ngược cửa sổ nộp code; tự xử lý hết giờ (xử thua/random).
 // ─────────────────────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getMyTournamentMatch, setMyMatchReady, submitMyMatchRoundBot } from "../api.js";
+import { getMyTournamentMatch, resolveTournamentRound } from "../api.js";
 import { apiErrorText } from "../utils/tournamentApi.js";
 
 const POLL_MS = 4000;
 
-export function useTopMatch({ tournamentId = null, token = null, enabled = true }) {
+export function useTopMatch({ tournamentId = null, token = null, enabled = true, onResolved }) {
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [deadline, setDeadline] = useState(null); // ISO (PER_ROUND)
-  const [submitting, setSubmitting] = useState(false);
+  const [deadline, setDeadline] = useState(null); // ISO (server cung cấp khi mở vòng)
   const pollTimer = useRef(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  const resolvedRef = useRef(new Set()); // tránh gọi resolve lặp cho cùng (roundNo, deadline)
+  const onResolvedRef = useRef(onResolved);
+  onResolvedRef.current = onResolved;
 
   const load = useCallback(async () => {
     if (!tournamentId || !enabled) return null;
@@ -27,6 +29,12 @@ export function useTopMatch({ tournamentId = null, token = null, enabled = true 
       const data = await getMyTournamentMatch(tournamentId, tokenRef.current);
       setMatch(data);
       setError(null);
+      if (data?.found) {
+        const dl = data.submissionDeadline;
+        setDeadline(dl && !Number.isNaN(new Date(dl).getTime()) ? dl : null);
+      } else {
+        setDeadline(null);
+      }
       return data;
     } catch (err) {
       if (err?.status !== 401) setError(apiErrorText(err));
@@ -36,10 +44,10 @@ export function useTopMatch({ tournamentId = null, token = null, enabled = true 
     }
   }, [tournamentId, enabled]);
 
-  // Poll định kỳ để cập nhật trạng thái sẵn sàng của 2 phía realtime.
   useEffect(() => {
     if (!tournamentId || !enabled) {
       setMatch(null);
+      setDeadline(null);
       return undefined;
     }
     load();
@@ -50,71 +58,39 @@ export function useTopMatch({ tournamentId = null, token = null, enabled = true 
     };
   }, [tournamentId, enabled, load]);
 
-  // Bắt đầu đếm ngược cửa sổ nộp code khi chuyển vòng (PER_ROUND).
-  const [roundKey, setRoundKey] = useState(null);
+  // Hết giờ nộp code: yêu cầu backend xử lý (xử thua / random nếu cả 2 chưa nộp).
   useEffect(() => {
-    if (!match?.found) {
-      setDeadline(null);
-      setRoundKey(null);
-      return;
-    }
-    const key = `${match.roundNo}:${match.slotIndex}`;
-    if (key !== roundKey) {
-      setRoundKey(key);
-      setDeadline(
-        match.mode === "PER_ROUND"
-          ? new Date(Date.now() + (match.submissionWindowMinutes ?? 10) * 60 * 1000).toISOString()
-          : null,
-      );
-    }
-  }, [match, roundKey]);
-
-  const setReady = useCallback(
-    async (ready = true) => {
-      if (!tournamentId || !token) {
-        setError("Bạn cần đăng nhập để bấm Sẵn sàng.");
-        return null;
-      }
-      setBusy(true);
-      setError(null);
+    if (!match?.found || !deadline || match.matchId || match.bothReady) return;
+    const timeout = new Date(deadline).getTime() - Date.now();
+    if (timeout > 0) return;
+    const key = `${match.tournamentId}:${match.roundNo}`;
+    if (resolvedRef.current.has(key)) return;
+    resolvedRef.current.add(key);
+    const timer = setTimeout(async () => {
       try {
-        const data = await setMyMatchReady(tournamentId, ready, token);
-        setMatch(data);
-        return data;
-      } catch (err) {
-        setError(apiErrorText(err));
-        return null;
+        setBusy(true);
+        const result = await resolveTournamentRound(match.tournamentId, match.roundNo, tokenRef.current);
+        onResolvedRef.current?.(result);
+        await load();
       } finally {
         setBusy(false);
       }
-    },
-    [tournamentId, token],
-  );
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [match, deadline, load]);
 
-  const submitRoundBot = useCallback(
-    async ({ roundNo, filename, source }) => {
-      if (!tournamentId || !token) {
-        setError("Bạn cần đăng nhập để nộp code.");
-        return null;
+  // Bắt đầu mới khi đổi vòng: reset cờ resolve của vòng cũ.
+  useEffect(() => {
+    if (match?.found) {
+      const key = `${match.tournamentId}:${match.roundNo}`;
+      for (const existing of resolvedRef.current) {
+        if (existing !== key && existing.startsWith(`${match.tournamentId}:`)) resolvedRef.current.delete(existing);
       }
-      setSubmitting(true);
-      setError(null);
-      try {
-        const data = await submitMyMatchRoundBot(tournamentId, roundNo, { filename, source }, token);
-        setMatch((prev) => (prev?.found ? { ...prev, me: { ...prev.me, submitted: true, filename } } : prev));
-        return data;
-      } catch (err) {
-        setError(apiErrorText(err));
-        return null;
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [tournamentId, token],
-  );
+    }
+  }, [match]);
 
   return useMemo(
-    () => ({ match, loading, error, busy, submitting, deadline, refresh: load, setReady, submitRoundBot }),
-    [match, loading, error, busy, submitting, deadline, load, setReady, submitRoundBot],
+    () => ({ match, loading, error, busy, deadline, refresh: load }),
+    [match, loading, error, busy, deadline, load],
   );
 }

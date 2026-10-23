@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS tournament_rounds (
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed')),
   scheduled_at TEXT,
   auto_start INTEGER NOT NULL DEFAULT 1 CHECK(auto_start IN (0, 1)),
+  submission_started_at TEXT,
+  submission_deadline TEXT,
   UNIQUE(tournament_id, round_no)
 );
 CREATE TABLE IF NOT EXISTS tournament_entries (

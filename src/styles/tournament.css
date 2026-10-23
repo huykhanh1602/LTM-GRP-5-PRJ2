@@ -2680,6 +2680,18 @@ button.tour-card-item:hover {
   flex: 1;
 }
 
+/* ---------- Badge phòng trận đấu giải đấu (Room.jsx) ---------- */
+.room-tournament-badge {
+  align-self: flex-start;
+  padding: 6px 12px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--c-purple-lavender, #7c3aed);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
 /* =========================================================
    TopMatchBanner — My Match Banner (giải đang diễn ra)
    ========================================================= */

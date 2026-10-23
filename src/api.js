@@ -125,3 +125,5 @@ export const submitMyMatchRoundBot = (idOrCode, roundNo, { filename, source }, t
     request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/my-match/submission`, {
         method: "POST", body: { round_no: roundNo, filename, source }, token,
     });
+export const resolveTournamentRound = (idOrCode, roundNo, token) =>
+    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/resolve`, {}, token);

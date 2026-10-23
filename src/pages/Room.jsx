@@ -32,6 +32,11 @@ export default function Room({ state, onSubmit, onReady, onLeave }) {
 
   return (
     <div className="room">
+      {room.tournament && (
+        <div className="room-tournament-badge">
+          ⚔️ Trận đấu giải đấu — vòng {room.tournament.round_no} · slot {room.tournament.slot_index}
+        </div>
+      )}
       <div className="room-head">
         <div>
           <div className="muted">Mã phòng</div>

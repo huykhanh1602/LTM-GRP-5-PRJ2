@@ -1,7 +1,9 @@
 // ─────────────────────────────────────────────────────────────
 // TopMatchBanner — My Match Banner hiển thị trên cùng trang Giải đấu
-// khi giải đang diễn ra (in_progress) và user có trận đang chờ sẵn sàng.
-// Giao diện kiểu bảng tỉ số bóng đá: [ A ] VS [ B ] + badge sẵn sàng 2 bên.
+// khi giải đang diễn ra (in_progress) và user có trận trong vòng hiện tại.
+// Giao diện kiểu bảng tỉ số bóng đá: [ A ] VS [ B ].
+// Nút duy nhất: "Vào phòng đấu" → mở phòng riêng của trận (Room.jsx),
+// chỉ 2 tuyển thủ của trận mới là người chơi, còn lại là khán giả.
 // ─────────────────────────────────────────────────────────────
 import { useEffect, useState } from "react";
 
@@ -27,9 +29,9 @@ function Countdown({ deadline }) {
 }
 
 function Side({ side, isMe }) {
-  const badge = side.ready
-    ? { text: "✓ Sẵn sàng", cls: "tm-badge tm-badge--ready" }
-    : { text: "○ Chờ", cls: "tm-badge tm-badge--wait" };
+  const badge = side.submitted
+    ? { text: "✓ Đã nộp code", cls: "tm-badge tm-badge--ready" }
+    : { text: "○ Chưa nộp code", cls: "tm-badge tm-badge--wait" };
   const initial = (side.name ?? "?").trim().charAt(0).toUpperCase() || "?";
   return (
     <div className={`tm-side${isMe ? " tm-side--me" : ""}`}>
@@ -39,28 +41,17 @@ function Side({ side, isMe }) {
       <div className="tm-side__info">
         <span className="tm-side__name">{side.name ?? "—"}</span>
         <span className={badge.cls}>{badge.text}</span>
-        {side.submissionId && isMe && (
-          <span className="tm-file">📎 {side.filename ?? "Đã nộp code"}</span>
-        )}
+        {side.filename && isMe && <span className="tm-file">📎 {side.filename}</span>}
       </div>
     </div>
   );
 }
 
-export function TopMatchBanner({ match, deadline, busy, submitting, onSetReady, onSubmitCode, onOpenReplay }) {
+export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom }) {
   if (!match?.found) return null;
-  const { me, opponent, mode, matchId, bothReady } = match;
+  const { me, opponent, mode, matchId, windowLabel } = match;
   const isPerRound = mode === "PER_ROUND";
-
-  const canReady = me.submitted && !me.ready;
-  const readyLabel = me.ready ? "Hủy sẵn sàng" : "✓ Sẵn sàng thi đấu";
-  const readyHint = !me.submitted
-    ? isPerRound
-      ? `Bước 1: nộp code cho vòng ${match.roundNo} bên dưới.`
-      : "Bạn chưa đăng ký bot cho giải này."
-    : me.ready
-      ? "Đang chờ đối thủ sẵn sàng…"
-      : "Bấm để xác nhận bạn đã chuẩn bị xong cho trận này.";
+  const minutes = match.submissionWindowMinutes ?? 10;
 
   return (
     <section className="tm-banner tl-card" aria-label="Trận đấu của tôi">
@@ -70,21 +61,18 @@ export function TopMatchBanner({ match, deadline, busy, submitting, onSetReady, 
             ⚔️ Trận đấu của tôi
             <span className="tm-vs">— Vòng {match.roundNo}</span>
           </h2>
-          <p className="tm-desc">{isPerRound ? "Nộp code mỗi vòng trước deadline rồi bấm Sẵn sàng." : "Dùng bot đã đăng ký, chỉ cần bấm Sẵn sàng."}</p>
+          <p className="tm-desc">
+            {isPerRound
+              ? `Cửa sổ nộp code vòng này là ${minutes} phút. Vào phòng đấu để nộp code và thi đấu.`
+              : `Dùng bot đã đăng ký — vào phòng đấu và bấm Sẵn sàng khi sẵn sàng. Hạn ${minutes} phút.`}
+          </p>
         </div>
-        {isPerRound && <Countdown deadline={deadline} />}
+        {deadline && <Countdown deadline={deadline} />}
       </header>
 
       {matchId ? (
         <div className="tm-live">
-          <p>🎮 Trận đấu đang diễn ra — hãy xem kết quả & replay.</p>
-          <button type="button" className="btn primary" onClick={() => onOpenReplay?.(matchId)}>
-            ▶ Xem Match Replay
-          </button>
-        </div>
-      ) : bothReady ? (
-        <div className="tm-live">
-          <p>🚀 Cả hai đã sẵn sàng — trận đấu sẽ tự động khởi tranh…</p>
+          <p>🎮 Trận đấu đang diễn ra — hãy vào phòng đấu để theo dõi hoặc thi đấu.</p>
         </div>
       ) : (
         <>
@@ -95,26 +83,24 @@ export function TopMatchBanner({ match, deadline, busy, submitting, onSetReady, 
           </div>
 
           <div className="tm-actions">
-            {isPerRound && (
-              <button
-                type="button"
-                className="btn"
-                disabled={submitting || me.ready}
-                onClick={() => onSubmitCode?.()}
-              >
-                {me.submitted ? "✏️ Đổi code vòng này" : "📝 Nộp / Cập nhật code"}
-              </button>
-            )}
             <button
               type="button"
-              className={`btn ${canReady ? "primary" : ""}`}
-              disabled={!me.submitted || busy || submitting}
-              onClick={() => onSetReady?.(!me.ready)}
+              className="btn primary big"
+              disabled={busy}
+              onClick={() => onEnterRoom?.()}
             >
-              {readyLabel}
+              🚪 Vào phòng đấu
             </button>
+            {onWatchRoom && (
+              <button type="button" className="btn" disabled={busy} onClick={() => onWatchRoom?.()}>
+                👁 Xem với tư cách khán giả
+              </button>
+            )}
           </div>
-          <p className="tm-hint">{readyHint}</p>
+          <p className="tm-hint">
+            Phòng chỉ nhận <strong>2 tuyển thủ của trận</strong> làm người chơi. Nếu hết giờ mà chưa nộp code,
+            bạn sẽ bị <strong>xử thua</strong>; cả 2 chưa nộp thì hệ thống <strong>chọn ngẫu nhiên 1 người</strong> đi tiếp.
+          </p>
         </>
       )}
     </section>
