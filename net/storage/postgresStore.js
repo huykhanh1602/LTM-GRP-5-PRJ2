@@ -54,13 +54,35 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     await query(`INSERT INTO teams(id,name) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name`, [id, name], client);
     return (await query('SELECT id,name,created_at FROM teams WHERE id=$1', [id], client)).rows[0];
   }
+  async function addTeamMember(teamId, userId, role = 'member', client = pool) {
+    teamId = required(teamId, 'teamId'); userId = required(userId, 'userId');
+    if (!['captain','member'].includes(role)) throw new StorageError('INVALID_INPUT','role must be captain or member');
+    try {
+      return (await query(`INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,$3)
+        ON CONFLICT(team_id,user_id) DO UPDATE SET role=EXCLUDED.role
+        RETURNING team_id,user_id,role,joined_at`,[teamId,userId,role],client)).rows[0];
+    } catch(error) {
+      if(error.code==='23503') throw new StorageError('TEAM_OR_USER_NOT_FOUND','Team or user not found',404);
+      throw error;
+    }
+  }
+  async function getTeamMembers(teamId, client = pool) {
+    return (await query(`SELECT tm.team_id,tm.user_id,tm.role,tm.joined_at,u.display_name,u.avatar_url
+      FROM team_members tm JOIN users u ON u.id=tm.user_id WHERE tm.team_id=$1 ORDER BY tm.joined_at`,[teamId],client)).rows;
+  }
+  async function getTeam(teamId, client = pool) {
+    const team = (await query('SELECT id,name,created_at FROM teams WHERE id=$1',[teamId],client)).rows[0];
+    if(!team) throw new StorageError('TEAM_NOT_FOUND','Team not found',404);
+    team.members = await getTeamMembers(teamId, client);
+    return team;
+  }
   async function getMatch(id, client = pool, lock = false) {
     const row = (await query(`SELECT * FROM matches WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [id], client)).rows[0];
     if (!row) throw new StorageError('MATCH_NOT_FOUND', 'Match not found', 404);
     return mapMatch(row);
   }
   async function startMatch({ id = randomUUID(), roomId, gameId = 'rps_chess', mode, roundId = null,
-    teamA, teamB, ranked = true, config = {}, initialState = null, startedAt }, client = pool) {
+    teamA, teamB, ranked = true, config = {}, initialState = null, startedAt, scheduledAt = null, autoStart = true }, client = pool) {
     id = required(id, 'match.id'); roomId = required(roomId, 'roomId');
     gameId = required(gameId, 'gameId'); mode ??= ranked ? 'ranked' : 'casual';
     if (!teamA || !teamB || teamA.id === teamB.id || typeof ranked !== 'boolean' ||
@@ -68,9 +90,10 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       throw new StorageError('INVALID_INPUT', 'Two distinct teams and a valid match mode are required');
     await registerTeam(teamA, client); await registerTeam(teamB, client);
     try {
-      await query(`INSERT INTO matches(id,room_id,game_id,mode,round_id,team_a_id,team_b_id,status,ranked,started_at,config,initial_state,final_state)
-        VALUES($1,$2,$3,$4,$5,$6,$7,'playing',$8,$9,$10::jsonb,$11::jsonb,$11::jsonb)`,
-      [id, roomId, gameId, mode, roundId, teamA.id, teamB.id, ranked, iso(startedAt), JSON.stringify(config), JSON.stringify(initialState)], client);
+      await query(`INSERT INTO matches(id,room_id,game_id,mode,round_id,team_a_id,team_b_id,status,ranked,started_at,scheduled_at,auto_start,config,initial_state,final_state)
+        VALUES($1,$2,$3,$4,$5,$6,$7,'playing',$8,$9,$10,$11,$12::jsonb,$13::jsonb,$13::jsonb)`,
+      [id, roomId, gameId, mode, roundId, teamA.id, teamB.id, ranked, iso(startedAt),
+       scheduledAt ? iso(scheduledAt) : null, autoStart, JSON.stringify(config), JSON.stringify(initialState)], client);
     } catch (error) {
       if (error.code === '23505') throw new StorageError('MATCH_EXISTS', 'Match ID already exists', 409);
       throw error;
@@ -104,11 +127,34 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(match.round_id) {
         const round=(await query('SELECT tournament_id FROM tournament_rounds WHERE id=$1',[match.round_id],client)).rows[0];
         if(round) {
-          const names=(await query('SELECT id,name FROM teams WHERE id=ANY($1::text[])',[[match.team_a_id,match.team_b_id]],client)).rows;
-          const byId=Object.fromEntries(names.map(team=>[team.id,team.name]));
+          // Lấy tên hiển thị chuẩn: tên User (nếu Đơn) hoặc tên Đội (nếu Đội)
+          // Ưu tiên tra cứu từ tournament_entries, fallback sang tên đội từ bảng teams
+          const names=(await query(`SELECT e.team_id,e.user_id,
+            COALESCE(t.name, u.display_name) AS display_name
+            FROM tournament_entries e
+            LEFT JOIN users u ON u.id=e.user_id
+            LEFT JOIN teams t ON t.id=e.team_id
+            WHERE e.tournament_id=$1 AND (e.user_id=$2 OR e.team_id=$2 OR e.user_id=$3 OR e.team_id=$3)`,
+            [round.tournament_id, match.team_a_id, match.team_b_id],client)).rows;
+          const byId={};
+          for(const n of names){
+            const id=n.team_id??n.user_id;
+            byId[id]=n.display_name;
+          }
+          // Fallback: lấy tên từ bảng teams nếu không tìm thấy trong tournament_entries
+          let aName=byId[match.team_a_id];
+          let bName=byId[match.team_b_id];
+          if(!aName) {
+            const team=(await query('SELECT name FROM teams WHERE id=$1',[match.team_a_id],client)).rows[0];
+            aName=team?.name??match.team_a_id;
+          }
+          if(!bName) {
+            const team=(await query('SELECT name FROM teams WHERE id=$1',[match.team_b_id],client)).rows[0];
+            bName=team?.name??match.team_b_id;
+          }
           await recordTournamentMatchInternal({tournamentId:round.tournament_id,roundId:match.round_id,matchId:id,
-            participantAId:match.team_a_id,participantAName:byId[match.team_a_id],participantBId:match.team_b_id,
-            participantBName:byId[match.team_b_id],winnerId:winner,result,playedAt:endedAt},client);
+            participantAId:match.team_a_id,participantAName:aName,participantBId:match.team_b_id,
+            participantBName:bName,winnerId:winner,result,playedAt:endedAt},client);
         }
       }
       return getMatch(id, client);
@@ -197,9 +243,18 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return { items:rows.map(r=>({...r,starts_at:r.starts_at?.toISOString()??null,created_at:r.created_at.toISOString()})),total,limit,offset };
   }
   async function listTournamentEntries(tournamentId, client = pool) {
-    return (await query(`SELECT e.user_id,u.display_name,u.avatar_url,u.role,e.seed,e.points
-      FROM tournament_entries e JOIN users u ON u.id=e.user_id WHERE e.tournament_id=$1
-      ORDER BY e.seed IS NULL,e.seed,u.display_name`,[tournamentId],client)).rows;
+    const entries = (await query(`SELECT e.tournament_id,e.user_id,e.team_id,e.seed,e.points,
+      u.display_name AS user_display_name,u.avatar_url,u.role,
+      t.name AS team_name
+      FROM tournament_entries e
+      LEFT JOIN users u ON u.id=e.user_id
+      LEFT JOIN teams t ON t.id=e.team_id
+      WHERE e.tournament_id=$1
+      ORDER BY e.seed IS NULL,e.seed,COALESCE(t.name,u.display_name)`,[tournamentId],client)).rows;
+    return entries.map(e => ({
+      ...e,
+      display_name: e.team_name ?? e.user_display_name,
+    }));
   }
   async function listTournamentRounds(tournamentId, client = pool) {
     const rounds=(await query('SELECT id,round_no,status FROM tournament_rounds WHERE tournament_id=$1 ORDER BY round_no',[tournamentId],client)).rows;
@@ -225,9 +280,10 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     catch(error){ if(error.code==='23503') throw new StorageError('GAME_NOT_FOUND','Game not found',404); if(error.code==='23505') throw new StorageError('TOURNAMENT_EXISTS','Tournament code already exists',409); throw error; }
     return getTournament(id);
   }
-  async function createTournamentRound(tournamentId,{id=randomUUID(),roundNo}) {
+  async function createTournamentRound(tournamentId,{id=randomUUID(),roundNo,scheduledAt=null,autoStart=true}) {
     if(!Number.isSafeInteger(roundNo)||roundNo<1) throw new StorageError('INVALID_INPUT','roundNo must be a positive integer');
-    try { return (await query('INSERT INTO tournament_rounds(id,tournament_id,round_no) VALUES($1,$2,$3) RETURNING id,tournament_id,round_no,status',[id,tournamentId,roundNo])).rows[0]; }
+    try { return (await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,scheduled_at,auto_start) VALUES($1,$2,$3,$4,$5) RETURNING id,tournament_id,round_no,status,scheduled_at,auto_start',
+      [id,tournamentId,roundNo,scheduledAt?iso(scheduledAt):null,autoStart])).rows[0]; }
     catch(error){ if(error.code==='23503') throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404); if(error.code==='23505') throw new StorageError('ROUND_EXISTS','Round number already exists',409); throw error; }
   }
   async function recordTournamentMatchInternal({id=randomUUID(),tournamentId,roundId,matchId=null,participantAId,participantAName,
@@ -243,16 +299,35 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return (await query(sql,[id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
   }
   async function recordTournamentMatch(input) { return transaction(client=>recordTournamentMatchInternal(input,client)); }
-  async function addTournamentEntry(tournamentId,{userId,seed=null}) {
-    userId=required(userId,'userId'); if(seed!==null&&(!Number.isSafeInteger(seed)||seed<1)) throw new StorageError('INVALID_INPUT','seed must be a positive integer');
+  async function addTournamentEntry(tournamentId,{userId=null,teamId=null,seed=null}) {
+    if(!userId && !teamId) throw new StorageError('INVALID_INPUT','Either userId or teamId is required');
+    if(seed!==null&&(!Number.isSafeInteger(seed)||seed<1)) throw new StorageError('INVALID_INPUT','seed must be a positive integer');
     return transaction(async client=>{
-      const tournament=(await query('SELECT status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      const tournament=(await query('SELECT id,status,config FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.status!=='open')throw new StorageError('TOURNAMENT_NOT_OPEN','Tournament is not accepting entries',409);
+      const config=tournament.config??{};
+      const participantMode=config.participantMode??'INDIVIDUAL';
+      if(participantMode==='TEAM' && !teamId) throw new StorageError('INVALID_INPUT','Team mode requires a teamId');
+      if(participantMode==='INDIVIDUAL' && !userId) throw new StorageError('INVALID_INPUT','Individual mode requires a userId');
       // Seed mặc định = thứ tự đăng ký, dùng để xếp nhánh đấu.
       seed ??= Number((await query('SELECT COUNT(*)::int AS total FROM tournament_entries WHERE tournament_id=$1',[tournamentId],client)).rows[0].total)+1;
-      try{return (await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',[tournamentId,userId,seed],client)).rows[0];}
-      catch(error){if(error.code==='23503')throw new StorageError('USER_NOT_FOUND','User not found',404);if(error.code==='23505')throw new StorageError('ENTRY_EXISTS','User already joined this tournament',409);throw error;}
+      try{
+        if(teamId) {
+          return (await query('INSERT INTO tournament_entries(tournament_id,user_id,team_id,seed) VALUES($1,$2,$3,$4) RETURNING tournament_id,user_id,team_id,seed,points',
+            [tournamentId,userId,teamId,seed],client)).rows[0];
+        }
+        return (await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',
+          [tournamentId,userId,seed],client)).rows[0];
+      }
+      catch(error){
+        if(error.code==='23503'){
+          if(teamId) throw new StorageError('TEAM_NOT_FOUND','Team not found',404);
+          throw new StorageError('USER_NOT_FOUND','User not found',404);
+        }
+        if(error.code==='23505')throw new StorageError('ENTRY_EXISTS','User already joined this tournament',409);
+        throw error;
+      }
     });
   }
   async function updateTournamentStatus(id,status,championId=null) {
@@ -354,12 +429,17 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   }
   async function generateTournamentBracket(tournamentId) {
     return transaction(async client=>{
-      const tournament=(await query('SELECT id,format,status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      const tournament=(await query('SELECT id,format,status,config FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.format!=='single_elimination') throw new StorageError('FORMAT_NOT_SUPPORTED','Chỉ thể thức loại trực tiếp mới tạo được nhánh đấu',409);
       if(!['open','in_progress'].includes(tournament.status)) throw new StorageError('INVALID_STATUS_TRANSITION','Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra',409);
       if((await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 LIMIT 1',[tournamentId],client)).rows[0]) throw new StorageError('BRACKET_EXISTS','Sơ đồ nhánh của giải đã được tạo trước đó',409);
-      const entries=(await listTournamentEntries(tournamentId,client)).map((entry,index)=>({id:entry.user_id,name:entry.display_name,seed:entry.seed??index+1}));
+      const rawEntries=await listTournamentEntries(tournamentId,client);
+      const entries=rawEntries.map((entry,index)=>({
+        id: entry.team_id ?? entry.user_id,
+        name: entry.display_name,
+        seed: entry.seed??index+1,
+      }));
       if(entries.length<2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS','Cần ít nhất 2 người đăng ký để tạo nhánh đấu',409);
       const {totalRounds}=planSize(entries.length);
       const roundIds=[];
@@ -431,16 +511,45 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       COALESCE(SUM(CASE WHEN winner_id=$1 THEN 1 ELSE 0 END),0)::int AS wins,
       COALESCE(SUM(CASE WHEN winner_id IS NULL THEN 1 ELSE 0 END),0)::int AS draws
       FROM matches WHERE status='finished' AND (team_a_id=$1 OR team_b_id=$1)`,[id])).rows[0];
-    const tournaments=(await query(`SELECT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
-      JOIN tournaments t ON t.id=e.tournament_id WHERE e.user_id=$1 ORDER BY t.starts_at NULLS LAST,t.created_at DESC`,[id])).rows
+    const tournaments=(await query(`SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
+      JOIN tournaments t ON t.id=e.tournament_id WHERE e.user_id=$1
+      UNION
+      SELECT DISTINCT t.id,t.code,t.name,t.status,t.starts_at FROM tournament_entries e
+      JOIN tournaments t ON t.id=e.tournament_id
+      JOIN team_members tm ON tm.team_id=e.team_id AND tm.user_id=$1
+      ORDER BY starts_at NULLS LAST,created_at DESC`,[id])).rows
       .map(row=>({...row,starts_at:row.starts_at?.toISOString()??null}));
     return {...user,created_at:user.created_at instanceof Date?user.created_at.toISOString():user.created_at,
       stats:{played:stats.played,wins:stats.wins,draws:stats.draws,losses:stats.played-stats.wins-stats.draws},tournaments};
   }
-  return { initialize, registerTeam, startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
+  return { initialize, registerTeam, addTeamMember, getTeamMembers, getTeam,
+    startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, importReplay,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile,
+    updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch,
     abortInterruptedMatches, close:()=>pool.end() };
+
+  async function updateTournamentSchedule(tournamentId, scheduledAt) {
+    await query('UPDATE tournaments SET starts_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, tournamentId]);
+    return getTournament(tournamentId);
+  }
+
+  async function updateRoundSchedule(tournamentId, roundId, scheduledAt, autoStart) {
+    await query('UPDATE tournament_rounds SET scheduled_at = $1, auto_start = $2 WHERE id = $3 AND tournament_id = $4',
+      [scheduledAt ? iso(scheduledAt) : null, autoStart, roundId, tournamentId]);
+    return (await query('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = $1', [roundId])).rows[0];
+  }
+
+  async function triggerRoundStart(tournamentId, roundId) {
+    await query('UPDATE tournament_rounds SET scheduled_at = $1, auto_start = TRUE WHERE id = $2 AND tournament_id = $3',
+      [new Date().toISOString(), roundId, tournamentId]);
+    return (await query('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = $1', [roundId])).rows[0];
+  }
+
+  async function rescheduleMatch(matchId, scheduledAt) {
+    await query('UPDATE matches SET scheduled_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, matchId]);
+    return getMatch(matchId);
+  }
 }

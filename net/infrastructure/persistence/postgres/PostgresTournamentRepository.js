@@ -13,6 +13,16 @@ export function createPostgresTournamentRepository({
   function mapRow(row) {
     if (!row) return null;
     const tournament = row.bracket_json ?? {};
+    const config = row.config ?? tournament.config ?? {};
+    // Đảm bảo participant_mode mặc định
+    if (!config.participantMode) config.participantMode = 'INDIVIDUAL';
+    if (config.participantMode === 'INDIVIDUAL') {
+      config.minTeamSize = 1;
+      config.maxTeamSize = 1;
+    } else {
+      config.minTeamSize ??= 1;
+      config.maxTeamSize ??= 5;
+    }
     return {
       ...tournament,
       id: row.id,
@@ -21,7 +31,7 @@ export function createPostgresTournamentRepository({
       name: row.name,
       format: row.format,
       status: row.status,
-      config: row.config ?? tournament.config ?? {},
+      config,
       entries: tournament.entries ?? [],
       bracket: tournament.bracket ?? null,
       championId: row.champion_id ?? tournament.championId ?? null,

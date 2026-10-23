@@ -4,6 +4,14 @@ CREATE TABLE IF NOT EXISTS teams (
   name TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('captain','member')),
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY(team_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
 CREATE TABLE IF NOT EXISTS matches (
   id TEXT PRIMARY KEY,
   room_id TEXT NOT NULL,
@@ -18,6 +26,8 @@ CREATE TABLE IF NOT EXISTS matches (
   reason TEXT,
   started_at TEXT NOT NULL,
   ended_at TEXT,
+  scheduled_at TEXT,
+  auto_start INTEGER NOT NULL DEFAULT 1 CHECK(auto_start IN (0, 1)),
   config_json TEXT NOT NULL,
   initial_state_json TEXT NOT NULL,
   final_state_json TEXT NOT NULL,
@@ -89,14 +99,19 @@ CREATE TABLE IF NOT EXISTS tournament_rounds (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round_no INTEGER NOT NULL CHECK(round_no > 0),
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed')),
+  scheduled_at TEXT,
+  auto_start INTEGER NOT NULL DEFAULT 1 CHECK(auto_start IN (0, 1)),
   UNIQUE(tournament_id, round_no)
 );
 CREATE TABLE IF NOT EXISTS tournament_entries (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  user_id TEXT REFERENCES users(id),
+  team_id TEXT REFERENCES teams(id),
   seed INTEGER CHECK(seed IS NULL OR seed > 0),
   points REAL NOT NULL DEFAULT 0,
-  PRIMARY KEY(tournament_id, user_id)
+  PRIMARY KEY(tournament_id, user_id),
+  UNIQUE(tournament_id, team_id),
+  CHECK(user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS tournament_match_history (
   id TEXT PRIMARY KEY,
@@ -129,3 +144,6 @@ CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status, starts_
 CREATE INDEX IF NOT EXISTS idx_matches_started ON matches(started_at DESC, id);
 CREATE INDEX IF NOT EXISTS idx_matches_team_a ON matches(team_a_id);
 CREATE INDEX IF NOT EXISTS idx_matches_team_b ON matches(team_b_id);
+-- Migration cho các cột mới trên bảng đã tồn tại (SQLite dùng ALTER TABLE an toàn)
+CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id);
+CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL;

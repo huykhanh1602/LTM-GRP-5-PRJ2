@@ -80,6 +80,10 @@ export function createRoundRobinFormat() {
           ? slot.participantAId
           : slot.participantBId;
       slot.status = SlotStatus.DONE;
+      slot.scoreA = report.scoreA ?? 0;
+      slot.scoreB = report.scoreB ?? 0;
+      slot.timeA = report.timeA ?? 0;
+      slot.timeB = report.timeB ?? 0;
       return { changed: true, slot };
     },
 
@@ -129,6 +133,8 @@ export function standings(bracket) {
       losses: 0,
       points: 0,
       headToHeadPoints: 0,
+      winLossDifference: 0,
+      totalTime: 0,
     });
   }
 
@@ -140,6 +146,10 @@ export function standings(bracket) {
 
     a.played += 1;
     b.played += 1;
+    a.winLossDifference += (slot.scoreA ?? 0) - (slot.scoreB ?? 0);
+    b.winLossDifference += (slot.scoreB ?? 0) - (slot.scoreA ?? 0);
+    a.totalTime += (slot.timeA ?? 0);
+    b.totalTime += (slot.timeB ?? 0);
 
     if (!slot.winnerId) {
       a.draws += 1;
@@ -203,6 +213,8 @@ function sortStandings(rows) {
     y.points - x.points ||
     y.wins - x.wins ||
     y.headToHeadPoints - x.headToHeadPoints ||
+    y.winLossDifference - x.winLossDifference ||
+    x.totalTime - y.totalTime ||
     (x.seed ?? Number.MAX_SAFE_INTEGER) - (y.seed ?? Number.MAX_SAFE_INTEGER) ||
     x.userId.localeCompare(y.userId),
   );

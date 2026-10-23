@@ -1,6 +1,14 @@
 CREATE TABLE IF NOT EXISTS teams (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('captain','member')),
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(team_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, display_name TEXT NOT NULL, avatar_url TEXT,
   email TEXT UNIQUE, phone TEXT UNIQUE, password_salt TEXT, password_hash TEXT,
@@ -38,6 +46,8 @@ CREATE TABLE IF NOT EXISTS matches (
   status TEXT NOT NULL CHECK(status IN ('playing','finished','aborted')),
   ranked BOOLEAN NOT NULL, winner_id TEXT REFERENCES teams(id), reason TEXT,
   started_at TIMESTAMPTZ NOT NULL, ended_at TIMESTAMPTZ,
+  scheduled_at TIMESTAMPTZ,
+  auto_start BOOLEAN NOT NULL DEFAULT TRUE,
   config JSONB NOT NULL DEFAULT '{}'::jsonb, initial_state JSONB NOT NULL DEFAULT 'null'::jsonb,
   final_state JSONB NOT NULL DEFAULT 'null'::jsonb, result JSONB,
   CHECK (team_a_id <> team_b_id), CHECK (winner_id IS NULL OR winner_id IN (team_a_id, team_b_id))
@@ -58,7 +68,10 @@ CREATE TABLE IF NOT EXISTS tournaments (
 CREATE TABLE IF NOT EXISTS tournament_rounds (
   id TEXT PRIMARY KEY, tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round_no INTEGER NOT NULL CHECK(round_no > 0), status TEXT NOT NULL DEFAULT 'pending'
-    CHECK(status IN ('pending','in_progress','completed')), UNIQUE(tournament_id,round_no)
+    CHECK(status IN ('pending','in_progress','completed')),
+  scheduled_at TIMESTAMPTZ,
+  auto_start BOOLEAN NOT NULL DEFAULT TRUE,
+  UNIQUE(tournament_id,round_no)
 );
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_matches_round') THEN
@@ -67,8 +80,13 @@ DO $$ BEGIN
 END $$;
 CREATE TABLE IF NOT EXISTS tournament_entries (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id), seed INTEGER CHECK(seed IS NULL OR seed > 0),
-  points DOUBLE PRECISION NOT NULL DEFAULT 0, PRIMARY KEY(tournament_id,user_id)
+  user_id TEXT REFERENCES users(id),
+  team_id TEXT REFERENCES teams(id),
+  seed INTEGER CHECK(seed IS NULL OR seed > 0),
+  points DOUBLE PRECISION NOT NULL DEFAULT 0,
+  PRIMARY KEY(tournament_id,user_id),
+  UNIQUE(tournament_id,team_id),
+  CHECK(user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS tournament_match_history (
   id TEXT PRIMARY KEY,
@@ -94,3 +112,13 @@ CREATE INDEX IF NOT EXISTS idx_matches_team_a ON matches(team_a_id);
 CREATE INDEX IF NOT EXISTS idx_matches_team_b ON matches(team_b_id);
 CREATE INDEX IF NOT EXISTS idx_bot_submissions_room_team ON bot_submissions(room_id,team_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status,starts_at);
+-- Migration cho các cột mới trên bảng đã tồn tại
+ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS auto_start BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS auto_start BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE tournament_entries ADD COLUMN IF NOT EXISTS team_id TEXT REFERENCES teams(id);
+ALTER TABLE tournament_entries ALTER COLUMN user_id DROP NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tournament_entries_team ON tournament_entries(team_id);
+CREATE INDEX IF NOT EXISTS idx_matches_scheduled ON matches(scheduled_at) WHERE scheduled_at IS NOT NULL;

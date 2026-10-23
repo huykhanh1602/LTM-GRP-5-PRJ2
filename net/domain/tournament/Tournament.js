@@ -1,5 +1,6 @@
 import {
   TournamentStatus,
+  ParticipantMode,
   assertTournamentTransition,
 } from '../../../shared/domain/tournament.js';
 
@@ -32,6 +33,9 @@ export function createTournament({
       drawPolicy: 'replay',
       maxReplays: 3,
       matchConfig: {},
+      participantMode: ParticipantMode.INDIVIDUAL,
+      minTeamSize: 1,
+      maxTeamSize: 5,
       ...config,
     },
     entries: entries.map((entry) => ({ ...entry })),
@@ -95,10 +99,11 @@ export function toTournamentView(tournament) {
 function assertUniqueEntries(entries) {
   const seen = new Set();
   for (const entry of entries) {
-    if (!entry?.userId) throw new Error('Entry thiếu userId.');
-    if (seen.has(entry.userId)) {
-      throw new Error(`Entry trùng userId: ${entry.userId}`);
+    if (!entry?.userId && !entry?.teamId) throw new Error('Entry thiếu userId hoặc teamId.');
+    const key = entry.teamId ?? entry.userId;
+    if (seen.has(key)) {
+      throw new Error(`Entry trùng: ${key}`);
     }
-    seen.add(entry.userId);
+    seen.add(key);
   }
 }

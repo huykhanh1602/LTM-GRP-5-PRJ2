@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { TournamentFormat } from '../../../shared/domain/tournament.js';
+import { TournamentFormat, ParticipantMode } from '../../../shared/domain/tournament.js';
 import {
   BracketError,
   findSlotByMatchId,
@@ -29,6 +29,8 @@ export function createTournamentService({
   clock = () => new Date(),
   ids = { next: () => randomUUID() },
   events = null,
+  userStore = null,
+  teamStore = null,
 } = {}) {
   if (!tournaments) throw new Error('TournamentService cần tournament repository.');
   if (!matchQueue) throw new Error('TournamentService cần matchQueue.');
@@ -37,6 +39,22 @@ export function createTournamentService({
   async function create(input) {
     if (!formats.has(input.format)) {
       throw new TournamentError('UNSUPPORTED_FORMAT', `Format không hỗ trợ: ${input.format}`);
+    }
+
+    // Validate participant_mode config
+    const participantMode = input.config?.participantMode ?? ParticipantMode.INDIVIDUAL;
+    if (![ParticipantMode.INDIVIDUAL, ParticipantMode.TEAM].includes(participantMode)) {
+      throw new TournamentError('INVALID_CONFIG', `participantMode không hợp lệ: ${participantMode}`);
+    }
+    if (participantMode === ParticipantMode.TEAM) {
+      const minSize = input.config?.minTeamSize ?? 1;
+      const maxSize = input.config?.maxTeamSize ?? 5;
+      if (!Number.isSafeInteger(minSize) || minSize < 1) {
+        throw new TournamentError('INVALID_CONFIG', 'minTeamSize phải >= 1');
+      }
+      if (!Number.isSafeInteger(maxSize) || maxSize < minSize) {
+        throw new TournamentError('INVALID_CONFIG', 'maxTeamSize phải >= minTeamSize');
+      }
     }
 
     const tournament = createTournament({

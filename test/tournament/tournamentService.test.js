@@ -62,7 +62,7 @@ test('start enqueue bán kết, report tự đẩy winner vào chung kết', asy
     outcome: 'a',
   });
 
-  assert.equal(jobs.length, 3);
+  assert.equal(jobs.length, 4); // 2 semi + 1 final + 1 third-place
 
   await service.reportMatch('t1', {
     matchId: jobs[2].matchId,

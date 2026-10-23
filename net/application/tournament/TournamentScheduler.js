@@ -12,7 +12,8 @@ export function createTournamentScheduler({
 
   function start() {
     if (unsubscribe) return;
-    unsubscribe = events.on('MATCH_FINISHED', async (event) => {
+
+    const matchFinishedUnsub = events.on('MATCH_FINISHED', async (event) => {
       try {
         const link = await tournaments.findByMatchId(event.matchId);
         if (!link) return;
@@ -31,6 +32,24 @@ export function createTournamentScheduler({
         });
       }
     });
+
+    const interval = setInterval(async () => {
+      try {
+        const list = await tournaments.list({ status: 'open' });
+        for (const t of list) {
+          if (t.config.auto_start && t.config.scheduled_at && new Date(t.config.scheduled_at) <= new Date()) {
+            await tournamentService.start(t.id);
+          }
+        }
+      } catch (error) {
+        logger.error?.({ event: 'tournament_scheduler_check_failed', error: error.message });
+      }
+    }, 60000);
+
+    unsubscribe = () => {
+      matchFinishedUnsub();
+      clearInterval(interval);
+    };
   }
 
   function stop() {

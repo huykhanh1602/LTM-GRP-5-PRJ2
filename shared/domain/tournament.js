@@ -20,6 +20,11 @@ export const SlotStatus = Object.freeze({
   BYE: 'bye',
 });
 
+export const ParticipantMode = Object.freeze({
+  INDIVIDUAL: 'INDIVIDUAL',
+  TEAM: 'TEAM',
+});
+
 export const OUTCOMES = Object.freeze(['a', 'b', 'draw']);
 
 export const TRANSITIONS = Object.freeze({
@@ -40,4 +45,13 @@ export function assertOutcome(outcome) {
   if (!OUTCOMES.includes(outcome)) {
     throw new Error(`Outcome không hợp lệ: ${outcome}`);
   }
+}
+
+export function getParticipantDisplayName(entry, users, teams) {
+  if (entry.team_id) {
+    const team = teams?.find(t => t.id === entry.team_id);
+    return team?.name ?? entry.team_id;
+  }
+  const user = users?.find(u => u.id === entry.user_id);
+  return user?.display_name ?? entry.user_id;
 }

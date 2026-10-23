@@ -83,14 +83,40 @@ export function createSingleEliminationFormat() {
 
       advanceWinner(bracket, slot);
       autoAdvanceByes(bracket);
+
+      // Handle Semi-finals: 2 losers -> Third-place match
+      if (bracket.rounds.length >= 2) {
+        const semiFinals = bracket.rounds[bracket.rounds.length - 2];
+        const final = bracket.rounds[bracket.rounds.length - 1][0];
+        
+        // If both semi-finals are done, create/update third-place match
+        if (semiFinals.every(s => s.status === SlotStatus.DONE)) {
+          const losers = semiFinals.map(s => s.winnerId === s.participantAId ? s.participantBId : s.participantAId);
+          
+          // Find or create third-place match (slot_index: 1 in final round)
+          let thirdPlace = bracket.rounds[bracket.rounds.length - 1][1];
+          if (!thirdPlace) {
+            thirdPlace = createSlot({
+              roundIndex: bracket.rounds.length - 1,
+              matchIndex: 1,
+              participantAId: losers[0],
+              participantBId: losers[1],
+            });
+            bracket.rounds[bracket.rounds.length - 1].push(thirdPlace);
+          }
+        }
+      }
+
       return { changed: true, slot };
     },
 
     status(bracket) {
       const finalSlot = bracket.rounds.at(-1)?.[0];
+      const thirdPlaceSlot = bracket.rounds.at(-1)?.[1];
       return {
         complete: Boolean(finalSlot?.winnerId),
         championId: finalSlot?.winnerId ?? null,
+        thirdPlaceId: thirdPlaceSlot?.winnerId ?? null,
       };
     },
 

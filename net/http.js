@@ -188,13 +188,15 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 send(401, { error: "AUTHENTICATION_FAILED" });
                 return;
             }
-            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|matches|start))?$/);
+            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|matches|start|schedule))?$/);
             const entryRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries$/);
             const slotRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/slots\/(\d+)\/result$/);
+            const triggerStartRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/trigger-start$/);
             const isCreate = url.pathname === "/api/tournaments" && request.method === "POST";
             const isEntry = Boolean(entryRoute) && request.method === "POST";
             const isSlotResult = Boolean(slotRoute) && request.method === "POST";
-            const isOrganizerAction = Boolean(organizerRoute?.[2]) && ["POST", "PATCH"].includes(request.method);
+            const isTriggerStart = Boolean(triggerStartRoute) && request.method === "POST";
+            const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
             if (isCreate || isEntry || isSlotResult || isOrganizerAction) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
@@ -219,14 +221,28 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         send(201, tournament); return;
                     }
                     if (isEntry) {
-                        const entry = await matchStore.addTournamentEntry(decodePathId(entryRoute[1]),
-                            { seed: body.seed ?? null, userId: actor.id });
+                        const tournamentId = decodePathId(entryRoute[1]);
+                        // Kiểm tra config để biết chế độ Đơn / Đội
+                        const tournament = await matchStore.getTournament(tournamentId);
+                        const participantMode = tournament.config?.participantMode ?? 'INDIVIDUAL';
+                        let entry;
+                        if (participantMode === 'TEAM') {
+                            const teamId = body.team_id ?? body.teamId;
+                            if (!teamId) {
+                                send(400, { error: 'TEAM_REQUIRED', message: 'Chế độ Đội yêu cầu teamId' }); return;
+                            }
+                            entry = await matchStore.addTournamentEntry(tournamentId,
+                                { seed: body.seed ?? null, userId: actor.id, teamId });
+                        } else {
+                            entry = await matchStore.addTournamentEntry(tournamentId,
+                                { seed: body.seed ?? null, userId: actor.id });
+                        }
                         send(201, entry); return;
                     }
 
                     // Các thao tác điều hành giải: chỉ chủ giải hoặc admin.
-                    const id = decodePathId(isSlotResult ? slotRoute[1] : organizerRoute[1]);
-                    if (isOrganizerAction || isSlotResult) {
+                    const id = decodePathId(isSlotResult ? slotRoute[1] : (isTriggerStart ? triggerStartRoute[1] : organizerRoute[1]));
+                    if (isOrganizerAction || isSlotResult || url.pathname.includes("/reschedule")) {
                         const target = await matchStore.getTournament(id);
                         const owner = target.config?.organizerId;
                         if (actor.role !== "admin" && owner && owner !== actor.id) {
@@ -261,6 +277,21 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     }
                     if (organizerRoute[2] === "status" && request.method === "PATCH") {
                         send(200, await matchStore.updateTournamentStatus(id, body.status, body.champion_id ?? null)); return;
+                    }
+                    if (organizerRoute[2] === "schedule" && request.method === "PATCH") {
+                        send(200, await matchStore.updateTournamentSchedule(id, body.scheduled_at)); return;
+                    }
+                    if (organizerRoute[2] === "rounds" && request.method === "PATCH") {
+                        const roundId = body.round_id;
+                        send(200, await matchStore.updateRoundSchedule(id, roundId, body.scheduled_at, body.auto_start)); return;
+                    }
+                    if (isTriggerStart) {
+                        const roundId = body.round_id;
+                        send(200, await matchStore.triggerRoundStart(id, roundId)); return;
+                    }
+                    if (url.pathname.startsWith("/api/matches/") && url.pathname.endsWith("/reschedule") && request.method === "POST") {
+                        const matchId = decodePathId(url.pathname.split("/")[3]);
+                        send(200, await matchStore.rescheduleMatch(matchId, body.scheduled_at)); return;
                     }
                 } catch (error) {
                     if (!(error instanceof StorageError)) console.error("Tournament API error:", error);
