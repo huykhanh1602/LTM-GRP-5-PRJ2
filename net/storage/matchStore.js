@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, slotCount } from './tournamentBracket.js';
+import { normalizeSearchText, searchTermMatches } from './searchText.js';
 
 export class StorageError extends Error {
   constructor(code, message, status = 400) {
@@ -1050,14 +1051,14 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     });
   }
 
-  // Gợi ý nick theo từ khóa (tên đăng nhập hiển thị), trả id + avatar.
+  // Gợi ý nick: tìm gần đúng, không phân biệt hoa thường hay dấu.
   function searchUsers(q, limit = 10) {
-    const term = requireText(q ?? '', 'q').toLowerCase();
-    if (term.length < 2) return { items: [] };
+    const term = normalizeSearchText(q);
+    if (!term) return { items: [] };
     const rows = db.prepare(
-      "SELECT id, display_name, avatar_url FROM users WHERE guest = 0 AND lower(display_name) LIKE ? LIMIT ?"
-    ).all(`%${term}%`, limit);
-    return { items: rows };
+      'SELECT id, display_name, avatar_url, guest FROM users ORDER BY display_name'
+    ).all();
+    return { items: rows.filter((row) => searchTermMatches(row.display_name, term)).slice(0, limit) };
   }
 
   function getUserPublicProfile(id) {

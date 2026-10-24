@@ -14,10 +14,10 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
 
-  // Gõ ≥2 ký tự → debounce rồi gọi API tìm nick.
+  // Gõ ≥1 ký tự → debounce rồi gọi API tìm nick (tìm gần đúng, không cần dấu).
   useEffect(() => {
     const term = query.trim();
-    if (term.length < 2) {
+    if (!term) {
       setSuggestions([]);
       setSearching(false);
       return undefined;
@@ -125,7 +125,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
           placeholder="Ví dụ: nguyen…"
           autoComplete="off"
         />
-        {query.trim().length >= 2 && (
+        {query.trim().length >= 1 && (
           <ul className="tl-member-suggest">
             {searching && <li className="muted">Đang tìm…</li>}
             {!searching && suggestions.length === 0 && <li className="muted">Không tìm thấy nick nào.</li>}

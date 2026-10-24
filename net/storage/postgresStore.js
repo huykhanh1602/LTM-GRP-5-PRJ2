@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 import { StorageError } from './matchStore.js';
 import { assertRegistrationWindowOpen, assertRegistrationClosed } from './registrationWindow.js';
+import { normalizeSearchText, searchTermMatches } from './searchText.js';
 import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, slotCount } from './tournamentBracket.js';
 
 const required = (value, field) => {
@@ -529,15 +530,14 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       return getTournament(tournamentId);
     });
   }
-  // Gợi ý nick theo từ khóa, trả id + avatar.
+  // Gợi ý nick: tìm gần đúng, không phân biệt hoa thường hay dấu.
   async function searchUsers(q, limit = 10) {
-    const term = required(q ?? '', 'q').toLowerCase();
-    if (term.length < 2) return { items: [] };
+    const term = normalizeSearchText(q);
+    if (!term) return { items: [] };
     const { rows } = await query(
-      "SELECT id, display_name, avatar_url FROM users WHERE guest = FALSE AND lower(display_name) LIKE $1 LIMIT $2",
-      [`%${term}%`, limit],
+      'SELECT id, display_name, avatar_url, guest FROM users ORDER BY display_name LIMIT 1000',
     );
-    return { items: rows };
+    return { items: rows.filter((row) => searchTermMatches(row.display_name, term)).slice(0, limit) };
   }
 
   async function getUserPublicProfile(id) {
