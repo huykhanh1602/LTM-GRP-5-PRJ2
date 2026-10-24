@@ -260,7 +260,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     }));
   }
   async function listTournamentRounds(tournamentId, client = pool) {
-    const rounds=(await query('SELECT id,round_no,status,submission_started_at,submission_deadline FROM tournament_rounds WHERE tournament_id=$1 ORDER BY round_no',[tournamentId],client)).rows;
+    const rounds=(await query('SELECT id,round_no,status,scheduled_at,auto_start,submission_started_at,submission_deadline FROM tournament_rounds WHERE tournament_id=$1 ORDER BY round_no',[tournamentId],client)).rows;
+    for(const round of rounds) round.scheduled_at=round.scheduled_at?new Date(round.scheduled_at).toISOString():null;
     for(const round of rounds) round.submission_started_at=round.submission_started_at?new Date(round.submission_started_at).toISOString():null;
     for(const round of rounds) round.submission_deadline=round.submission_deadline?new Date(round.submission_deadline).toISOString():null;
     for(const round of rounds) round.matches=(await query(`SELECT id,match_id,slot_index,round_id,participant_a_id,participant_a_name,participant_b_id,
@@ -436,18 +437,19 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   }
   async function refreshRoundStatuses({tournamentId,totalRounds,entryCount},client=pool) {
     for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
-      const round=(await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournamentId,roundNo],client)).rows[0];
+      const round=(await query('SELECT id, submission_started_at FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournamentId,roundNo],client)).rows[0];
       if(!round) continue;
       const rows=(await query('SELECT winner_id FROM tournament_match_history WHERE round_id=$1',[round.id],client)).rows;
       const expected=slotCount(entryCount,roundNo);
       const decided=rows.filter(row=>row.winner_id).length;
-      const status=rows.length>=expected&&decided>=expected?'completed':rows.length>0?'in_progress':'pending';
+      // Chỉ tính là đang diễn ra khi cửa sổ nộp code đã mở; chưa mở vẫn chờ (pending).
+      const status=rows.length>=expected&&decided>=expected?'completed':rows.length>0&&round.submission_started_at?'in_progress':'pending';
       await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[status,round.id],client);
     }
   }
   async function generateTournamentBracket(tournamentId) {
     return transaction(async client=>{
-      const tournament=(await query('SELECT id,format,status,config FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      const tournament=(await query('SELECT id,format,status,config,starts_at FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.format!=='single_elimination') throw new StorageError('FORMAT_NOT_SUPPORTED','Chỉ thể thức loại trực tiếp mới tạo được nhánh đấu',409);
       if(!['open','in_progress'].includes(tournament.status)) throw new StorageError('INVALID_STATUS_TRANSITION','Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra',409);
@@ -462,14 +464,18 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(entries.length<2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS','Cần ít nhất 2 người đăng ký để tạo nhánh đấu',409);
       const {totalRounds}=planSize(entries.length);
       const config=tournament.config??{};
+      const isAuto=(config.startType??'AUTO')==='AUTO';
       const windowMinutes=Number(config.submissionWindowMinutes)||10;
       const nowIso=new Date().toISOString();
       const deadlineIso=new Date(Date.now()+windowMinutes*60*1000).toISOString();
+      // Vòng 1 mặc định đúng ngày khởi tranh đã khai trong form; các vòng sau do lịch AUTO hoặc nút chủ giải (MANUAL).
+      const roundOneAt=tournament.starts_at?iso(tournament.starts_at):nowIso;
       const roundIds=[];
       for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
         const roundId=randomUUID();
-        await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,status,submission_started_at,submission_deadline) VALUES($1,$2,$3,$4,$5,$6)',
-          [roundId,tournamentId,roundNo,roundNo===1?'in_progress':'pending',roundNo===1?iso(nowIso):null,roundNo===1?iso(deadlineIso):null],client);
+        await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,status,submission_started_at,submission_deadline,scheduled_at,auto_start) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+          [roundId,tournamentId,roundNo,roundNo===1?'in_progress':'pending',roundNo===1?iso(nowIso):null,roundNo===1?iso(deadlineIso):null,
+            roundNo===1?roundOneAt:null,roundNo===1?true:isAuto],client);
         roundIds.push(roundId);
       }
       const startedAt=new Date().toISOString();
@@ -598,6 +604,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const myIds=await myEntryIdSet(tournament.id,userId);
     const rounds=await listTournamentRounds(tournament.id);
     for(const round of rounds){
+      // Vòng chưa mở cửa sổ nộp code thì chưa tính là trận hiện tại.
+      if(!round.submission_started_at) continue;
       for(const slot of round.matches){
         if(slot.winner_id||slot.match_id||!slot.participant_a_id||!slot.participant_b_id)continue;
         const meIsA=myIds.has(slot.participant_a_id);
@@ -719,7 +727,10 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[allSettled?'completed':'in_progress',round.id],client);
       if(allSettled&&roundNo<totalRounds){
         const next=rounds.find(item=>Number(item.round_no)===roundNo+1);
-        if(next){
+        // Vòng AUTO mở ngay khi hết vòng trước; vòng MANUAL chờ nút của chủ giải.
+        const due=next&&Number(next.auto_start)===1
+          &&(!next.scheduled_at||Date.parse(next.scheduled_at)<=Date.now());
+        if(next&&due){
           const windowMinutes=Number(config.submissionWindowMinutes)||10;
           const startedAt=new Date().toISOString();
           const deadline=new Date(Date.now()+windowMinutes*60*1000).toISOString();
@@ -741,7 +752,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     getTournamentSlot, resolveRoundSubmissionDeadline,
-    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
+    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue, listRoundsDueToStart,
     abortInterruptedMatches, close:()=>pool.end() };
 
   async function updateTournamentSchedule(tournamentId, scheduledAt) {
@@ -790,6 +801,21 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return due;
   }
 
+  // Các vòng chờ (pending) của giải AUTO tới giờ đã set, vòng trước đã xong.
+  async function listRoundsDueToStart(now = Date.now()) {
+    const { rows } = await query(`SELECT r.id, r.tournament_id, r.round_no, r.scheduled_at, r.auto_start
+      FROM tournament_rounds r
+      WHERE r.status = 'pending' AND r.auto_start = TRUE AND r.scheduled_at IS NOT NULL AND r.submission_started_at IS NULL`);
+    const due = [];
+    for (const row of rows) {
+      if (Date.parse(row.scheduled_at) > now) continue;
+      const prev = (await query('SELECT status FROM tournament_rounds WHERE tournament_id = $1 AND round_no = $2', [row.tournament_id, row.round_no - 1])).rows[0];
+      if (!prev || prev.status !== 'completed') continue;
+      due.push({ id: row.id, tournament_id: row.tournament_id, round_no: row.round_no });
+    }
+    return due;
+  }
+
   async function updateRoundSchedule(tournamentId, roundId, scheduledAt, autoStart) {
     await query('UPDATE tournament_rounds SET scheduled_at = $1, auto_start = $2 WHERE id = $3 AND tournament_id = $4',
       [scheduledAt ? iso(scheduledAt) : null, autoStart, roundId, tournamentId]);
@@ -797,9 +823,24 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   }
 
   async function triggerRoundStart(tournamentId, roundId) {
-    await query('UPDATE tournament_rounds SET scheduled_at = $1, auto_start = TRUE WHERE id = $2 AND tournament_id = $3',
-      [new Date().toISOString(), roundId, tournamentId]);
-    return (await query('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = $1', [roundId])).rows[0];
+    // Mở vòng ngay: bật trạng thái, ghi giờ bắt đầu và cửa sổ nộp code mới.
+    return transaction(async client => {
+      const row=(await query('SELECT id,tournament_id,round_no,status FROM tournament_rounds WHERE id=$1 AND tournament_id=$2',[roundId,tournamentId],client)).rows[0];
+      if(!row) throw new StorageError('ROUND_NOT_FOUND','Tournament round not found',404);
+      if(row.status==='completed') throw new StorageError('ROUND_COMPLETED','Vòng đấu đã kết thúc.',409);
+      if(row.round_no>1){
+        const prev=(await query('SELECT status FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournamentId,row.round_no-1],client)).rows[0];
+        if(!prev||prev.status!=='completed') throw new StorageError('PREV_ROUND_UNFINISHED','Vòng trước chưa kết thúc nên chưa thể mở vòng này.',409);
+      }
+      const config=(await query('SELECT config FROM tournaments WHERE id=$1',[tournamentId],client)).rows[0].config??{};
+      const windowMinutes=Number(config.submissionWindowMinutes)||10;
+      const nowIso=new Date().toISOString();
+      const deadlineIso=new Date(Date.now()+windowMinutes*60*1000).toISOString();
+      await query(`UPDATE tournament_rounds SET status='in_progress',scheduled_at=$1,auto_start=TRUE,
+        submission_started_at=$2,submission_deadline=$3 WHERE id=$4 AND tournament_id=$5`,
+        [iso(nowIso),iso(nowIso),iso(deadlineIso),roundId,tournamentId],client);
+      return (await query('SELECT id,tournament_id,round_no,status,scheduled_at,auto_start,submission_started_at,submission_deadline FROM tournament_rounds WHERE id=$1',[roundId],client)).rows[0];
+    });
   }
 
   async function rescheduleMatch(matchId, scheduledAt) {

@@ -278,7 +278,7 @@ export function PageTournamentLobby({
                     disabled={busy}
                     onClick={() => setAdminModal(true)}
                   >
-                    🛠 Bảng điều điều giải
+                    🛠 Bảng điều khiển giải
                   </button>
                 )}
                 {status === "draft" && (
@@ -321,6 +321,14 @@ export function PageTournamentLobby({
                     Gắn kết quả của một trận đấu thật vào nhánh để người thắng đi tiếp.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={busy}
+                  onClick={() => setAdminModal(true)}
+                >
+                  🛠 Bảng điều khiển giải
+                </button>
               </header>
 
               {waitingSlots.length === 0 ? (
@@ -474,8 +482,8 @@ export function PageTournamentLobby({
           tournament={tournament}
           token={token}
           onClose={() => setAdminModal(false)}
-          onUpdated={(data) => {
-            setRaw(data);
+          onUpdated={() => {
+            load().catch(() => {});
             setMessage({ tone: "ok", text: "Bảng điều điều giải đã cập nhật." });
           }}
         />

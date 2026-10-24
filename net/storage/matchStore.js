@@ -547,6 +547,21 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return due;
   }
 
+  // Các vòng chờ (pending) của giải AUTO tới giờ đã set, vòng trước đã xong.
+  function listRoundsDueToStart(now = Date.now()) {
+    const rows = db.prepare(`SELECT r.id, r.tournament_id, r.round_no, r.scheduled_at, r.auto_start, t.config_json
+      FROM tournament_rounds r JOIN tournaments t ON t.id = r.tournament_id
+      WHERE r.status = 'pending' AND r.auto_start = 1 AND r.scheduled_at IS NOT NULL AND r.submission_started_at IS NULL`).all();
+    const due = [];
+    for (const row of rows) {
+      if (Date.parse(row.scheduled_at) > now) continue;
+      const prev = db.prepare('SELECT status FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(row.tournament_id, row.round_no - 1);
+      if (!prev || prev.status !== 'completed') continue;
+      due.push({ id: row.id, tournament_id: row.tournament_id, round_no: row.round_no });
+    }
+    return due;
+  }
+
   function updateRoundSchedule(tournamentId, roundId, scheduledAt, autoStart) {
     db.prepare('UPDATE tournament_rounds SET scheduled_at = ?, auto_start = ? WHERE id = ? AND tournament_id = ?')
       .run(scheduledAt ? timestamp(scheduledAt) : null, Number(autoStart), roundId, tournamentId);
@@ -554,10 +569,27 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
 
   function triggerRoundStart(tournamentId, roundId) {
-    // Override scheduled_at to now and auto_start to true
-    db.prepare('UPDATE tournament_rounds SET scheduled_at = ?, auto_start = 1 WHERE id = ? AND tournament_id = ?')
-      .run(new Date().toISOString(), roundId, tournamentId);
-    return db.prepare('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = ?').get(roundId);
+    // Mở vòng ngay: bật trạng thái, ghi giờ bắt đầu và cửa sổ nộp code mới.
+    return transaction(() => {
+      const row = db.prepare('SELECT id, tournament_id, round_no, status FROM tournament_rounds WHERE id = ? AND tournament_id = ?')
+        .get(roundId, tournamentId);
+      if (!row) throw new StorageError('ROUND_NOT_FOUND', 'Tournament round not found', 404);
+      if (row.status === 'completed') throw new StorageError('ROUND_COMPLETED', 'Vòng đấu đã kết thúc.', 409);
+      if (row.round_no > 1) {
+        const prev = db.prepare('SELECT status FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(tournamentId, row.round_no - 1);
+        if (!prev || prev.status !== 'completed') {
+          throw new StorageError('PREV_ROUND_UNFINISHED', 'Vòng trước chưa kết thúc nên chưa thể mở vòng này.', 409);
+        }
+      }
+      const config = JSON.parse(db.prepare('SELECT config_json FROM tournaments WHERE id = ?').get(tournamentId).config_json ?? '{}');
+      const windowMinutes = Number(config.submissionWindowMinutes) || 10;
+      const nowIso = new Date().toISOString();
+      const deadlineIso = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+      db.prepare(`UPDATE tournament_rounds SET status = 'in_progress', scheduled_at = ?, auto_start = 1,
+        submission_started_at = ?, submission_deadline = ? WHERE id = ? AND tournament_id = ?`)
+        .run(nowIso, nowIso, deadlineIso, roundId, tournamentId);
+      return db.prepare('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start, submission_started_at, submission_deadline FROM tournament_rounds WHERE id = ?').get(roundId);
+    });
   }
 
   function rescheduleMatch(matchId, scheduledAt) {
@@ -674,19 +706,21 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
 
   function refreshRoundStatuses({ tournamentId, totalRounds, entryCount }) {
     for (let roundNo = 1; roundNo <= totalRounds; roundNo += 1) {
-      const round = db.prepare('SELECT id FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(tournamentId, roundNo);
+      const round = db.prepare('SELECT id, submission_started_at FROM tournament_rounds WHERE tournament_id = ? AND round_no = ?').get(tournamentId, roundNo);
       if (!round) continue;
       const rows = db.prepare('SELECT winner_id FROM tournament_match_history WHERE round_id = ?').all(round.id);
       const expected = slotCount(entryCount, roundNo);
       const decided = rows.filter(row => row.winner_id).length;
-      const status = rows.length >= expected && decided >= expected ? 'completed' : rows.length > 0 ? 'in_progress' : 'pending';
+      // Chỉ tính là đang diễn ra khi cửa sổ nộp code đã mở; chưa mở vẫn chờ (pending).
+      const status = rows.length >= expected && decided >= expected ? 'completed'
+        : rows.length > 0 && round.submission_started_at ? 'in_progress' : 'pending';
       db.prepare('UPDATE tournament_rounds SET status = ? WHERE id = ?').run(status, round.id);
     }
   }
 
   function generateTournamentBracket(tournamentId) {
     return transaction(() => {
-      const tournament = db.prepare('SELECT id, format, status, config_json FROM tournaments WHERE id = ?').get(tournamentId);
+      const tournament = db.prepare('SELECT id, format, status, config_json, starts_at FROM tournaments WHERE id = ?').get(tournamentId);
       if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
       if (tournament.format !== 'single_elimination') {
         throw new StorageError('FORMAT_NOT_SUPPORTED', 'Chỉ thể thức loại trực tiếp mới tạo được nhánh đấu', 409);
@@ -708,15 +742,19 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
 
       const { totalRounds } = planSize(entries.length);
       const config = JSON.parse(tournament.config_json ?? '{}');
+      const isAuto = (config.startType ?? 'AUTO') === 'AUTO';
       const windowMinutes = Number(config.submissionWindowMinutes) || 10;
       const nowIso = new Date().toISOString();
       const deadlineIso = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
+      // Vòng 1 mặc định đúng ngày khởi tranh đã khai trong form; các vòng sau do lịch AUTO hoặc nút chủ giải (MANUAL).
+      const roundOneAt = tournament.starts_at ?? nowIso;
       const roundIds = [];
       for (let roundNo = 1; roundNo <= totalRounds; roundNo += 1) {
         const roundId = randomUUID();
-        db.prepare('INSERT INTO tournament_rounds (id, tournament_id, round_no, status, submission_started_at, submission_deadline) VALUES (?, ?, ?, ?, ?, ?)')
+        db.prepare('INSERT INTO tournament_rounds (id, tournament_id, round_no, status, submission_started_at, submission_deadline, scheduled_at, auto_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
           .run(roundId, tournamentId, roundNo, roundNo === 1 ? 'in_progress' : 'pending',
-            roundNo === 1 ? nowIso : null, roundNo === 1 ? deadlineIso : null);
+            roundNo === 1 ? nowIso : null, roundNo === 1 ? deadlineIso : null,
+            roundNo === 1 ? roundOneAt : null, roundNo === 1 ? 1 : (isAuto ? 1 : 0));
         roundIds.push(roundId);
       }
 
@@ -866,6 +904,8 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     const rounds = listTournamentRounds(tournament.id);
 
     for (const round of rounds) {
+      // Vòng chưa mở cửa sổ nộp code thì chưa tính là trận hiện tại.
+      if (!round.submission_started_at) continue;
       for (const slot of round.matches) {
         if (slot.winner_id || slot.match_id || !slot.participant_a_id || !slot.participant_b_id) continue;
         const meIsA = myIds.has(slot.participant_a_id);
@@ -1059,7 +1099,10 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       db.prepare('UPDATE tournament_rounds SET status = ? WHERE id = ?').run(allSettled ? 'completed' : 'in_progress', round.id);
       if (allSettled && roundNo < totalRounds) {
         const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
-        if (next) {
+        // Vòng AUTO mở ngay khi hết vòng trước; vòng MANUAL chờ nút của chủ giải.
+        const due = Number(next?.auto_start) === 1
+          && (!next?.scheduled_at || Date.parse(next.scheduled_at) <= Date.now());
+        if (next && due) {
           const windowMinutes = Number(config.submissionWindowMinutes) || 10;
           const startedAt = new Date().toISOString();
           const deadline = new Date(Date.now() + windowMinutes * 60 * 1000).toISOString();
@@ -1148,7 +1191,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
-    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
+    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue, listRoundsDueToStart,
     listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay, abortInterruptedMatches,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     getTournamentSlot, resolveRoundSubmissionDeadline, close: () => db.close() };

@@ -181,6 +181,21 @@ setInterval(async () => {
   } catch (error) {
     console.error(`[AutoStart] Lỗi quét: ${error.message}`);
   }
+
+  // Mở các vòng đấu AUTO tới giờ đã set (vòng trước đã xong).
+  try {
+    const dueRounds = await matchStore.listRoundsDueToStart();
+    for (const { id, tournament_id, round_no } of dueRounds) {
+      try {
+        await matchStore.triggerRoundStart(tournament_id, id);
+        console.log(`[AutoRound] Đã mở vòng ${round_no} của giải ${tournament_id}`);
+      } catch (error) {
+        console.error(`[AutoRound] Bỏ qua vòng ${round_no} giải ${tournament_id}: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error(`[AutoRound] Lỗi quét: ${error.message}`);
+  }
 }, AUTO_START_INTERVAL_MS);
 
 // Khởi động server.
