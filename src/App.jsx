@@ -252,7 +252,9 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
-    navigate({ view: "lobby", gameId, mode: "tournament" }, { replace: true });
+    // Vào thẳng tab "Phòng đấu" (#/game/:gameId) — không nhảy qua tab /tournaments.
+    // Phòng (Room/Match) tự hiển thị khi room.phase chuyển sang "room"/"match".
+    navigate({ view: "lobby", gameId, mode: "casual" }, { replace: true });
   }
 
   // Xem replay của một trận đấu trong giải
