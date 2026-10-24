@@ -281,6 +281,47 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return {...row,starts_at:row.starts_at?.toISOString()??null,ended_at:row.ended_at?.toISOString()??null,created_at:row.created_at.toISOString(),champion:champion?{id:row.champion_id,name:champion.name}:null,
       participant_count:entries.length,rounds,entries,bracket:row.format==='single_elimination'?buildBracket({rounds,entryCount:entries.length}):null};
   }
+  async function listTournamentNotifications(userId,{limit=100,offset=0}={}) {
+    userId=required(userId,'userId');limit=page(limit,100,200);offset=page(offset,0,Number.MAX_SAFE_INTEGER);
+    if(!limit)throw new StorageError('INVALID_PAGINATION','limit must be positive');
+    const ids=(await query('SELECT id FROM tournaments')).rows.map(row=>row.id), events=[];
+    const dateText=value=>value?new Date(value).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'}):null;
+    for(const id of ids){
+      const tournament=await getTournament(id),recipients=new Set(),eventStart=events.length;
+      if(tournament.config?.organizerId)recipients.add(tournament.config.organizerId);
+      for(const entry of tournament.entries){if(entry.user_id)recipients.add(entry.user_id);if(entry.team_id)for(const member of await getTeamMembers(entry.team_id))recipients.add(member.user_id);}
+      if(['draft','open','in_progress'].includes(tournament.status)){
+        const phase=tournament.status==='in_progress'?'đang diễn ra':tournament.status==='draft'?'dự kiến':'sắp diễn ra';
+        events.push({key:`tournament:schedule:${tournament.status}`,type:'schedule',title:`${tournament.name} — ${phase}`,message:`Giải ${tournament.name} ${phase}${tournament.starts_at?`, bắt đầu lúc ${dateText(tournament.starts_at)}`:''}.`,scheduled:tournament.starts_at});
+      }
+      if(recipients.has(userId)&&tournament.status==='completed')events.push({key:'tournament:completed',type:'status',title:`${tournament.name} đã kết thúc`,message:`Giải đấu đã kết thúc${tournament.champion?.name?`. Nhà vô địch: ${tournament.champion.name}.`:'.'}`});
+      if(!recipients.has(userId))continue;
+      for(const round of tournament.rounds)for(const match of round.matches){
+        let isA=match.participant_a_id===userId,isB=match.participant_b_id===userId;
+        for(const entry of tournament.entries)if(entry.team_id&&(entry.team_id===match.participant_a_id||entry.team_id===match.participant_b_id)){
+          if((await getTeamMembers(entry.team_id)).some(member=>member.user_id===userId)){if(entry.team_id===match.participant_a_id)isA=true;if(entry.team_id===match.participant_b_id)isB=true;}
+        }
+        if(!isA&&!isB)continue;
+        const opponent=isA?match.participant_b_name:match.participant_a_name,label=`Vòng ${round.round_no} — ${tournament.name}`;
+        if(!match.winner_id)events.push({key:`match:${match.id}:scheduled`,type:'match',title:`${label}: trận cần tham gia`,message:`Bạn sẽ đấu với ${opponent}${round.scheduled_at?` lúc ${dateText(round.scheduled_at)}`:''}.`,scheduled:round.scheduled_at,metadata:{roundNo:round.round_no,matchId:match.match_id}});
+        else{const won=match.winner_id===(isA?match.participant_a_id:match.participant_b_id);events.push({key:`match:${match.id}:result`,type:'result',title:`${label}: ${won?'chiến thắng':'thất bại'}`,message:`Bạn ${won?'thắng':'thua'} trước ${opponent}${match.played_at?` (${dateText(match.played_at)})`:''}.`,scheduled:match.played_at,metadata:{roundNo:round.round_no,matchId:match.match_id,winnerId:match.winner_id}});}
+      }
+      for(let i=eventStart;i<events.length;i++)events[i].tournamentId=tournament.id;
+    }
+    for(const event of events)await query(`INSERT INTO tournament_notifications(id,user_id,tournament_id,event_key,type,title,message,scheduled_at,metadata)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT(user_id,event_key) DO UPDATE SET tournament_id=EXCLUDED.tournament_id,
+      type=EXCLUDED.type,title=EXCLUDED.title,message=EXCLUDED.message,scheduled_at=EXCLUDED.scheduled_at,metadata=EXCLUDED.metadata`,
+      [randomUUID(),userId,event.tournamentId,event.key,event.type,event.title,event.message,event.scheduled??null,JSON.stringify(event.metadata??{})]);
+    const counts=(await query('SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE read_at IS NULL)::int AS unread FROM tournament_notifications WHERE user_id=$1',[userId])).rows[0];
+    const rows=(await query(`SELECT n.id,n.user_id,n.tournament_id,t.game_id,n.event_key,n.type,n.title,n.message,n.scheduled_at,n.metadata,n.created_at,n.read_at
+      FROM tournament_notifications n LEFT JOIN tournaments t ON t.id=n.tournament_id
+      WHERE n.user_id=$1 ORDER BY COALESCE(n.scheduled_at,n.created_at) DESC,n.created_at DESC LIMIT $2 OFFSET $3`,[userId,limit,offset])).rows;
+    return {items:rows.map(row=>({...row,scheduled_at:row.scheduled_at?.toISOString()??null,created_at:row.created_at.toISOString(),read_at:row.read_at?.toISOString()??null})),total:counts.total,unread:counts.unread,limit,offset};
+  }
+  async function markTournamentNotificationRead(userId,notificationId){
+    const row=(await query('UPDATE tournament_notifications SET read_at=COALESCE(read_at,now()) WHERE id=$1 AND user_id=$2 RETURNING id',[notificationId,userId])).rows[0];
+    if(!row)throw new StorageError('NOTIFICATION_NOT_FOUND','Notification not found',404);return {id:notificationId,read:true};
+  }
   async function createTournament({ id=randomUUID(),gameId,code,name,format,config={},startsAt=null,status='open' }) {
     gameId=required(gameId,'gameId'); code=required(code,'code').toUpperCase(); name=required(name,'name');
     if (!/^[A-Z0-9-]{3,24}$/.test(code)||name.length>100||!['single_elimination','round_robin','swiss'].includes(format)||!['draft','open'].includes(status)||!config||typeof config!=='object'||Array.isArray(config)) throw new StorageError('INVALID_INPUT','Invalid tournament data');
@@ -749,6 +790,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
+    listTournamentNotifications, markTournamentNotificationRead,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     getTournamentSlot, resolveRoundSubmissionDeadline,
     updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue, listRoundsDueToStart,

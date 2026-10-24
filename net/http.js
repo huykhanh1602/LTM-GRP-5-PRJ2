@@ -261,12 +261,14 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isTeamMember = Boolean(teamMemberRoute) && request.method === "POST";
             const entrySubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries\/submission$/);
             const isEntrySubmission = Boolean(entrySubmissionRoute) && request.method === "PATCH";
+            const notificationReadRoute = url.pathname.match(/^\/api\/(?:v1\/)?notifications\/tournaments\/([^/]+)\/read$/);
+            const isNotificationRead = Boolean(notificationReadRoute) && request.method === "PATCH";
             const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
             const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
             const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
             const isResolveRound = Boolean(resolveRoundRoute) && request.method === "POST";
             if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission ||
-                isMyMatchReady || isMyMatchSubmission || isResolveRound) {
+                isMyMatchReady || isMyMatchSubmission || isResolveRound || isNotificationRead) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                 if (actor.banned) { send(403, { error: "USER_BANNED" }); return; }
@@ -316,6 +318,10 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                             teamId,
                             submissionId: body.submission_id ?? body.submissionId,
                         })); return;
+                    }
+                    if (isNotificationRead) {
+                        send(200, await matchStore.markTournamentNotificationRead(actor.id, decodePathId(notificationReadRoute[1])));
+                        return;
                     }
                     if (isResolveRound) {
                         const tournamentId = decodePathId(resolveRoundRoute[1]);
@@ -440,6 +446,14 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 }
                 if (url.pathname === "/api/games") {
                     send(200, { items: await matchStore.listGames() });
+                    return;
+                }
+                if (url.pathname === "/api/notifications/tournaments") {
+                    const actor = request.auth?.user;
+                    if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
+                    send(200, await matchStore.listTournamentNotifications(actor.id, {
+                        limit: url.searchParams.get("limit"), offset: url.searchParams.get("offset"),
+                    }));
                     return;
                 }
                 if (url.pathname === "/api/tournaments") {

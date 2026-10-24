@@ -45,6 +45,12 @@ export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
     if (status !== undefined) params.set("status", status);
     return get(`${V1}/tournaments?${params}`);
 }
+export const getTournamentNotifications = (token, { limit = 100, offset = 0 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return get(`${V1}/notifications/tournaments?${params}`, { token });
+};
+export const markTournamentNotificationRead = (id, token) =>
+    request(`${V1}/notifications/tournaments/${encodeURIComponent(id)}/read`, { method: "PATCH", token });
 export const getTournament = (idOrCode) => get(`${V1}/tournaments/${encodeURIComponent(idOrCode)}`);
 export const createTournament = (payload, token) => post(`${V1}/tournaments`, payload, token);
 export const registerTournament = (idOrCode, token) =>

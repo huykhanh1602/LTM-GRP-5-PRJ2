@@ -467,6 +467,73 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       bracket: tournament.format === 'single_elimination' ? buildBracket({ rounds, entryCount: entries.length }) : null };
   }
 
+  function listTournamentNotifications(userId, { limit = 100, offset = 0 } = {}) {
+    userId = requireText(userId, 'userId'); limit = pageValue(limit, 100, 200); offset = pageValue(offset, 0, Number.MAX_SAFE_INTEGER);
+    if (!limit) throw new StorageError('INVALID_PAGINATION', 'limit must be positive');
+    const upsert = db.prepare(`INSERT INTO tournament_notifications
+      (id,user_id,tournament_id,event_key,type,title,message,scheduled_at,metadata_json,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,event_key) DO UPDATE SET
+      tournament_id=excluded.tournament_id,type=excluded.type,title=excluded.title,message=excluded.message,
+      scheduled_at=excluded.scheduled_at,metadata_json=excluded.metadata_json`);
+    const dateText = value => value ? new Date(value).toLocaleString('vi-VN', { dateStyle:'short', timeStyle:'short' }) : null;
+    const memberCache = new Map();
+    const memberIds = teamId => {
+      if (!memberCache.has(teamId)) memberCache.set(teamId, getTeamMembers(teamId).map(m => m.user_id));
+      return memberCache.get(teamId);
+    };
+    for (const { id } of db.prepare('SELECT id FROM tournaments').all()) {
+      const tournament = getTournament(id), recipients = new Set(), events = [];
+      if (tournament.config?.organizerId) recipients.add(tournament.config.organizerId);
+      for (const entry of tournament.entries) {
+        if (entry.user_id) recipients.add(entry.user_id);
+        if (entry.team_id) for (const memberId of memberIds(entry.team_id)) recipients.add(memberId);
+      }
+      if (['draft','open','in_progress'].includes(tournament.status)) {
+        const phase = tournament.status === 'in_progress' ? 'đang diễn ra' : tournament.status === 'draft' ? 'dự kiến' : 'sắp diễn ra';
+        events.push({ key:`tournament:schedule:${tournament.status}`, type:'schedule', title:`${tournament.name} — ${phase}`,
+          message:`Giải ${tournament.name} ${phase}${tournament.starts_at ? `, bắt đầu lúc ${dateText(tournament.starts_at)}` : ''}.`, scheduled:tournament.starts_at });
+      }
+      if (recipients.has(userId) && tournament.status === 'completed') events.push({ key:'tournament:completed', type:'status', title:`${tournament.name} đã kết thúc`,
+        message:`Giải đấu đã kết thúc${tournament.champion?.name ? `. Nhà vô địch: ${tournament.champion.name}.` : '.'}` });
+      if (!recipients.has(userId)) {
+        for (const event of events) upsert.run(randomUUID(), userId, tournament.id, event.key, event.type, event.title,
+          event.message, event.scheduled ?? null, JSON.stringify(event.metadata ?? {}), new Date().toISOString());
+        continue;
+      }
+      for (const round of tournament.rounds) for (const match of round.matches) {
+        const isA = match.participant_a_id === userId || memberIds(match.participant_a_id).includes(userId);
+        const isB = match.participant_b_id === userId || memberIds(match.participant_b_id).includes(userId);
+        if (!isA && !isB) continue;
+        const opponent = isA ? match.participant_b_name : match.participant_a_name, label = `Vòng ${round.round_no} — ${tournament.name}`;
+        if (!match.winner_id) events.push({ key:`match:${match.id}:scheduled`, type:'match', title:`${label}: trận cần tham gia`,
+          message:`Bạn sẽ đấu với ${opponent}${round.scheduled_at ? ` lúc ${dateText(round.scheduled_at)}` : ''}.`, scheduled:round.scheduled_at,
+          metadata:{ roundNo:round.round_no, matchId:match.match_id } });
+        else {
+          const won = match.winner_id === (isA ? match.participant_a_id : match.participant_b_id);
+          events.push({ key:`match:${match.id}:result`, type:'result', title:`${label}: ${won ? 'chiến thắng' : 'thất bại'}`,
+            message:`Bạn ${won ? 'thắng' : 'thua'} trước ${opponent}${match.played_at ? ` (${dateText(match.played_at)})` : ''}.`,
+            scheduled:match.played_at, metadata:{ roundNo:round.round_no, matchId:match.match_id, winnerId:match.winner_id } });
+        }
+      }
+      const created = new Date().toISOString();
+      for (const event of events) upsert.run(randomUUID(), userId, tournament.id, event.key, event.type, event.title,
+        event.message, event.scheduled ?? null, JSON.stringify(event.metadata ?? {}), created);
+    }
+    const total = db.prepare('SELECT COUNT(*) AS total FROM tournament_notifications WHERE user_id=?').get(userId).total;
+    const unread = db.prepare('SELECT COUNT(*) AS total FROM tournament_notifications WHERE user_id=? AND read_at IS NULL').get(userId).total;
+    const items = db.prepare(`SELECT n.id,n.user_id,n.tournament_id,t.game_id,n.event_key,n.type,n.title,n.message,n.scheduled_at,n.metadata_json,n.created_at,n.read_at
+      FROM tournament_notifications n LEFT JOIN tournaments t ON t.id=n.tournament_id
+      WHERE n.user_id=? ORDER BY COALESCE(n.scheduled_at,n.created_at) DESC,n.created_at DESC LIMIT ? OFFSET ?`)
+      .all(userId, limit, offset).map(row => { const { metadata_json, ...item } = row; return { ...item, metadata: JSON.parse(metadata_json) }; });
+    return { items, total, unread, limit, offset };
+  }
+  function markTournamentNotificationRead(userId, notificationId) {
+    const result = db.prepare('UPDATE tournament_notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?')
+      .run(new Date().toISOString(), notificationId, userId);
+    if (!result.changes) throw new StorageError('NOTIFICATION_NOT_FOUND', 'Notification not found', 404);
+    return { id:notificationId, read:true };
+  }
+
   function createTournament({ id = randomUUID(), gameId, code, name, format, config = {}, startsAt = null, status = 'open' }) {
     gameId = requireText(gameId, 'gameId'); code = requireText(code, 'code').toUpperCase();
     name = requireText(name, 'name');
@@ -1189,6 +1256,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
+    listTournamentNotifications, markTournamentNotificationRead,
     updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue, listRoundsDueToStart,
     listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay, abortInterruptedMatches,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,

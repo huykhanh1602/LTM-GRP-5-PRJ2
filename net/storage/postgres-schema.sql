@@ -110,6 +110,21 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
 ALTER TABLE tournament_match_history ADD COLUMN IF NOT EXISTS slot_index INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS tournament_notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  event_key TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('schedule','match','result','champion','status')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  scheduled_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  read_at TIMESTAMPTZ,
+  UNIQUE(user_id,event_key)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_notifications_user ON tournament_notifications(user_id,read_at,created_at DESC);
 CREATE TABLE IF NOT EXISTS tournament_readiness (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round_no INTEGER NOT NULL CHECK(round_no > 0),

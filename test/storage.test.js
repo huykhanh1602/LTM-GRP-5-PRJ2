@@ -116,6 +116,31 @@ test('teams with identical results share rank; draws must be explicit', t => {
   assert.ok(store.getRankings().every(row => row.played === 1));
 });
 
+test('tournament notices are persistent, participant scoped and include round results', t => {
+  const store = createMatchStore({ filename: ':memory:' }); t.after(() => store.close());
+  const player = store.createAuthUser({ id: 'notice-player', display_name: 'Player' });
+  const rival = store.createAuthUser({ id: 'notice-rival', display_name: 'Rival' });
+  const outsider = store.createAuthUser({ id: 'notice-outsider', display_name: 'Outsider' });
+  const tournament = store.createTournament({ gameId: 'rps_chess', code: 'NOTICE-1', name: 'Notice Cup',
+    format: 'single_elimination', startsAt: '2030-01-01T10:00:00.000Z', config: { organizerId: player.id } });
+  store.addTournamentEntry(tournament.id, { userId: player.id });
+  store.addTournamentEntry(tournament.id, { userId: rival.id });
+  const round = store.createTournamentRound(tournament.id, { roundNo: 1, scheduledAt: '2030-01-02T10:00:00.000Z' });
+  store.recordTournamentMatch({ tournamentId: tournament.id, roundId: round.id, participantAId: player.id,
+    participantAName: 'Player', participantBId: rival.id, participantBName: 'Rival', winnerId: player.id });
+  const notices = store.listTournamentNotifications(player.id);
+  assert.ok(notices.items.some(item => item.type === 'schedule'));
+  assert.ok(notices.items.some(item => item.type === 'result' && item.title.includes('chiến thắng')
+    && item.game_id === 'rps_chess' && item.metadata.roundNo === 1));
+  assert.ok(store.listTournamentNotifications(rival.id).items.some(item => item.type === 'result' && item.title.includes('thất bại')));
+  const publicNotices = store.listTournamentNotifications(outsider.id);
+  assert.ok(publicNotices.items.some(item => item.type === 'schedule' && item.tournament_id === tournament.id));
+  assert.equal(publicNotices.items.some(item => item.type === 'result'), false);
+  store.markTournamentNotificationRead(player.id, notices.items[0].id);
+  assert.equal(store.listTournamentNotifications(player.id).unread, notices.unread - 1);
+  assert.equal(store.listTournamentNotifications(player.id).total, notices.total);
+});
+
 test('HTTP APIs support pagination, filters, replay, errors and reject public writes', async t => {
   const store = createMatchStore({ filename: ':memory:' });
   start(store, 'api'); store.finishMatch('api', { winner: 'alpha' }, []);

@@ -7,10 +7,14 @@ export default function MatchFeed({
   feed = [],
   myEntryId = null,
   entryMap = null,
+  roundNo = null,
   onReplay,
   onSpectate,
 }) {
-  if (!Array.isArray(feed) || feed.length === 0) {
+  const visibleFeed = roundNo
+    ? feed.filter(match => Number(match.roundNo ?? String(match.round ?? "").match(/\d+/)?.[0]) === Number(roundNo))
+    : feed;
+  if (!Array.isArray(visibleFeed) || visibleFeed.length === 0) {
     return (
       <div className="tl-empty tl-empty--compact">
         <span className="tl-empty__icon" aria-hidden="true">🕹️</span>
@@ -22,7 +26,7 @@ export default function MatchFeed({
 
   return (
     <ul className="tl-feed">
-      {feed.map((match) => {
+      {visibleFeed.map((match) => {
         const a = resolveEntry(entryMap, match.a);
         const b = resolveEntry(entryMap, match.b);
         const isLive = match.status === "live";

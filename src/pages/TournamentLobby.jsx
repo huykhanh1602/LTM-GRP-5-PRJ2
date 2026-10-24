@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import TournamentLayout from "../layouts/TournamentLayout.jsx";
 import { useState } from "react";
 import TournamentHeader from "../components/tournament/TournamentHeader.jsx";
@@ -27,6 +28,7 @@ import "../styles/tournament.css";
 // ─────────────────────────────────────────────────────────────
 export function PageTournamentLobby({
   tournamentId = null,
+  roundNo = null,
   gameId = null,
   user = null,
   token = null,
@@ -59,6 +61,11 @@ export function PageTournamentLobby({
     run,
     openReplay,
   } = useTournamentLobby({ tournamentId, user, token, onOpenReplay, onRequireLogin });
+  useEffect(() => {
+    if (!roundNo || !tournament || String(tournament.id) !== String(activeId)) return;
+    setTab("feed");
+    requestAnimationFrame(() => document.querySelector(".tl-history")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [roundNo, tournament?.id, activeId, setTab]);
   const top = useTopMatch({
     tournamentId: activeId,
     token,
@@ -420,6 +427,7 @@ export function PageTournamentLobby({
           {tab === "feed" ? (
             <MatchFeed
               feed={tournament.feed}
+              roundNo={roundNo}
               myEntryId={tournament.myEntryId}
               entryMap={tournament.entryMap}
               onReplay={(row) => openReplay(row.matchId ?? row.replayId)}
