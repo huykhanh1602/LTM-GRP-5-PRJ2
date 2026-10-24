@@ -288,7 +288,7 @@ export function PageTournamentLobby({
             />
           )}
 
-          {isRegistered && tournament.participantMode === "TEAM" && !isOrganizer
+          {isRegistered && tournament.participantMode === "TEAM"
             && status !== "completed" && status !== "cancelled" && (
             <TeamManagementPanel
               tournament={tournament}
