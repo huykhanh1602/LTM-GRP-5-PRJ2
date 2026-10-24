@@ -58,3 +58,35 @@ test('cùng seed cho cùng vị trí mồi ban đầu (bot ngẫu nhiên có th�
   assert.deepEqual(a.initial_state, b.initial_state);
   assert.equal(a.game_config.seed, 5);
 });
+
+test('khởi động bot (spawn + import) không bị tính vào đồng hồ lượt 1', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'snake-boot-'));
+  const slowBot = join(dir, 'slow_bot.py');
+  // Bot nạp chậm 600ms ở đầu file, gấp 3 lần hạn mức mỗi lượt của trận đấu.
+  writeFileSync(slowBot, 'import time\ntime.sleep(0.6)\n\n'
+    + 'def make_move(board_state, my_pieces, opponent_pieces, config):\n'
+    + '    return {"action_type": "MOVE", "direction": "RIGHT"}\n');
+
+  const config = JSON.parse(readFileSync('engine/snake/config.json', 'utf8'));
+  config.seed = 3;
+  config.limits.max_turns = 8;
+  config.limits.bot_time_ms = 200;
+  const configPath = join(dir, 'config.json');
+  writeFileSync(configPath, JSON.stringify(config));
+
+  const out = join(dir, 'replay.json');
+  const result = spawnSync(python, [
+    'engine/snake/match_runner.py',
+    '--bot-a', slowBot,
+    '--bot-b', 'engine/snake/bot_sample_random.py',
+    '--config', configPath,
+    '--out', out,
+  ], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+
+  const replay = JSON.parse(readFileSync(out, 'utf8'));
+  const failed = replay.turns.filter((t) => t.events.some((e) => e.type === 'BOT_FAILED'));
+  assert.deepEqual(failed.map((t) => [t.turn, t.player]), [], 'lượt 1 không được phép hết giờ vì khởi động');
+  assert.notEqual(replay.match_info.win_reason, 'BOT_TIMEOUT');
+  assert.ok(replay.turns.length >= 2);
+});

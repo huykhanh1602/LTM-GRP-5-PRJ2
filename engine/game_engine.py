@@ -52,6 +52,10 @@ STATUS_TIMEOUT = "timeout"
 STATUS_ERROR = "error"
 STATUS_LOAD_ERROR = "load_error"
 
+# Tin nhắn khởi động: bot đã nạp xong, chưa phải kết quả lượt đi.
+BOT_READY_KEY = "__bot_ready__"
+BOOT_TIMEOUT_MS_DEFAULT = 5000
+
 # Lý do kết thúc trận đấu
 REASON_BASE_CAPTURED = "BASE_CAPTURED"
 REASON_ALL_PIECES_CAPTURED = "ALL_PIECES_CAPTURED"
@@ -399,6 +403,13 @@ def _bot_worker_entry(
         make_move = None
         load_error = f"{type(exc).__name__}: {exc}"
 
+    # Báo sẵn sàng trước vòng lặp: engine chờ tin này lúc khởi động,
+    # nhờ chi phí spawn + import bot không bị tính vào đồng hồ lượt 1.
+    try:
+        result_queue.put({BOT_READY_KEY: True, "error": load_error})
+    except Exception:  # noqa: BLE001
+        return
+
     while True:
         try:
             task = task_queue.get()
@@ -441,14 +452,22 @@ class BotProcess:
     * Nếu bot crash -> lỗi được bắt và trả về dưới dạng ``status="error"``.
     """
 
-    def __init__(self, bot_path: str, team_id: str, timeout_ms: int) -> None:
+    def __init__(
+        self,
+        bot_path: str,
+        team_id: str,
+        timeout_ms: int,
+        boot_timeout_ms: Optional[int] = None,
+    ) -> None:
         self.bot_path = os.path.abspath(bot_path)
         self.team_id = team_id
         self.timeout_ms = int(timeout_ms)
+        self.boot_timeout_ms = int(boot_timeout_ms or BOOT_TIMEOUT_MS_DEFAULT)
         self._ctx = multiprocessing.get_context("spawn")
         self._task_queue = None
         self._result_queue = None
         self._process = None
+        self._boot_error = None
         self._start_worker()
 
     # -- Vòng đời tiến trình ------------------------------------------------
@@ -462,6 +481,27 @@ class BotProcess:
             daemon=True,
         )
         self._process.start()
+        self._wait_until_ready()
+
+    def _wait_until_ready(self) -> None:
+        """Chờ bot nạp xong (spawn + import) trước khi trận bắt đầu đếm giờ."""
+        self._boot_error = None
+        try:
+            ready = self._result_queue.get(timeout=self.boot_timeout_ms / 1000.0)
+        except queue_module.Empty:
+            self._boot_error = (
+                f"Bot không khởi động xong trong {self.boot_timeout_ms}ms."
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            self._boot_error = f"QUEUE_HANDSHAKE_FAILED: {exc}"
+            return
+
+        if not (isinstance(ready, dict) and ready.get(BOT_READY_KEY)):
+            self._boot_error = f"Bot gửi tin nhắn khởi động lạ: {ready!r}"
+            return
+        if ready.get("error"):
+            self._boot_error = str(ready["error"])
 
     def _terminate_worker(self) -> None:
         process = self._process
@@ -499,6 +539,11 @@ class BotProcess:
         """Gửi trạng thái cho bot và nhận kết quả, có giới hạn thời gian."""
         if self._process is None or not self._process.is_alive():
             self._restart_worker()
+
+        # Bot không nạp được (lỗi import hoặc treo lúc khởi động): báo ngay,
+        # để đồng hồ lượt đấu không bị tính cho phần khởi động.
+        if self._boot_error is not None:
+            return {"status": STATUS_LOAD_ERROR, "error": self._boot_error}
 
         try:
             self._task_queue.put(payload)
