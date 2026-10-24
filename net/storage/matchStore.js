@@ -464,15 +464,23 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   function getAuthSession(tokenHash) { const row=db.prepare('SELECT user_id,expires_at FROM auth_sessions WHERE token_hash=?').get(tokenHash); return row?{userId:row.user_id,expiresAt:Date.parse(row.expires_at)}:null; }
   function deleteAuthSession(tokenHash) { db.prepare('DELETE FROM auth_sessions WHERE token_hash=?').run(tokenHash); }
 
-  function listTournaments({ status, limit, offset } = {}) {
+  function listTournaments({ status, limit, offset, participantId = null } = {}) {
     limit = pageValue(limit, 20, 100);
     offset = pageValue(offset, 0, Number.MAX_SAFE_INTEGER);
     if (limit === 0) throw new StorageError('INVALID_PAGINATION', 'limit must be positive');
     if (status !== undefined && !['draft', 'open', 'in_progress', 'completed', 'cancelled'].includes(status)) {
       throw new StorageError('INVALID_STATUS', 'Invalid tournament status');
     }
-    const where = status === undefined ? '' : 'WHERE t.status = ?';
-    const args = status === undefined ? [] : [status];
+    const clauses = [];
+    const args = [];
+    if (status !== undefined) { clauses.push('t.status = ?'); args.push(status); }
+    // Only the tournaments this user joined directly or through a team they belong to.
+    if (participantId) {
+      clauses.push(`EXISTS (SELECT 1 FROM tournament_entries e LEFT JOIN team_members tm ON tm.team_id = e.team_id
+        WHERE e.tournament_id = t.id AND (e.user_id = ? OR tm.user_id = ?))`);
+      args.push(participantId, participantId);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const total = db.prepare(`SELECT COUNT(*) AS total FROM tournaments t ${where}`).get(...args).total;
     const items = db.prepare(`SELECT t.id, t.game_id, g.name AS game_name, t.code, t.name, t.format,
       t.status, t.config_json, t.starts_at, t.champion_id, t.created_at,

@@ -40,10 +40,11 @@ export function sessionToken() {
 
 export const getMe = () => get("/api/me", { token: sessionToken() });
 export const getGames = () => get(`${V1}/games`);
-export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
+export function getTournaments({ status, limit = 20, offset = 0, joined = false } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (status !== undefined) params.set("status", status);
-    return get(`${V1}/tournaments?${params}`);
+    if (joined) params.set("joined", "1");
+    return get(`${V1}/tournaments?${params}`, joined ? { token: sessionToken() } : {});
 }
 export const getTournamentNotifications = (token, { limit = 100, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });

@@ -483,10 +483,17 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     send(200, { items: await matchStore.listPlayerInvitations(actor.id) }); return;
                 }
                 if (url.pathname === "/api/tournaments") {
+                    const actor = request.auth?.user;
+                    const joined = url.searchParams.get("joined") === "1";
+                    if (joined && !actor?.id) {
+                        send(401, { error: "AUTHENTICATION_REQUIRED" });
+                        return;
+                    }
                     send(200, await matchStore.listTournaments({
                         status: url.searchParams.get("status") ?? undefined,
                         limit: url.searchParams.get("limit"),
                         offset: url.searchParams.get("offset"),
+                        participantId: joined ? actor.id : null,
                     }));
                     return;
                 }

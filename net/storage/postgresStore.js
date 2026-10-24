@@ -286,11 +286,19 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   async function saveAuthSession({tokenHash,userId,expiresAt}) { await query('INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,$3)',[tokenHash,userId,new Date(expiresAt).toISOString()]); }
   async function getAuthSession(tokenHash) { const row=(await query('SELECT user_id,expires_at FROM auth_sessions WHERE token_hash=$1',[tokenHash])).rows[0]; return row?{userId:row.user_id,expiresAt:new Date(row.expires_at).getTime()}:null; }
   async function deleteAuthSession(tokenHash) { await query('DELETE FROM auth_sessions WHERE token_hash=$1',[tokenHash]); }
-  async function listTournaments({ status, limit, offset } = {}) {
+  async function listTournaments({ status, limit, offset, participantId = null } = {}) {
     limit=page(limit,20,100); offset=page(offset,0,Number.MAX_SAFE_INTEGER);
     if (!limit) throw new StorageError('INVALID_PAGINATION','limit must be positive');
     if (status!==undefined && !['draft','open','in_progress','completed','cancelled'].includes(status)) throw new StorageError('INVALID_STATUS','Invalid tournament status');
-    const args=status===undefined?[]:[status], where=status===undefined?'':`WHERE t.status=$1`;
+    const clauses=[]; const args=[];
+    if (status!==undefined) { clauses.push(`t.status=$${args.length+1}`); args.push(status); }
+    // Chỉ giải người này tham gia trực tiếp hoặc qua đội mà họ là thành viên.
+    if (participantId) {
+      clauses.push(`EXISTS (SELECT 1 FROM tournament_entries e LEFT JOIN team_members tm ON tm.team_id=e.team_id
+        WHERE e.tournament_id=t.id AND (e.user_id=$${args.length+1} OR tm.user_id=$${args.length+2}))`);
+      args.push(participantId, participantId);
+    }
+    const where=clauses.length?`WHERE ${clauses.join(' AND ')}`:'';
     const total=Number((await query(`SELECT COUNT(*) AS total FROM tournaments t ${where}`,args)).rows[0].total);
     const rows=(await query(`SELECT t.id,t.game_id,g.name AS game_name,t.code,t.name,t.format,t.status,t.config,t.starts_at,t.champion_id,t.created_at,
       (SELECT COUNT(*)::int FROM tournament_entries e WHERE e.tournament_id=t.id) AS participant_count,
