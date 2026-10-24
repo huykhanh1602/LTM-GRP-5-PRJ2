@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import Modal from "./Modal.jsx";
 import {
   rescheduleMatch,
+  startTournament,
   triggerRoundStart,
   updateRoundSchedule,
   updateTournamentSchedule,
 } from "../../api.js";
-import { apiErrorText } from "../../utils/tournamentApi.js";
+import { apiErrorText, participantUnit } from "../../utils/tournamentApi.js";
 import { getRoundLabels } from "../../utils/tournamentView.js";
 
 // Chuyển ISO sang giá trị cho input datetime-local (giờ địa phương)
@@ -46,6 +47,7 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
   const closesAt = tournament.registrationClosesAt
     ? new Date(tournament.registrationClosesAt).getTime()
     : null;
+  const regClosed = closesAt === null || Date.now() > closesAt;
   const [kickoffAt, setKickoffAt] = useState(() => toLocalInputValue(tournament.raw?.starts_at));
   const [roundAtById, setRoundAtById] = useState({});
   const [matchId, setMatchId] = useState(null);
@@ -123,7 +125,7 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
           />
           <p className="tl-form-note">
             Tới thời gian này hệ thống tự động tạo sơ đồ nhánh (khi đã đóng đơn và đủ tối thiểu 2
-            người/đội).
+            người/đội). Muốn bắt đầu ngay thì bấm nút khởi tranh.
           </p>
           <div className="tl-actions">
             <button
@@ -147,6 +149,26 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
               }}
             >
               💾 Lưu lịch khởi tranh
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || tournament.registered < 2 || !regClosed}
+              title={!regClosed
+                ? "Chỉ khởi tranh sau thời gian đóng đơn"
+                : tournament.registered < 2
+                  ? `Cần ít nhất 2 ${participantUnit(tournament.participantMode)} đăng ký`
+                  : undefined}
+              onClick={() => {
+                // Khởi tranh ngay thì ngày khởi tranh là bây giờ, không giữ giờ lịch đã gõ.
+                const nowIso = new Date().toISOString();
+                run(async () => {
+                  await updateTournamentSchedule(tournament.id, nowIso, token);
+                  return startTournament(tournament.id, token);
+                }, "Giải đã khởi tranh, sơ đồ nhánh đã được xếp.");
+              }}
+            >
+              ⚔️ Khởi tranh ngay
             </button>
           </div>
         </>
