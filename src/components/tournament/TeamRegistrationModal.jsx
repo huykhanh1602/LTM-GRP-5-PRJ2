@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "./Modal.jsx";
-import { addTeamMember, createTeam, registerTournamentTeam, searchUsers } from "../../api.js";
+import { createTeam, getTeam, registerTournamentTeam, searchUsers, sendPlayerInvitation } from "../../api.js";
 import { apiErrorText } from "../../utils/tournamentApi.js";
 
 // Đăng ký Đội: tên Đội + mời đồng đội (gõ để tìm nick). Không nộp code ở đây.
@@ -12,6 +12,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [createdTeam, setCreatedTeam] = useState(null);
   const inputRef = useRef(null);
 
   // Gõ ≥1 ký tự → debounce rồi gọi API tìm nick (tìm gần đúng, không cần dấu).
@@ -34,9 +35,11 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
   }, [query]);
 
   function addMember(candidate) {
+    if (members.length + 1 >= (tournament.maxTeamSize ?? 5)) { setError(`Đội tối đa ${tournament.maxTeamSize} người, tính cả đội trưởng.`); return; }
     if (!members.some((m) => String(m.id) === String(candidate.id))) {
       setMembers((prev) => [...prev, candidate]);
     }
+    setError(null);
     setQuery("");
     setSuggestions([]);
     inputRef.current?.focus();
@@ -45,26 +48,32 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
   // Mỗi nick chỉ xuất hiện 1 lần trong Đội: lọc đội trưởng và người đã thêm khỏi gợi ý.
   const visibleSuggestions = suggestions.filter(
     (candidate) =>
-      String(candidate.id) !== String(user?.id ?? "") &&
+      !candidate.guest && String(candidate.id) !== String(user?.id ?? "") &&
       !members.some((m) => String(m.id) === String(candidate.id)),
   );
 
   async function submit() {
-    if (!teamName.trim()) {
+    if (!createdTeam && !teamName.trim()) {
       setError("Đặt tên Đội trước đăng ký tham gia.");
-      return;
-    }
-    const memberCount = members.length + 1;
-    if (memberCount < (tournament.minTeamSize ?? 1)) {
-      setError(`Đội cần tối thiểu ${tournament.minTeamSize} thành viên (tính cả đội trưởng).`);
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const team = await createTeam(teamName.trim(), token);
-      for (const member of members) {
-        try { await addTeamMember(team.id, member.id, token); } catch { /* nick không còn tồn tại → bỏ qua */ }
+      let team = createdTeam;
+      if (!team) {
+        team = await createTeam(teamName.trim(), token);
+        setCreatedTeam(team);
+        for (const member of members) {
+          try { await sendPlayerInvitation({ type: "team", recipient_id: member.id, team_id: team.id }, token); }
+          catch (inviteError) { if (inviteError.code !== "INVITATION_PENDING") throw inviteError; }
+        }
+      }
+      const currentTeam = await getTeam(team.id, token);
+      const memberCount = currentTeam.members?.length ?? 1;
+      if (memberCount < (tournament.minTeamSize ?? 1)) {
+        setError(`Đã tạo đội và gửi lời mời. Hiện có ${memberCount}/${tournament.minTeamSize} thành viên tối thiểu; hãy đợi đồng đội chấp nhận rồi bấm kiểm tra lại.`);
+        return;
       }
       onRegistered(await registerTournamentTeam(tournament.id, team.id, token));
     } catch (err) {
@@ -85,7 +94,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
             Hủy
           </button>
           <button type="button" className="btn primary" disabled={busy} onClick={submit}>
-            {busy ? "Đang đăng ký…" : "✔ Đăng ký Đội"}
+            {busy ? "Đang xử lý…" : createdTeam ? "✔ Kiểm tra thành viên & đăng ký" : "✉ Tạo đội và gửi lời mời"}
           </button>
         </>
       }
@@ -102,10 +111,11 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
         onChange={(event) => setTeamName(event.target.value)}
         placeholder="Đội Rồng"
         maxLength={60}
+        disabled={Boolean(createdTeam)}
       />
 
       <label className="tl-form-label" htmlFor="tl-member-input">
-        Đồng đội <small style={{ fontWeight: "normal" }}>(gõ tên nick để tìm và thêm)</small>
+        Đồng đội <small style={{ fontWeight: "normal" }}>(gõ tên nick để tìm và gửi lời mời)</small>
       </label>
       <div className="tl-member-chips">
         {members.map((member) => (
@@ -115,6 +125,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
             <button
               type="button"
               aria-label={`Xóa ${member.display_name}`}
+              disabled={Boolean(createdTeam)}
               onClick={() => setMembers((prev) => prev.filter((m) => String(m.id) !== String(member.id)))}
             >
               ×
@@ -131,6 +142,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Ví dụ: nguyen…"
           autoComplete="off"
+          disabled={Boolean(createdTeam) || members.length + 1 >= (tournament.maxTeamSize ?? 5)}
         />
         {query.trim().length >= 1 && (
           <ul className="tl-member-suggest">
@@ -161,8 +173,7 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
       </table>
 
       <p className="tl-form-note" style={{ marginTop: 12 }}>
-        📌 Bot của Đội sẽ nộp sau (lúc đăng ký giải đơn hoặc theo từng vòng sau khi khởi tranh),
-        không nhập code ở đây.
+        📌 Người được mời cần chấp nhận trong tab thông báo mới được tính vào đội. Bot của Đội sẽ nộp sau.
       </p>
     </Modal>
   );

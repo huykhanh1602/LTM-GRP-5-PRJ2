@@ -643,6 +643,23 @@
 .notification-popover__unread-dot { flex: 0 0 9px; width: 9px; height: 9px; margin: 18px 2px 0 0; border-radius: 50%; background: #0866d6; }
 .notification-popover__empty { margin: 0; padding: 24px 14px; color: #747b87; font-size: 13px; text-align: center; }
 .notification-popover .notification-error { margin: 8px 16px; }
+.notification-invites { padding: 10px 14px; border-bottom: 1px solid #edf0f4; background: #fffaf0; }
+.notification-invites h3 { margin: 0 0 8px; color: #65521f; font-size: 13px; }
+.notification-invite { display: flex; gap: 9px; align-items: flex-start; padding: 9px 0; }
+.notification-invite + .notification-invite { border-top: 1px solid #eee7d6; }
+.notification-invite .notification-popover__icon { flex-basis: 34px; width: 34px; height: 34px; font-size: 17px; }
+.notification-invite__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; font-size: 12px; }
+.notification-invite__body > span { color: #687080; }
+.notification-invite__actions { display: flex; gap: 6px; margin-top: 3px; }
+.notification-invite__actions .btn { padding: 5px 9px; font-size: 11px; }
+.player-invite-box { position: relative; margin: 14px 0; padding: 14px; border: 1px solid #e8dafa; border-radius: 12px; background: #fffaff; }
+.player-invite-search { position: relative; margin-top: 9px; }
+.player-invite-search > input { width: 100%; box-sizing: border-box; }
+.player-invite-search ul { position: absolute; z-index: 10; top: 100%; right: 0; left: 0; max-height: 220px; overflow: auto; margin: 4px 0 0; padding: 5px; list-style: none; border: 1px solid #e4dcec; border-radius: 10px; background: white; box-shadow: 0 8px 20px #30224022; }
+.player-invite-search li button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: 7px; background: white; text-align: left; cursor: pointer; }
+.player-invite-search li button:hover { background: #f8f2ff; }
+.player-invite-search img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.player-invite-search .muted { padding: 8px; color: #777; font-size: 12px; }
 .global-notifications-page { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; }
 .notifications-login-prompt { margin-top: 20px; padding: 24px; border: 1px solid var(--c-pink-pastel); border-radius: 16px; background: #fff; }
 @media (max-width: 620px) {

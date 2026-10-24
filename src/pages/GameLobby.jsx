@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
 import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../config.js";
-import { getTournaments } from "../api.js";
+import { getTournaments, searchUsers } from "../api.js";
 import {
   apiErrorText,
   participantUnit,
@@ -48,6 +48,7 @@ export default function GameLobby({
   onOpenLogin,
   onGoProfile,
   onOpenTournament,
+  onInviteMatch,
 }) {
   const game = GAME_CATALOG.find((g) => g.id === gameId) ?? GAME_CATALOG[0];
 
@@ -60,6 +61,10 @@ export default function GameLobby({
   };
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState("");
+  const [showInviteSearch, setShowInviteSearch] = useState(false);
+  const [inviteQuery, setInviteQuery] = useState("");
+  const [inviteSuggestions, setInviteSuggestions] = useState([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   // Quản lý giải đấu
   const [tournaments, setTournaments] = useState([]);
@@ -67,6 +72,24 @@ export default function GameLobby({
   const [tourError, setTourError] = useState("");
   const [tourSearch, setTourSearch] = useState("");
   const [tourFilter, setTourFilter] = useState("all"); // "all" | "in_progress" | "open" | "completed"
+
+  useEffect(() => {
+    const query = inviteQuery.trim();
+    if (!showInviteSearch || query.length < 2) { setInviteSuggestions([]); return undefined; }
+    let active = true;
+    const timer = setTimeout(() => searchUsers(query)
+      .then(result => active && setInviteSuggestions((result.items ?? []).filter(candidate => !candidate.guest && String(candidate.id) !== String(user?.id))))
+      .catch(() => active && setInviteSuggestions([])), 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [inviteQuery, showInviteSearch, user?.id]);
+
+  async function invitePlayer(candidate) {
+    if (!isLoggedIn) { onOpenLogin?.(); return; }
+    setInviteBusy(true); setProblem("");
+    try { await onInviteMatch?.(candidate, game.id); setShowInviteSearch(false); setInviteQuery(""); setInviteSuggestions([]); }
+    catch (err) { setProblem(apiErrorText(err)); }
+    finally { setInviteBusy(false); }
+  }
 
   // Danh sách giải đấu lấy thật từ API khi mở tab tournament
   useEffect(() => {
@@ -398,6 +421,19 @@ export default function GameLobby({
                 </button>
               )}
             </div>
+
+            {mode === "casual" && isLoggedIn && <section className="player-invite-box" aria-label="Mời người chơi đấu">
+              <button type="button" className="btn small" disabled={connecting} onClick={() => setShowInviteSearch(open => !open)}>⚔️ Mời người chơi đấu</button>
+              {showInviteSearch && <div className="player-invite-search">
+                <input className="tl-form-input" value={inviteQuery} onChange={event => setInviteQuery(event.target.value)} placeholder="Tìm theo tên người chơi…" aria-label="Tìm người chơi để mời đấu" />
+                {inviteQuery.trim().length >= 2 && <ul className="tl-member-suggest">
+                  {!inviteSuggestions.length && <li className="muted">Không tìm thấy người chơi.</li>}
+                  {inviteSuggestions.map(candidate => <li key={candidate.id}><button type="button" disabled={inviteBusy} onClick={() => invitePlayer(candidate)}>
+                    <img src={candidate.avatar_url || "/icons.png"} alt="" /><span>{candidate.display_name}</span><small>{inviteBusy ? "Đang gửi…" : "Mời đấu"}</small>
+                  </button></li>)}
+                </ul>}
+              </div>}
+            </section>}
 
             {/* Vào phòng bằng mã — chỉ Casual */}
             {mode === "casual" && (

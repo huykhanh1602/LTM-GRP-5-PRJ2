@@ -3100,3 +3100,6 @@ button.tour-card-item:hover {
   border-color: var(--c-purple-deep);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
 }
+.tl-team-actions { position: relative; }
+.tl-team-actions .tl-member-suggest { z-index: 5; }
+.tl-team-actions .tl-member-suggest li button small { margin-left: auto; color: #6b6474; }

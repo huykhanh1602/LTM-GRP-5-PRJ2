@@ -162,6 +162,60 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return team;
   }
 
+  function getPlayerInvitation(id, recipientId) {
+    const row = db.prepare(`SELECT i.id,i.type,i.sender_id,i.recipient_id,i.team_id,i.game_id,i.room_code,i.status,i.created_at,i.expires_at,
+      u.display_name AS sender_name,t.name AS team_name,g.name AS game_name FROM player_invitations i
+      JOIN users u ON u.id=i.sender_id LEFT JOIN teams t ON t.id=i.team_id LEFT JOIN games g ON g.id=i.game_id
+      WHERE i.id=? AND i.recipient_id=?`).get(id, recipientId);
+    if (!row) throw new StorageError('INVITATION_NOT_FOUND', 'Không tìm thấy lời mời', 404);
+    return row;
+  }
+  function createPlayerInvitation({ type, senderId, recipientId, teamId = null, gameId = null, roomCode = null }) {
+    senderId = requireText(senderId, 'senderId'); recipientId = requireText(recipientId, 'recipientId');
+    if (senderId === recipientId) throw new StorageError('INVALID_INVITATION', 'Không thể tự gửi lời mời cho mình');
+    if (type === 'team') {
+      teamId = requireText(teamId, 'teamId');
+      if (!db.prepare("SELECT 1 FROM team_members WHERE team_id=? AND user_id=? AND role='captain'").get(teamId, senderId))
+        throw new StorageError('TEAM_CAPTAIN_REQUIRED', 'Chỉ đội trưởng mới có thể mời thành viên', 403);
+    } else if (type === 'match') {
+      gameId = requireText(gameId, 'gameId'); roomCode = requireText(roomCode, 'roomCode').toUpperCase();
+      if (!/^[A-Z0-9]{4}$/.test(roomCode)) throw new StorageError('INVALID_ROOM_CODE', 'Mã phòng phải gồm 4 ký tự');
+    } else throw new StorageError('INVALID_INVITATION', 'Loại lời mời không hợp lệ');
+    const now = new Date(); const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const duplicate = type === 'team'
+      ? db.prepare("SELECT id FROM player_invitations WHERE type='team' AND team_id=? AND recipient_id=? AND status='pending' AND expires_at>? LIMIT 1").get(teamId, recipientId, now.toISOString())
+      : db.prepare("SELECT id FROM player_invitations WHERE type='match' AND sender_id=? AND recipient_id=? AND status='pending' AND expires_at>? LIMIT 1").get(senderId, recipientId, now.toISOString());
+    if (duplicate) throw new StorageError('INVITATION_PENDING', 'Đã có lời mời đang chờ người chơi này phản hồi', 409);
+    const id = randomUUID();
+    try {
+      db.prepare(`INSERT INTO player_invitations(id,type,sender_id,recipient_id,team_id,game_id,room_code,created_at,expires_at)
+        VALUES(?,?,?,?,?,?,?,?,?)`).run(id,type,senderId,recipientId,teamId,gameId,roomCode,now.toISOString(),expiresAt);
+    } catch (error) {
+      if (constraintKind(error) === 'FOREIGNKEY') throw new StorageError('INVITATION_TARGET_NOT_FOUND', 'Người chơi, đội hoặc game không tồn tại', 404);
+      throw error;
+    }
+    return getPlayerInvitation(id, recipientId);
+  }
+  function listPlayerInvitations(recipientId) {
+    recipientId = requireText(recipientId, 'recipientId');
+    return db.prepare(`SELECT i.id,i.type,i.sender_id,i.recipient_id,i.team_id,i.game_id,i.room_code,i.status,i.created_at,i.expires_at,
+      u.display_name AS sender_name,t.name AS team_name,g.name AS game_name FROM player_invitations i
+      JOIN users u ON u.id=i.sender_id LEFT JOIN teams t ON t.id=i.team_id LEFT JOIN games g ON g.id=i.game_id
+      WHERE i.recipient_id=? AND i.status='pending' AND i.expires_at>? ORDER BY i.created_at DESC LIMIT 50`).all(recipientId,new Date().toISOString());
+  }
+  function respondToPlayerInvitation(id, recipientId, decision) {
+    if (!['accept','decline'].includes(decision)) throw new StorageError('INVALID_INVITATION_RESPONSE', 'Phản hồi không hợp lệ');
+    return transaction(() => {
+      const invitation = db.prepare('SELECT * FROM player_invitations WHERE id=? AND recipient_id=?').get(id,recipientId);
+      if (!invitation) throw new StorageError('INVITATION_NOT_FOUND', 'Không tìm thấy lời mời', 404);
+      if (invitation.status !== 'pending') throw new StorageError('INVITATION_ALREADY_HANDLED', 'Lời mời đã được xử lý', 409);
+      if (Date.parse(invitation.expires_at) <= Date.now()) throw new StorageError('INVITATION_EXPIRED', 'Lời mời đã hết hạn', 410);
+      if (decision === 'accept' && invitation.type === 'team') addTeamMember(invitation.team_id,recipientId,'member');
+      db.prepare('UPDATE player_invitations SET status=? WHERE id=?').run(decision === 'accept' ? 'accepted' : 'declined',id);
+      return getPlayerInvitation(id,recipientId);
+    });
+  }
+
   function getMatch(id) {
     const row = db.prepare('SELECT * FROM matches WHERE id = ?').get(id);
     if (!row) throw new StorageError('MATCH_NOT_FOUND', 'Match not found', 404);
@@ -1375,7 +1429,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       ended_at = ? WHERE status = 'playing'`).run(new Date().toISOString()).changes;
   }
 
-  return { registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam,
+  return { registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam, createPlayerInvitation, listPlayerInvitations, respondToPlayerInvitation,
     startMatch, appendTurn, finishMatch, getMatch, listMatches,
     getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,

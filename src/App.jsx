@@ -15,7 +15,7 @@ import { sound } from "./audio/soundManager.js";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { GAME_CATALOG } from "./games/catalog.js";
-import { getTournamentNotifications } from "./api.js";
+import { getTournamentNotifications, getPlayerInvitations, sendPlayerInvitation } from "./api.js";
 import "./styles/pages.css";
 import "./styles/home.css";
 import "./styles/auth.css";
@@ -81,10 +81,22 @@ export default function App() {
   const [lobbyMode, setLobbyMode] = useState("casual");
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [pendingMatchInvite, setPendingMatchInvite] = useState(null);
+  const [inviteError, setInviteError] = useState("");
+  const inviteSentRef = useRef(false);
   const notificationsMenuRef = useRef(null);
 
   const room = useRoom();
   const auth = useAuth();
+
+  useEffect(() => {
+    if (!pendingMatchInvite || room.phase !== "room" || !room.room?.code || inviteSentRef.current) return;
+    inviteSentRef.current = true;
+    sendPlayerInvitation({ type: "match", recipient_id: pendingMatchInvite.recipientId,
+      game_id: pendingMatchInvite.gameId, room_code: room.room.code }, auth.token)
+      .catch(error => setInviteError(error.message || "Không gửi được lời mời đấu."))
+      .finally(() => setPendingMatchInvite(null));
+  }, [pendingMatchInvite, room.phase, room.room?.code, auth.token]);
 
   useEffect(() => {
     if (!isNotificationsOpen) return undefined;
@@ -105,11 +117,11 @@ export default function App() {
     let active = true;
     const refresh = async () => {
       try {
-        const result = await getTournamentNotifications(auth.token, { limit: 1 });
+        const [result, invites] = await Promise.all([getTournamentNotifications(auth.token, { limit: 1}), getPlayerInvitations(auth.token)]);
         let readGames = [];
         try { readGames = JSON.parse(localStorage.getItem("botvui.read-game-announcements") || "[]"); } catch { /* Ignore invalid local state. */ }
         const newGameCount = GAME_CATALOG.filter(game => game.categories?.includes("new") && !readGames.includes(`game:${game.id}`)).length;
-        if (active) setUnreadNotifications((result.unread ?? 0) + newGameCount);
+        if (active) setUnreadNotifications((result.unread ?? 0) + newGameCount + (invites.items?.length ?? 0));
       } catch { if (active) setUnreadNotifications(0); }
     };
     refresh();
@@ -237,6 +249,22 @@ export default function App() {
       item.game_id ?? item.gameId ?? null);
   }
 
+  async function invitePlayerToCasualMatch(candidate, gameId) {
+    if (!auth.token || !auth.user?.display_name) throw new Error("Hãy đăng nhập và đặt tên hiển thị trước khi mời đấu.");
+    inviteSentRef.current = false;
+    setInviteError("");
+    setPendingMatchInvite({ recipientId: candidate.id, gameId });
+    room.join({ gameId, mode: "casual", teamName: auth.user.display_name, role: "player", create: true, authToken: auth.token });
+    navigate({ view: "lobby", gameId, tournamentId: null, mode: "casual" }, { replace: true });
+  }
+
+  function onInvitationAccepted(invitation) {
+    if (invitation.type !== "match") return;
+    const gameId = invitation.game_id ?? "rps_chess";
+    room.join({ code: invitation.room_code, gameId, mode: "casual", teamName: auth.user?.display_name ?? "", role: "player", authToken: auth.token });
+    navigate({ view: "lobby", gameId, tournamentId: null, mode: "casual" }, { replace: true });
+  }
+
   // "Vào phòng đấu" từ My Match Banner: mở phòng riêng của trận trên trang Lobby.
   function enterMatchRoom({ tournamentId, roundNo, slotIndex, gameId, spectator = false } = {}) {
     if (auth.isLoggedIn) {
@@ -272,7 +300,7 @@ export default function App() {
   if (view === "notifications") {
     page = <main className="global-notifications-page">
       <button className="btn small" onClick={goBack}>← Quay lại</button>
-      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} userId={auth.user?.id} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} /> :
+      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} userId={auth.user?.id} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} onInvitationAccepted={onInvitationAccepted} /> :
         <section className="notifications-login-prompt"><h1>Thông báo giải đấu</h1>
           <p>Đăng nhập để xem lịch thi đấu và kết quả của các giải bạn tham gia.</p>
           <button className="quick-auth-btn" onClick={() => setIsAuthOpen(true)}>👤 Đăng nhập</button>
@@ -359,7 +387,7 @@ export default function App() {
           onBack={goBack}
           connecting={room.phase === "connecting" || room.phase === "queue"}
           queue={room.phase === "queue" ? room.queue : null}
-          error={room.error}
+          error={inviteError || room.error}
           user={auth.user}
           isLoggedIn={auth.isLoggedIn}
           onJoin={(params) => room.join({
@@ -371,6 +399,7 @@ export default function App() {
           onOpenLogin={() => setIsAuthOpen(true)}
           onGoProfile={() => navigate({ view: "profile" })}
           onOpenTournament={openTournament}
+          onInviteMatch={invitePlayerToCasualMatch}
         />
       );
     }
@@ -472,6 +501,7 @@ export default function App() {
               compact
               token={auth.token}
               userId={auth.user?.id}
+              onInvitationAccepted={onInvitationAccepted}
               onUnreadChange={setUnreadNotifications}
               onClose={() => setIsNotificationsOpen(false)}
               onViewAll={() => {

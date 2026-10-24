@@ -259,6 +259,9 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isTeamCreate = url.pathname === "/api/teams" && request.method === "POST";
             const teamMemberRoute = url.pathname.match(/^\/api\/teams\/([^/]+)\/members$/);
             const isTeamMember = Boolean(teamMemberRoute) && request.method === "POST";
+            const invitationRoute = url.pathname.match(/^\/api\/invitations(?:\/([^/]+))?$/);
+            const isInvitationCreate = Boolean(invitationRoute) && !invitationRoute[1] && request.method === "POST";
+            const isInvitationResponse = Boolean(invitationRoute?.[1]) && request.method === "PATCH";
             const teamMemberDeleteRoute = url.pathname.match(/^\/api\/teams\/([^/]+)\/members\/([^/]+)$/);
             const isTeamMemberDelete = Boolean(teamMemberDeleteRoute) && request.method === "DELETE";
             const entrySubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries\/submission$/);
@@ -269,7 +272,7 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
             const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
             const isResolveRound = Boolean(resolveRoundRoute) && request.method === "POST";
-            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission ||
+            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isInvitationCreate || isInvitationResponse || isEntrySubmission ||
                 isMyMatchReady || isMyMatchSubmission || isResolveRound || isNotificationRead) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
@@ -311,11 +314,17 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         send(201, team); return;
                     }
                     if (isTeamMember) {
-                        const teamId = decodePathId(teamMemberRoute[1]);
-                        const targetUserId = body.user_id ?? body.userId;
-                        if (!targetUserId) throw new StorageError("INVALID_INPUT", "user_id là bắt buộc");
-                        send(201, await matchStore.addTeamMember(teamId, targetUserId,
-                            body.role === "captain" ? "captain" : "member")); return;
+                        throw new StorageError("INVITATION_REQUIRED", "Hãy gửi lời mời; người chơi cần chấp nhận trước khi được thêm vào đội", 409);
+                    }
+                    if (isInvitationCreate) {
+                        send(201, await matchStore.createPlayerInvitation({
+                            type: body.type, senderId: actor.id, recipientId: body.recipient_id ?? body.recipientId,
+                            teamId: body.team_id ?? body.teamId ?? null, gameId: body.game_id ?? body.gameId ?? null,
+                            roomCode: body.room_code ?? body.roomCode ?? null,
+                        })); return;
+                    }
+                    if (isInvitationResponse) {
+                        send(200, await matchStore.respondToPlayerInvitation(decodePathId(invitationRoute[1]), actor.id, body.decision)); return;
                     }
                     if (isEntrySubmission) {
                         const tournamentId = decodePathId(entrySubmissionRoute[1]);
@@ -467,6 +476,11 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         limit: url.searchParams.get("limit"), offset: url.searchParams.get("offset"),
                     }));
                     return;
+                }
+                if (url.pathname === "/api/invitations") {
+                    const actor = request.auth?.user;
+                    if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
+                    send(200, { items: await matchStore.listPlayerInvitations(actor.id) }); return;
                 }
                 if (url.pathname === "/api/tournaments") {
                     send(200, await matchStore.listTournaments({

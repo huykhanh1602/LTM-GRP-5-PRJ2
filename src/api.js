@@ -67,6 +67,10 @@ export const removeTeamMember = (id, userId, token) =>
     request(`${V1}/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, {
         method: "DELETE", token,
     });
+export const getPlayerInvitations = (token) => get(`${V1}/invitations`, { token });
+export const sendPlayerInvitation = (payload, token) => post(`${V1}/invitations`, payload, token);
+export const respondToPlayerInvitation = (id, decision, token) =>
+    request(`${V1}/invitations/${encodeURIComponent(id)}`, { method: "PATCH", body: { decision }, token });
 export const setEntrySubmission = (tournamentId, { teamId = null, userId = null, submissionId }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/entries/submission`, {
         method: "PATCH", body: { team_id: teamId, user_id: userId, submission_id: submissionId }, token,

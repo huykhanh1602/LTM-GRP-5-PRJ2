@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addTeamMember, getTeam, removeTeamMember } from "../../api.js";
+import { getTeam, removeTeamMember, searchUsers, sendPlayerInvitation } from "../../api.js";
 import { apiErrorText } from "../../utils/tournamentApi.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -12,7 +12,9 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
   );
   const teamId = entry?.team_id ?? null;
   const [team, setTeam] = useState(null);
-  const [memberId, setMemberId] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberSuggestions, setMemberSuggestions] = useState([]);
+  const [searchingMembers, setSearchingMembers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -23,21 +25,30 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
     return () => { active = false; };
   }, [teamId, token]);
 
+  useEffect(() => {
+    const term = memberQuery.trim();
+    if (term.length < 2) { setMemberSuggestions([]); setSearchingMembers(false); return undefined; }
+    let active = true; setSearchingMembers(true);
+    const timer = window.setTimeout(() => searchUsers(term)
+      .then(data => { if (active) setMemberSuggestions((data.items ?? []).filter(candidate => !candidate.guest && String(candidate.id) !== String(user?.id))); })
+      .catch(() => { if (active) setMemberSuggestions([]); })
+      .finally(() => { if (active) setSearchingMembers(false); }), 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [memberQuery, user?.id]);
+
   if (!teamId) return null;
 
   const isCaptain = team?.members?.some((m) => m.user_id === user?.id && m.role === "captain") ?? false;
   const status = tournament.status; // draft, open, in_progress, completed, cancelled
   const isEditable = status === "draft" || status === "open";
 
-  async function addMember() {
-    if (!memberId.trim()) return;
+  async function inviteMember(candidate) {
     setBusy(true);
     setMsg(null);
     try {
-      await addTeamMember(teamId, memberId.trim(), token);
-      setTeam(await getTeam(teamId, token));
-      setMemberId("");
-      setMsg({ tone: "ok", text: "Đã thêm thành viên vào Đội." });
+      await sendPlayerInvitation({ type: "team", recipient_id: candidate.id, team_id: teamId }, token);
+      setMemberQuery(""); setMemberSuggestions([]);
+      setMsg({ tone: "ok", text: `Đã gửi lời mời cho ${candidate.display_name}. Họ sẽ được thêm sau khi chấp nhận.` });
     } catch (err) {
       setMsg({ tone: "err", text: apiErrorText(err) });
     } finally {
@@ -94,13 +105,17 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
         <div className="tl-team-actions">
           <input
             className="tl-form-input"
-            placeholder="user_id thành viên muốn mời"
-            value={memberId}
-            onChange={(event) => setMemberId(event.target.value)}
+            placeholder="Tìm người chơi theo tên tài khoản để mời"
+            value={memberQuery}
+            onChange={(event) => setMemberQuery(event.target.value)}
           />
-          <button type="button" className="btn small" disabled={busy} onClick={addMember}>
-            ➕ Thêm thành viên
-          </button>
+          {memberQuery.trim().length >= 2 && <ul className="tl-member-suggest">
+            {searchingMembers && <li className="muted">Đang tìm…</li>}
+            {!searchingMembers && !memberSuggestions.length && <li className="muted">Không tìm thấy người chơi.</li>}
+            {!searchingMembers && memberSuggestions.map(candidate => <li key={candidate.id}><button type="button" disabled={busy || team?.members?.some(member => String(member.user_id) === String(candidate.id))} onClick={() => inviteMember(candidate)}>
+              <img src={candidate.avatar_url || "/icons.png"} alt="" /><span>{candidate.display_name}</span><small>{team?.members?.some(member => String(member.user_id) === String(candidate.id)) ? "Đã ở trong đội" : "Mời vào đội"}</small>
+            </button></li>)}
+          </ul>}
         </div>
       )}
 

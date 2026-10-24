@@ -85,6 +85,23 @@ INSERT OR IGNORE INTO games (id, name, default_config_json, active)
 VALUES ('rps_chess', 'Kéo · Búa · Bao Cờ', '{}', 1);
 INSERT OR IGNORE INTO games (id, name, default_config_json, active)
 VALUES ('snake_battle', 'Rắn Săn Mồi (Snake Bot)', '{}', 1);
+CREATE TABLE IF NOT EXISTS player_invitations (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK(type IN ('team','match')),
+  sender_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+  room_code TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  CHECK(sender_id <> recipient_id),
+  CHECK((type='team' AND team_id IS NOT NULL AND game_id IS NULL AND room_code IS NULL) OR
+        (type='match' AND team_id IS NULL AND game_id IS NOT NULL AND room_code IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_player_invitations_recipient ON player_invitations(recipient_id,status,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_player_invitations_sender ON player_invitations(sender_id,status,created_at DESC);
 CREATE TABLE IF NOT EXISTS tournaments (
   id TEXT PRIMARY KEY,
   game_id TEXT NOT NULL REFERENCES games(id),
