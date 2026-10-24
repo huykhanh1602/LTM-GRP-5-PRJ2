@@ -21,10 +21,6 @@ export default function CreateTournamentForm({ form, onCancel }) {
     setRegCloseDate,
     regCloseClock,
     setRegCloseClock,
-    startDate,
-    setStartDate,
-    startClock,
-    setStartClock,
     languages,
     toggleLanguage,
     rules,
@@ -331,28 +327,6 @@ export default function CreateTournamentForm({ form, onCancel }) {
             />
           </div>
           <p className="reg-hint">Ngoài khung giờ này, giải vẫn hiện nhưng không đăng ký được.</p>
-        </div>
-
-        <div className="reg-field">
-          <label>Ngày khởi tranh</label>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <input
-              type="date"
-              className="reg-input"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-            <input
-              type="time"
-              className="reg-input"
-              value={startClock}
-              onChange={(e) => setStartClock(e.target.value)}
-            />
-          </div>
-          <p className="reg-hint">
-            Không bắt buộc. Đúng thời điểm này (sau khi đóng đơn), hệ thống tự động ghép sơ đồ trận
-            đấu. Để trống thì chủ giải chọn giờ khởi tranh sau trong "Bảng điều khiển giải".
-          </p>
         </div>
 
         <div className="reg-field">

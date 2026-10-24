@@ -12,13 +12,11 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
   );
   const [selectedGame, setSelectedGame] = useState(GAME_CATALOG[0]?.id || "rps_chess");
   const [maxTeams, setMaxTeams] = useState(16);
-  // Ngày mở/đóng đơn + ngày khởi tranh (AUTO).
+  // Ngày mở/đóng đơn; giờ khởi tranh cài sau trong bảng điều khiển giải.
   const [regOpenDate, setRegOpenDate] = useState("");
   const [regOpenClock, setRegOpenClock] = useState("");
   const [regCloseDate, setRegCloseDate] = useState("");
   const [regCloseClock, setRegCloseClock] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [startClock, setStartClock] = useState("");
   const [languages, setLanguages] = useState(["python"]);
   const [rules, setRules] = useState("");
   const [formError, setFormError] = useState("");
@@ -79,20 +77,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     if (registrationClosesAt.getTime() <= registrationOpensAt.getTime()) {
       return setFormError("Thời gian đóng đơn phải sau thời gian mở đơn.");
     }
-    // Ngày khởi tranh không bắt buộc: để trống thì chủ giải đặt sau trong bảng điều khiển giải.
-    let startsAt = null;
-    if (startDate || startClock) {
-      if (!startDate || !startClock) {
-        return setFormError("Hãy chọn đủ ngày và giờ khởi tranh, hoặc để trống cả hai.");
-      }
-      startsAt = new Date(`${startDate}T${startClock}`);
-      if (Number.isNaN(startsAt.getTime())) {
-        return setFormError("Ngày khởi tranh không hợp lệ.");
-      }
-      if (startsAt.getTime() <= registrationClosesAt.getTime()) {
-        return setFormError("Ngày khởi tranh phải sau thời gian đóng đơn.");
-      }
-    }
     if (languages.length === 0) {
       return setFormError("Hãy chọn ít nhất một ngôn ngữ cho bot dự thi.");
     }
@@ -116,7 +100,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
           name: tourName.trim(),
           gameId,
           format,
-          startsAt: startsAt ? startsAt.toISOString() : null,
           maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
           languages,
           rules: ruleLines,
@@ -178,10 +161,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     setRegCloseDate,
     regCloseClock,
     setRegCloseClock,
-    startDate,
-    setStartDate,
-    startClock,
-    setStartClock,
     languages,
     setLanguages,
     toggleLanguage,

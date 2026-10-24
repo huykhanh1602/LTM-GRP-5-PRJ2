@@ -35,7 +35,7 @@ function pad(value) {
 // ─────────────────────────────────────────────────────────────
 export default function TournamentHeader({ tournament }) {
   const countdown = useCountdown(tournament.countdownTarget);
-  const isManualStart = tournament.startType === "MANUAL" && tournament.status === "open";
+  const waitingStart = tournament.status === "open";
 
   const STATUS_CLASS_MAP = { open: "open", in_progress: "running", completed: "ended", draft: "draft", cancelled: "cancelled" };
   const statusClass = STATUS_CLASS_MAP[tournament.status] ?? tournament.status;
@@ -82,7 +82,7 @@ export default function TournamentHeader({ tournament }) {
           <div className="tl-countdown" role="timer" aria-live="off">
             <span className="tl-countdown__label">{tournament.countdownLabel}</span>
             {countdown.ended ? (
-              isManualStart ? (
+              waitingStart ? (
                 <strong className="tl-countdown__ended tl-countdown__ended--waiting">
                   ⏳ Chờ chủ giải khởi tranh
                 </strong>

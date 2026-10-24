@@ -546,7 +546,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return due;
   }
 
-  // Các vòng chờ (pending) của giải AUTO tới giờ đã set, vòng trước đã xong.
+  // Các vòng pending đã chủ giải đặt giờ tới hạn, vòng trước đã xong.
   function listRoundsDueToStart(now = Date.now()) {
     const rows = db.prepare(`SELECT r.id, r.tournament_id, r.round_no, r.scheduled_at, r.auto_start, t.config_json
       FROM tournament_rounds r JOIN tournaments t ON t.id = r.tournament_id
@@ -770,7 +770,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       });
 
       refreshRoundStatuses({ tournamentId, totalRounds, entryCount: entries.length });
-      // Giải MANUAL chưa có lịch thì ghi nhận giờ khai mạc ngay lúc khởi tranh.
+      // Chưa có lịch khởi tranh thì ghi nhận giờ khai mạc ngay lúc mở giải.
       db.prepare('UPDATE tournaments SET starts_at = COALESCE(starts_at, ?) WHERE id = ?').run(startedAt, tournamentId);
       if (tournament.status === 'open') db.prepare("UPDATE tournaments SET status = 'in_progress' WHERE id = ?").run(tournamentId);
       return getTournament(tournamentId);
@@ -1097,7 +1097,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       db.prepare('UPDATE tournament_rounds SET status = ? WHERE id = ?').run(allSettled ? 'completed' : 'in_progress', round.id);
       if (allSettled && roundNo < totalRounds) {
         const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
-        // Vòng AUTO mở ngay khi hết vòng trước; vòng MANUAL chờ nút của chủ giải.
+        // Vòng kế chỉ tự mở khi chủ giải đã đặt giờ và giờ đó tới hạn; chưa đặt thì chờ bấm mở.
         const due = Number(next?.auto_start) === 1
           && (!next?.scheduled_at || Date.parse(next.scheduled_at) <= Date.now());
         if (next && due) {

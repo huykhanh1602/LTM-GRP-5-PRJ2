@@ -21,11 +21,11 @@ function toDate({ day, clock }) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function DateTimeField({ id, label, value, onChange, required = true }) {
+function DateTimeField({ id, label, value, onChange }) {
   return (
     <div className="tl-window-field">
       <label htmlFor={`${id}-day`}>
-        {label} {required && <b className="tl-form-req">*</b>}
+        {label} <b className="tl-form-req">*</b>
       </label>
       <div className="tl-window-pair">
         <input
@@ -47,14 +47,11 @@ function DateTimeField({ id, label, value, onChange, required = true }) {
   );
 }
 
-// Chủ giải sửa khung mở/đóng đơn (và ngày khởi tranh nếu giải AUTO).
+// Chủ giải sửa khung mở/đóng đơn. Giờ khởi tranh cài ở "Bảng điều khiển giải".
 export default function EditRegistrationWindowModal({ tournament, token, onClose, onSaved }) {
-  const kickoffIso = tournament.startsAt ?? tournament.raw?.starts_at ?? null;
-  const isAuto = (tournament.startType ?? "AUTO") === "AUTO";
   const [form, setForm] = useState({
     open: partsOf(tournament.registrationOpensAt),
     close: partsOf(tournament.registrationClosesAt),
-    kickoff: partsOf(kickoffIso),
   });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -74,24 +71,11 @@ export default function EditRegistrationWindowModal({ tournament, token, onClose
       setError("Thời gian đóng đơn phải sau thời gian mở đơn.");
       return;
     }
-    let kickoffAt = null;
-    if (isAuto) {
-      kickoffAt = toDate(form.kickoff);
-      if (!kickoffAt) {
-        setError("Giải tự động khởi tranh cần ngày và giờ khai mạc.");
-        return;
-      }
-      if (kickoffAt <= closesAt) {
-        setError("Ngày khởi tranh phải sau thời gian đóng đơn.");
-        return;
-      }
-    }
     setBusy(true);
     try {
       onSaved(await updateRegistrationWindow(tournament.id, {
         registrationOpensAt: opensAt.toISOString(),
         registrationClosesAt: closesAt.toISOString(),
-        startsAt: kickoffAt ? kickoffAt.toISOString() : null,
       }, token));
     } catch (err) {
       setError(apiErrorText(err));
@@ -121,7 +105,6 @@ export default function EditRegistrationWindowModal({ tournament, token, onClose
       <p className="tl-window-current">
         Hiện tại: mở đơn <b>{formatStartsAt(tournament.registrationOpensAt)}</b> · đóng đơn{" "}
         <b>{formatStartsAt(tournament.registrationClosesAt)}</b>
-        {isAuto && <> · khai mạc <b>{formatStartsAt(kickoffIso)}</b></>}
       </p>
 
       <DateTimeField
@@ -136,22 +119,13 @@ export default function EditRegistrationWindowModal({ tournament, token, onClose
         value={form.close}
         onChange={(part, value) => setPart("close", part, value)}
       />
-      {isAuto ? (
-        <DateTimeField
-          id="tl-window-kickoff"
-          label="Ngày khởi tranh"
-          value={form.kickoff}
-          onChange={(part, value) => setPart("kickoff", part, value)}
-        />
-      ) : (
-        <p className="tl-form-note">
-          📌 Giải khởi tranh thủ công: sau khi đóng đơn, chủ giải bấm nút khởi tranh trong phòng chờ.
-        </p>
-      )}
 
       <p className="tl-form-note">
         Đổi khung này sẽ cập nhật lịch hiển thị ở mọi nơi (danh sách giải, phòng chờ, trang cá nhân)
         và cổng nhận đăng ký ngay lập tức.
+      </p>
+      <p className="tl-form-note">
+        ⏳ Giờ khởi tranh và lịch từng vòng đặt trong "Bảng điều khiển giải".
       </p>
     </Modal>
   );

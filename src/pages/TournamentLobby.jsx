@@ -215,7 +215,7 @@ export function PageTournamentLobby({
                   <span className="tl-pill">⏳ Chưa tới ngày mở đơn · {formatStartsAt(tournament.registrationOpensAt)}</span>
                 )}
                 {registrationOpen && afterClose && (
-                  <span className="tl-pill">🔒 Đã đóng đơn · chờ {tournament.startType === "AUTO" ? "tới ngày khởi tranh" : "chủ giải khởi tranh"}</span>
+                  <span className="tl-pill">🔒 Đã đóng đơn · chờ chủ giải khởi tranh</span>
                 )}
                 {canRegister && !isRegistered && tournament.participantMode === "TEAM" && (
                   <button
@@ -268,7 +268,7 @@ export function PageTournamentLobby({
                       run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
                     }
                   >
-                    {tournament.startType === "MANUAL" ? "🏁 Bắt đầu khởi tranh" : "⚔️ Khởi tranh & xếp nhánh"}
+                    ⚔️ Khởi tranh & xếp nhánh
                   </button>
                 )}
                 {isOrganizer && (

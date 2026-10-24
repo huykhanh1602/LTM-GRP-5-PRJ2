@@ -40,7 +40,7 @@ test("HTTP giải đấu: chủ giải sửa khung mở/đóng đơn và lịch 
   const created = await json(await call("/api/tournaments", {
     method: "POST", token: "token-org",
     body: {
-      name: "Cúp Sửa Khung Đơn", startType: "AUTO", startsAt: hours(72), maxParticipants: 4,
+      name: "Cúp Sửa Khung Đơn", startsAt: hours(72), maxParticipants: 4,
       languages: ["python"],
       config: { registrationOpensAt: hours(-24), registrationClosesAt: hours(24) },
     },
@@ -57,7 +57,7 @@ test("HTTP giải đấu: chủ giải sửa khung mở/đóng đơn và lịch 
   assert.equal(bad.status, 400);
   assert.equal(bad.body.error, "INVALID_INPUT");
 
-  // Kéo đóng đơn qua cả ngày khởi tranh của giải AUTO -> phải báo để sửa cùng lúc.
+  // Kéo đóng đơn qua cả ngày khởi tranh -> phải báo để sửa cùng lúc.
   const conflict = await json(await patchWindow(id, { registrationOpensAt: hours(1), registrationClosesAt: hours(200) }));
   assert.equal(conflict.status, 400);
   assert.equal(conflict.body.error, "KICKOFF_BEFORE_CLOSE");

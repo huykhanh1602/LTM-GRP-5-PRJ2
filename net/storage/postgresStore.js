@@ -487,7 +487,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         if(winner) await promoteWinner({tournamentId,roundIds,totalRounds,roundNo:1,slotIndex,winner},client);
       }
       await refreshRoundStatuses({tournamentId,totalRounds,entryCount:entries.length},client);
-      // Giải MANUAL chưa có lịch thì ghi nhận giờ khai mạc ngay lúc khởi tranh.
+      // Chưa có lịch khởi tranh thì ghi nhận giờ khai mạc ngay lúc mở giải.
       await query('UPDATE tournaments SET starts_at = COALESCE(starts_at, $2) WHERE id=$1',[tournamentId,startedAt],client);
       if(tournament.status==='open') await query("UPDATE tournaments SET status='in_progress' WHERE id=$1",[tournamentId],client);
       return getTournament(tournamentId);
@@ -726,7 +726,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[allSettled?'completed':'in_progress',round.id],client);
       if(allSettled&&roundNo<totalRounds){
         const next=rounds.find(item=>Number(item.round_no)===roundNo+1);
-        // Vòng AUTO mở ngay khi hết vòng trước; vòng MANUAL chờ nút của chủ giải.
+        // Vòng kế chỉ tự mở khi chủ giải đã đặt giờ và giờ đó tới hạn; chưa đặt thì chờ bấm mở.
         const due=next&&Number(next.auto_start)===1
           &&(!next.scheduled_at||Date.parse(next.scheduled_at)<=Date.now());
         if(next&&due){
@@ -799,7 +799,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return due;
   }
 
-  // Các vòng chờ (pending) của giải AUTO tới giờ đã set, vòng trước đã xong.
+  // Các vòng pending đã chủ giải đặt giờ tới hạn, vòng trước đã xong.
   async function listRoundsDueToStart(now = Date.now()) {
     const { rows } = await query(`SELECT r.id, r.tournament_id, r.round_no, r.scheduled_at, r.auto_start
       FROM tournament_rounds r

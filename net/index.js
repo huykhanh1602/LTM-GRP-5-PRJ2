@@ -164,8 +164,8 @@ server.on("upgrade", (request, socket, head) => {
     socket.destroy();
 });
 
-// ── Bộ đếm giờ khởi tranh AUTO (System A) ──
-// Quét giải AUTO tới hạn + đã đóng đơn + chưa có sơ đồ → tự gen nhánh.
+// ── Bộ đếm giờ khởi tranh ──
+// Quét giải tới giờ khởi tranh + đã đóng đơn + chưa có sơ đồ → tự gen nhánh.
 const AUTO_START_INTERVAL_MS = 30_000;
 setInterval(async () => {
   try {
@@ -182,7 +182,7 @@ setInterval(async () => {
     console.error(`[AutoStart] Lỗi quét: ${error.message}`);
   }
 
-  // Mở các vòng đấu AUTO tới giờ đã set (vòng trước đã xong).
+  // Mở các vòng đã được chủ giải đặt giờ tới hạn (vòng trước đã xong).
   try {
     const dueRounds = await matchStore.listRoundsDueToStart();
     for (const { id, tournament_id, round_no } of dueRounds) {

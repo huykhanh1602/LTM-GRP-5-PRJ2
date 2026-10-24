@@ -118,7 +118,6 @@ export function toTournamentInput(api, currentUserId) {
     participantMode: config.participantMode ?? "INDIVIDUAL",
     minTeamSize: config.minTeamSize ?? 1,
     maxTeamSize: config.maxTeamSize ?? 5,
-    startType: config.startType ?? "AUTO",
     roundSubmissionMode: config.roundSubmissionMode ?? "SINGLE",
     submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
     myEntryId:
@@ -159,7 +158,6 @@ export function toTournamentCard(api) {
     registrationClosesAt: config.registrationClosesAt ?? null,
     hasRegistrationWindow: Boolean(config.registrationOpensAt && config.registrationClosesAt),
     participantMode: config.participantMode ?? "INDIVIDUAL",
-    startType: config.startType ?? "AUTO",
     organizerId: config.organizerId ?? null,
     organizerName: config.organizerName ?? "Ban Tổ Chức",
     registered: api.participant_count ?? 0,

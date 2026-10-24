@@ -745,6 +745,5 @@ export function normalizeTournament(rawInput, fallback = {}, options = {}) {
     participantMode: firstDefined(raw.participantMode, raw.participant_mode, "INDIVIDUAL"),
     minTeamSize: toNumber(firstDefined(raw.minTeamSize, raw.min_team_size), 1),
     maxTeamSize: toNumber(firstDefined(raw.maxTeamSize, raw.max_team_size), 5),
-    startType: firstDefined(raw.startType, "AUTO"),
   };
 }
