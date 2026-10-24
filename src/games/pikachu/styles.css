@@ -1,0 +1,274 @@
+/* ── Pikachu Puzzle ─────────────────────────────────────── */
+
+.pikachu-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  min-height: 100vh;
+  user-select: none;
+  --cell-size: 48px;
+  --gap: 3px;
+  --border-radius: 8px;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.pikachu-game__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.pikachu-game__title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--accent, #b77900);
+}
+
+.pikachu-game__stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.9rem;
+  color: var(--text, #ccc);
+}
+
+.pikachu-game__stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pikachu-game__stats strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Nút ─────────────────────────────────────────────────── */
+.pikachu-game__btn {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent, #b77900);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.pikachu-game__btn:hover {
+  filter: brightness(1.15);
+  transform: scale(1.04);
+}
+
+.pikachu-game__btn:active {
+  transform: scale(0.96);
+}
+
+.pikachu-game__btn--secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text, #ccc);
+}
+
+.pikachu-game__btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Message ─────────────────────────────────────────────── */
+.pikachu-game__message {
+  text-align: center;
+  padding: 6px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  min-height: 20px;
+  color: var(--text, #ccc);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pikachu-game__message--error {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.pikachu-game__message--success {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.pikachu-game__message--warn {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+/* ── Grid Container ──────────────────────────────────────── */
+.pikachu-game__grid-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  flex: 1;
+  padding: 4px;
+}
+
+.pikachu-game__grid {
+  display: inline-grid;
+  gap: var(--gap);
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Cell ────────────────────────────────────────────────── */
+.pikachu-game__cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: calc(var(--cell-size) * 0.55);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  position: relative;
+}
+
+.pikachu-game__cell:hover:not(.pikachu-game__cell--empty) {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(1.06);
+}
+
+.pikachu-game__cell--empty {
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+}
+
+.pikachu-game__cell--selected {
+  background: rgba(255, 215, 0, 0.35);
+  box-shadow: 0 0 0 2px #ffd700, 0 0 12px rgba(255, 215, 0, 0.25);
+  transform: scale(1.08);
+  z-index: 2;
+}
+
+.pikachu-game__cell--path {
+  background: rgba(100, 200, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(100, 200, 255, 0.4);
+}
+
+/* ── Path line overlay ───────────────────────────────────── */
+.pikachu-game__path-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pikachu-game__path-segment {
+  position: absolute;
+  background: rgba(100, 200, 255, 0.5);
+  height: 3px;
+  transform-origin: 0 0;
+}
+
+/* ── Win screen ──────────────────────────────────────────── */
+.pikachu-game__win {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.pikachu-game__win h2 {
+  font-size: 2.2rem;
+  margin: 0;
+  color: var(--accent, #b77900);
+}
+
+.pikachu-game__win p {
+  font-size: 1.1rem;
+  color: var(--text, #ccc);
+  margin: 0;
+}
+
+.pikachu-game__win .pikachu-game__btn {
+  font-size: 1.1rem;
+  padding: 10px 32px;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .pikachu-game {
+    --cell-size: 36px;
+    --gap: 2px;
+  }
+  .pikachu-game__header {
+    font-size: 0.85rem;
+  }
+  .pikachu-game__title {
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .pikachu-game {
+    --cell-size: 28px;
+    --gap: 2px;
+  }
+}
+
+/* ── Animation ───────────────────────────────────────────── */
+@keyframes pikachu-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pikachu-game__cell--pop {
+  animation: pikachu-pop 0.3s ease-out;
+}
+
+@keyframes pikachu-fade-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.3); opacity: 0; }
+}
+
+.pikachu-game__cell--removing {
+  animation: pikachu-fade-out 0.35s ease-in forwards;
+  pointer-events: none;
+}
+
+/* ── Shuffle notice ──────────────────────────────────────── */
+.pikachu-game__shuffle-notice {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 20px 32px;
+  border-radius: 16px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  z-index: 100;
+  animation: pikachu-fade-in 0.3s ease-out;
+  pointer-events: none;
+}
+
+@keyframes pikachu-fade-in {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
