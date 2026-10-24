@@ -1,6 +1,6 @@
 import Media from "./Media.jsx";
 import { theme } from "../theme/theme.js";
-import SnakeSegment, { SnakeFood } from "./SnakeSegment.jsx";
+import { SnakeFood } from "./SnakeLayer.jsx";
 
 const ICONS = {
   ROCK: "✊",
@@ -16,7 +16,7 @@ export function pieceIcon(type) {
   return ICONS[type] ?? String(type ?? "?").slice(0, 2).toUpperCase();
 }
 
-export default function Piece({ piece, cell, width, height, color, isMover, snake = null }) {
+export default function Piece({ piece, cell, width, height, color, isMover }) {
   const style = {
     width: `${100 / width}%`,
     height: `${100 / height}%`,
@@ -24,11 +24,11 @@ export default function Piece({ piece, cell, width, height, color, isMover, snak
     zIndex: isMover ? 5 : 2,
     "--team": color,
   };
-  // Game rắn: vẽ đốt rắn liền nhau và mồi, không dùng bong bóng + nhãn id của game cờ.
-  if (piece.type === "FOOD" || (snake && (piece.type === "HEAD" || piece.type === "BODY"))) {
+  // Mồi của game rắn; thân rắn được vẽ ở SnakeLayer (một đường liền), không đi qua Piece.
+  if (piece.type === "FOOD") {
     return (
       <div className="piece snake-piece" data-owner={piece.owner} style={style}>
-        {piece.type === "FOOD" ? <SnakeFood /> : <SnakeSegment piece={piece} layout={snake} />}
+        <SnakeFood />
       </div>
     );
   }

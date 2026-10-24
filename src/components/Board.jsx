@@ -2,7 +2,8 @@ import { toCell } from "../utils/coords.js";
 import Piece from "./Piece.jsx";
 import ClashEffect from "./ClashEffect.jsx";
 import Media from "./Media.jsx";
-import { computeSnakeLayout } from "../utils/snakeLayout.js";
+import SnakeLayer from "./SnakeLayer.jsx";
+import { isSnakePiece, snakeShapes } from "../utils/snakeShape.js";
 import { theme } from "../theme/theme.js";
 
 const TILE_ICONS = { BASE: "🏁", OBSTACLE: "🧱", TRAP: "🕳️" };
@@ -43,7 +44,7 @@ export default function Board({ board, frame, colorOf }) {
     }
   }
 
-  const snakeLayout = computeSnakeLayout(frame.pieces, board);
+  const shapes = snakeShapes(frame.pieces, board);
   const flash = frame.flash?.pos ? toCell(frame.flash.pos, board) : null;
 
   return (
@@ -63,7 +64,8 @@ export default function Board({ board, frame, colorOf }) {
           {cells}
         </div>
         <div className="board-layer">
-          {Object.values(frame.pieces).map((p) => (
+          {shapes.length > 0 && <SnakeLayer shapes={shapes} width={width} height={height} />}
+          {Object.values(frame.pieces).filter((p) => !isSnakePiece(p)).map((p) => (
             <Piece
               key={p.id}
               piece={p}
@@ -72,7 +74,6 @@ export default function Board({ board, frame, colorOf }) {
               height={height}
               color={colorOf(p.owner)}
               isMover={frame.mover === p.id}
-              snake={snakeLayout.get(p.id) ?? null}
             />
           ))}
           {flash && (
