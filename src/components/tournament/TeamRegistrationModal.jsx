@@ -42,6 +42,13 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
     inputRef.current?.focus();
   }
 
+  // Mỗi nick chỉ xuất hiện 1 lần trong Đội: lọc đội trưởng và người đã thêm khỏi gợi ý.
+  const visibleSuggestions = suggestions.filter(
+    (candidate) =>
+      String(candidate.id) !== String(user?.id ?? "") &&
+      !members.some((m) => String(m.id) === String(candidate.id)),
+  );
+
   async function submit() {
     if (!teamName.trim()) {
       setError("Đặt tên Đội trước đăng ký tham gia.");
@@ -128,8 +135,8 @@ export default function TeamRegistrationModal({ tournament, user, token, onClose
         {query.trim().length >= 1 && (
           <ul className="tl-member-suggest">
             {searching && <li className="muted">Đang tìm…</li>}
-            {!searching && suggestions.length === 0 && <li className="muted">Không tìm thấy nick nào.</li>}
-            {!searching && suggestions.map((candidate) => (
+            {!searching && visibleSuggestions.length === 0 && <li className="muted">Không tìm thấy nick nào.</li>}
+            {!searching && visibleSuggestions.map((candidate) => (
               <li key={candidate.id}>
                 <button type="button" onClick={() => addMember(candidate)}>
                   <img src={candidate.avatar_url || "/icons.png"} alt="" />
