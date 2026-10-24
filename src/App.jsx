@@ -465,7 +465,8 @@ export default function App() {
                 setIsNotificationsOpen(open => !open);
               }} aria-label={`Thông báo${unreadNotifications > 0 ? `, ${unreadNotifications} chưa đọc` : ""}`}
               aria-expanded={isNotificationsOpen} aria-haspopup="dialog" title="Thông báo">
-              🔔 <span>Thông báo</span>{unreadNotifications > 0 && <span className="topbar-notifications__badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+              <span className="topbar-notifications__icon" aria-hidden="true">🔔</span>
+              {unreadNotifications > 0 && <span className="topbar-notifications__badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
             </button>
             {isNotificationsOpen && <TournamentNotifications
               compact
