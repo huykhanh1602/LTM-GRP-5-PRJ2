@@ -1,6 +1,7 @@
 import MatchCard from "./MatchCard.jsx";
 import StandingsTable from "./StandingsTable.jsx";
 import { getRoundLabels } from "../../utils/tournamentView.js";
+import { participantUnit } from "../../utils/tournamentApi.js";
 import TrophyIcon from "../TrophyIcon.jsx";
 
 // ─────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ export default function RoundRobinView({
   const showDraftEmpty = tournament.status === "draft";
   const showMissingBracket =
     !showOpenSlots && !showDraftEmpty && totalRounds === 0;
+  const unit = participantUnit(tournament.participantMode);
 
   return (
     <section className="tl-card tl-bracket-card" aria-label="Bảng đấu vòng tròn">
@@ -40,9 +42,11 @@ export default function RoundRobinView({
         <div>
           <h2 className="tl-card__title">Bảng đấu vòng tròn</h2>
           <p className="tl-card__desc">
-            Round Robin
-            {totalRounds > 0 && ` · ${totalRounds} vòng · ${totalMatches} trận`}
-            · mỗi người gặp tất cả những người còn lại.
+            {[
+              "Vòng tròn",
+              totalRounds > 0 && `${totalRounds} vòng · ${totalMatches} trận`,
+              `mỗi ${unit} gặp tất cả các ${unit} còn lại.`,
+            ].filter(Boolean).join(" · ")}
           </p>
         </div>
         <div className="tl-card__aside">

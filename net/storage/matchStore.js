@@ -697,6 +697,18 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     participantAName=requireText(participantAName??participantAId,'participantAName'); participantBName=requireText(participantBName??participantBId,'participantBName');
     if(participantAId===participantBId||winnerId!==null&&![participantAId,participantBId].includes(winnerId)) throw new StorageError('INVALID_TOURNAMENT_RESULT','Invalid participants or winner');
     if(!db.prepare('SELECT id FROM tournament_rounds WHERE id=? AND tournament_id=?').get(roundId,tournamentId)) throw new StorageError('ROUND_NOT_FOUND','Tournament round not found',404);
+    // Sơ đồ đã có sẵn slot cho cặp này thì ghi vào slot đó, không chèn dòng mới (match_id UNIQUE).
+    const slot = db.prepare(`SELECT id FROM tournament_match_history WHERE round_id = ? AND
+      (match_id = ? OR (match_id IS NULL AND ((participant_a_id = ? AND participant_b_id = ?) OR (participant_a_id = ? AND participant_b_id = ?))))
+      LIMIT 1`).get(roundId, matchId, participantAId, participantBId, participantBId, participantAId);
+    if (slot) {
+      db.prepare(`UPDATE tournament_match_history SET match_id = COALESCE(?, match_id), winner_id = ?, result_json = ?, played_at = ?
+        WHERE id = ?`)
+        .run(matchId, winnerId, result===null?null:JSON.stringify(result), timestamp(playedAt), slot.id);
+      invalidateTournamentNotificationSync();
+      return db.prepare(`SELECT id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,
+        participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE id=?`).get(slot.id);
+    }
     db.prepare(`INSERT INTO tournament_match_history(id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,
       participant_b_id,participant_b_name,winner_id,result_json,played_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(match_id) DO UPDATE SET winner_id=excluded.winner_id,result_json=excluded.result_json,played_at=excluded.played_at`)

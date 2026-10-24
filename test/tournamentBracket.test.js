@@ -186,3 +186,39 @@ test("vòng tròn số lẻ: mỗi vòng có một suất nghỉ và không ai �
     assert.equal(seen.size, 3);
   } finally { store.close(); }
 });
+
+test("trận đấu thật trong vòng tự ghi vào slot đã xếp, không tạo dòng trùng", () => {
+  const store = createMatchStore({ filename: ":memory:" });
+  try {
+    for (const id of ["ann", "ben", "cio", "dot"]) store.upsertUser({ id, display_name: id });
+    const tournament = store.createTournament({
+      gameId: "rps_chess", code: "RR-WS", name: "Vòng tròn qua phòng đấu", format: "round_robin",
+      config: { participantMode: "TEAM" },
+    });
+    for (const id of ["ann", "ben", "cio", "dot"]) {
+      store.registerTeam({ id, name: id });
+      store.addTournamentEntry(tournament.id, { teamId: id, userId: id });
+    }
+    const started = store.generateTournamentBracket(tournament.id);
+    const roundId = started.rounds.find((row) => Number(row.round_no) === 1).id;
+    const [first, second] = started.bracket.rounds[0];
+
+    // finishMatch của phòng đấu tự ghi lịch sử: phải ghi đè đúng slot, không chèn thêm dòng.
+    const match = store.startMatch({
+      roomId: "ws-room", mode: "tournament", ranked: false, roundId, initialState: [],
+      teamA: { id: first.participantAId, name: first.participantAName },
+      teamB: { id: first.participantBId, name: first.participantBName },
+    });
+    store.finishMatch(match.id, { winner: first.participantAId, reason: "BASE_CAPTURED" }, []);
+    const afterPlay = store.getTournament(tournament.id);
+    assert.equal(afterPlay.bracket.rounds[0].length, 2);
+    assert.equal(afterPlay.bracket.rounds[0][0].matchId, match.id);
+    assert.equal(afterPlay.bracket.rounds[0][0].status, "done");
+
+    const attached = store.attachSlotResult(tournament.id, { roundNo: 1, slotIndex: 0, matchId: match.id });
+    assert.equal(attached.bracket.rounds[0].length, 2);
+    assert.equal(attached.bracket.rounds[0][0].winnerId, first.participantAId);
+    assert.equal(attached.bracket.rounds[0][1].status, "ready");
+    assert.equal(second.status, "ready");
+  } finally { store.close(); }
+});
