@@ -70,9 +70,9 @@ function decorateSlots(bracket) {
   };
 }
 
-function formatLabelOf(config, status) {
+function formatLabelOf(config, status, format) {
   const capacity = Number(config?.maxParticipants) || 0;
-  const base = "Loại trực tiếp";
+  const base = format === "round_robin" ? "Vòng tròn" : "Loại trực tiếp";
   if (!capacity) return base;
   return status === "completed" ? base : `${base} · tối đa ${capacity} đội`;
 }
@@ -111,7 +111,7 @@ export function toTournamentInput(api, currentUserId) {
     entries: needsBye ? [...entries, BYE_ENTRY] : entries,
     bracket,
     rounds: api.rounds ?? [],
-    formatLabel: formatLabelOf(config, api.status),
+    formatLabel: formatLabelOf(config, api.status, api.format),
     statusHint: STATUS_HINTS[api.status] ?? "",
     languages: Array.isArray(config.languages) ? config.languages : [],
     organizerId: config.organizerId ?? null,

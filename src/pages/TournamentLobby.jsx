@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import TournamentLayout from "../layouts/TournamentLayout.jsx";
 import { useState } from "react";
 import TournamentHeader from "../components/tournament/TournamentHeader.jsx";
@@ -16,7 +17,7 @@ import EditRegistrationWindowModal from "../components/profile/EditRegistrationW
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
-import { attachTournamentSlotResult, registerTournament, startTournament, submitMyMatchRoundBot, setMyMatchReady } from "../api.js";
+import { attachTournamentSlotResult, registerTournament, submitMyMatchRoundBot, setMyMatchReady } from "../api.js";
 import { apiErrorText, formatStartsAt, participantUnit } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
 import "../styles/tournament.css";
@@ -27,6 +28,7 @@ import "../styles/tournament.css";
 // ─────────────────────────────────────────────────────────────
 export function PageTournamentLobby({
   tournamentId = null,
+  roundNo = null,
   gameId = null,
   user = null,
   token = null,
@@ -59,6 +61,11 @@ export function PageTournamentLobby({
     run,
     openReplay,
   } = useTournamentLobby({ tournamentId, user, token, onOpenReplay, onRequireLogin });
+  useEffect(() => {
+    if (!roundNo || !tournament || String(tournament.id) !== String(activeId)) return;
+    setTab("feed");
+    requestAnimationFrame(() => document.querySelector(".tl-history")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [roundNo, tournament?.id, activeId, setTab]);
   const top = useTopMatch({
     tournamentId: activeId,
     token,
@@ -115,7 +122,6 @@ export function PageTournamentLobby({
   const beforeOpen = opensAt !== null && now < opensAt;
   const afterClose = closesAt !== null && now > closesAt;
   const canRegister = registrationOpen && !beforeOpen && !afterClose;
-  const startReady = registrationOpen && (closesAt === null || now > closesAt);
   const hasBracket = tournament.rounds.length > 0;
   const unit = participantUnit(tournament.participantMode);
   const waitingSlots = tournament.rounds
@@ -273,21 +279,6 @@ export function PageTournamentLobby({
                     📅 Sửa mở/đóng đơn
                   </button>
                 )}
-                {isOrganizer && registrationOpen && !hasBracket && (
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={busy || tournament.registered < 2 || !startReady}
-                    title={!startReady
-                      ? "Chỉ khởi tranh sau thời gian đóng đơn"
-                      : tournament.registered < 2 ? `Cần ít nhất 2 ${unit} đăng ký` : undefined}
-                    onClick={() =>
-                      run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
-                    }
-                  >
-                    ⚔️ Khởi tranh & xếp nhánh
-                  </button>
-                )}
                 {isOrganizer && (
                   <button
                     type="button"
@@ -437,6 +428,7 @@ export function PageTournamentLobby({
           {tab === "feed" ? (
             <MatchFeed
               feed={tournament.feed}
+              roundNo={roundNo}
               myEntryId={tournament.myEntryId}
               entryMap={tournament.entryMap}
               onReplay={(row) => openReplay(row.matchId ?? row.replayId)}

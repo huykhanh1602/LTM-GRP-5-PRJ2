@@ -136,6 +136,25 @@ CREATE TABLE IF NOT EXISTS tournament_match_history (
   CHECK(winner_id IS NULL OR winner_id IN (participant_a_id,participant_b_id))
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_match_history_round ON tournament_match_history(tournament_id,round_id,played_at);
+CREATE TABLE IF NOT EXISTS tournament_notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  event_key TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('schedule','match','result','champion','status')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  scheduled_at TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  UNIQUE(user_id,event_key)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_notifications_user ON tournament_notifications(user_id,read_at,created_at DESC);
+CREATE TABLE IF NOT EXISTS tournament_notification_sync (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  synced_at TEXT NOT NULL
+);
 -- Sẵn sàng thi đấu theo slot (My Match Banner): 1 dòng / 1 phía / 1 lượt bấm Sẵn sàng.
 CREATE TABLE IF NOT EXISTS tournament_readiness (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,

@@ -178,6 +178,7 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
           <div className="tl-admin-rounds">
             {visibleRounds.map((round) => {
               const label = labels[round.round_no - 1] ?? `Vòng ${round.round_no}`;
+              const title = label.startsWith("Vòng") ? label : `Vòng ${round.round_no} · ${label}`;
               const prevCompleted =
                 round.round_no === 1 ||
                 rawRounds.some((item) => item.round_no === round.round_no - 1 && item.status === "completed");
@@ -185,9 +186,7 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
               return (
                 <div className="tl-admin-round" key={round.id}>
                   <div className="tl-admin-round__head">
-                    <h4>
-                      Vòng {round.round_no} · {label}
-                    </h4>
+                    <h4>{title}</h4>
                     <span className={`tl-pill ${STATUS_PILL[round.status] ?? ""}`}>
                       {STATUS_LABELS[round.status] ?? round.status}
                     </span>

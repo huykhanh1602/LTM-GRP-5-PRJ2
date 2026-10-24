@@ -10,10 +10,12 @@ import TournamentLobby from "./pages/TournamentLobby.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import TrophyIcon from "./components/TrophyIcon.jsx";
 import SoundControl from "./components/SoundControl.jsx";
+import TournamentNotifications from "./components/profile/TournamentNotifications.jsx";
 import { sound } from "./audio/soundManager.js";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { GAME_CATALOG } from "./games/catalog.js";
+import { getTournamentNotifications } from "./api.js";
 import "./styles/pages.css";
 import "./styles/home.css";
 import "./styles/auth.css";
@@ -27,9 +29,11 @@ import "./styles/auth.css";
 //   "tournament"→ TournamentLobby (tournamentId=null → danh sách giải)
 //   "replay" | "history" | "rankings" | "profile"
 // ─────────────────────────────────────────────────────────────
-function hashFor({ view, gameId, tournamentId, mode }) {
+function hashFor({ view, gameId, tournamentId, mode, roundNo }) {
   if (view === "home" || !view) return "#/";
   if (view === "profile") return "#/profile";
+  if (view === "notifications") return "#/notifications";
+  if (view === "notifications") return "#/notifications";
   if (!gameId) return "#/";
   const base = `#/game/${gameId}`;
   if (view === "lobby") {
@@ -40,7 +44,7 @@ function hashFor({ view, gameId, tournamentId, mode }) {
   if (view === "history") return `${base}/history`;
   if (view === "rankings") return `${base}/rankings`;
   if (view === "replay") return `${base}/replay`;
-  if (view === "tournament") return tournamentId ? `${base}/tournament/${tournamentId}` : `${base}/tournament`;
+  if (view === "tournament") return tournamentId ? `${base}/tournament/${tournamentId}${roundNo ? `/round/${roundNo}` : ""}` : `${base}/tournament`;
   return base;
 }
 
@@ -48,6 +52,8 @@ function parseHash(hash) {
   const parts = (hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
   if (parts.length === 0) return { view: "home", gameId: null, tournamentId: null, mode: "casual" };
   if (parts[0] === "profile") return { view: "profile", gameId: null, tournamentId: null, mode: "casual" };
+  if (parts[0] === "notifications") return { view: "notifications", gameId: null, tournamentId: null, mode: "casual" };
+  if (parts[0] === "notifications") return { view: "notifications", gameId: null, tournamentId: null, mode: "casual" };
   if (parts[0] === "game" && parts[1]) {
     const gameId = parts[1];
     const sub = parts[2];
@@ -57,7 +63,8 @@ function parseHash(hash) {
     if (sub === "history") return { view: "history", gameId, tournamentId: null, mode: "casual" };
     if (sub === "rankings") return { view: "rankings", gameId, tournamentId: null, mode: "casual" };
     if (sub === "replay") return { view: "replay", gameId, tournamentId: null, mode: "casual" };
-    if (sub === "tournament") return { view: "tournament", gameId, tournamentId: parts[3] ?? null, mode: "tournament" };
+    if (sub === "tournament") return { view: "tournament", gameId, tournamentId: parts[3] ?? null,
+      roundNo: parts[4] === "round" && Number.isSafeInteger(Number(parts[5])) ? Number(parts[5]) : null, mode: "tournament" };
     return { view: "lobby", gameId, tournamentId: null, mode: "casual" };
   }
   return { view: "home", gameId: null, tournamentId: null, mode: "casual" };
@@ -70,10 +77,45 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tournamentId, setTournamentId] = useState(null);
+  const [tournamentRoundNo, setTournamentRoundNo] = useState(null);
   const [lobbyMode, setLobbyMode] = useState("casual");
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsMenuRef = useRef(null);
 
   const room = useRoom();
   const auth = useAuth();
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return undefined;
+    const closeOnOutside = event => {
+      if (!notificationsMenuRef.current?.contains(event.target)) setIsNotificationsOpen(false);
+    };
+    const closeOnEscape = event => { if (event.key === "Escape") setIsNotificationsOpen(false); };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (!auth.token) { setUnreadNotifications(0); return undefined; }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await getTournamentNotifications(auth.token, { limit: 1 });
+        let readGames = [];
+        try { readGames = JSON.parse(localStorage.getItem("botvui.read-game-announcements") || "[]"); } catch { /* Ignore invalid local state. */ }
+        const newGameCount = GAME_CATALOG.filter(game => game.categories?.includes("new") && !readGames.includes(`game:${game.id}`)).length;
+        if (active) setUnreadNotifications((result.unread ?? 0) + newGameCount);
+      } catch { if (active) setUnreadNotifications(0); }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [auth.token]);
 
   // Refs để đọc giá trị mới nhất bên trong callback/effect ổn định.
   const selectedGameIdRef = useRef(selectedGameId);
@@ -138,6 +180,7 @@ export default function App() {
     }
     setSelectedGameId(route.gameId ?? null);
     setTournamentId(route.tournamentId ?? null);
+    setTournamentRoundNo(route.roundNo ?? null);
     setLobbyMode(route.mode ?? "casual");
     setView(route.view);
   }, []);
@@ -148,6 +191,7 @@ export default function App() {
       view: route.view,
       gameId: route.gameId !== undefined ? route.gameId : selectedGameIdRef.current,
       tournamentId: route.tournamentId !== undefined ? route.tournamentId : tournamentIdRef.current,
+      roundNo: route.roundNo !== undefined ? route.roundNo : null,
       mode: route.mode !== undefined ? route.mode : lobbyModeRef.current,
     };
     applyRoute(next);
@@ -179,8 +223,18 @@ export default function App() {
   }
 
   // Mở phòng chờ của một giải đấu cụ thể (id = null → hiện danh sách giải để chọn)
-  function openTournament(id = null) {
-    navigate({ view: "tournament", tournamentId: id });
+  function openTournament(id = null, roundNo = null, gameId = null) {
+    navigate({ view: "tournament", tournamentId: id, roundNo, ...(gameId ? { gameId } : {}) });
+  }
+
+  function openNotificationTarget(item) {
+    if (item.target_type === "game" || item.type === "game") {
+      const id = item.game_id ?? item.gameId;
+      navigate({ view: "lobby", gameId: id, tournamentId: null, mode: "casual" });
+      return;
+    }
+    openTournament(item.tournament_id ?? item.tournamentId ?? null, item.metadata?.roundNo ?? item.round_no ?? null,
+      item.game_id ?? item.gameId ?? null);
   }
 
   // "Vào phòng đấu" từ My Match Banner: mở phòng riêng của trận trên trang Lobby.
@@ -215,7 +269,16 @@ export default function App() {
   // ── Xác định trang hiện tại ──────────────────────────────
   let page;
 
-  if (view === "profile") {
+  if (view === "notifications") {
+    page = <main className="global-notifications-page">
+      <button className="btn small" onClick={goBack}>← Quay lại</button>
+      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} userId={auth.user?.id} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} /> :
+        <section className="notifications-login-prompt"><h1>Thông báo giải đấu</h1>
+          <p>Đăng nhập để xem lịch thi đấu và kết quả của các giải bạn tham gia.</p>
+          <button className="quick-auth-btn" onClick={() => setIsAuthOpen(true)}>👤 Đăng nhập</button>
+        </section>}
+    </main>;
+  } else if (view === "profile") {
     page = (
       <ProfilePage
         user={auth.user}
@@ -239,6 +302,7 @@ export default function App() {
       <TournamentLobby
         key={tournamentId ?? "picker"}
         tournamentId={tournamentId}
+        roundNo={tournamentRoundNo}
         gameId={selectedGameId}
         user={auth.user}
         token={auth.token}
@@ -394,6 +458,32 @@ export default function App() {
         {/* ── Khu vực Phải: âm thanh + nút tài khoản ── */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundControl />
+          <div className="notification-menu" ref={notificationsMenuRef}>
+            <button className={`topbar-notifications ${isNotificationsOpen || view === "notifications" ? "on" : ""}`}
+              onClick={() => {
+                if (!auth.isLoggedIn) { setIsAuthOpen(true); return; }
+                setIsNotificationsOpen(open => !open);
+              }} aria-label={`Thông báo${unreadNotifications > 0 ? `, ${unreadNotifications} chưa đọc` : ""}`}
+              aria-expanded={isNotificationsOpen} aria-haspopup="dialog" title="Thông báo">
+              <span className="topbar-notifications__icon" aria-hidden="true">🔔</span>
+              {unreadNotifications > 0 && <span className="topbar-notifications__badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+            </button>
+            {isNotificationsOpen && <TournamentNotifications
+              compact
+              token={auth.token}
+              userId={auth.user?.id}
+              onUnreadChange={setUnreadNotifications}
+              onClose={() => setIsNotificationsOpen(false)}
+              onViewAll={() => {
+                setIsNotificationsOpen(false);
+                navigate({ view: "notifications", gameId: null, tournamentId: null });
+              }}
+              onOpenTarget={item => {
+                setIsNotificationsOpen(false);
+                openNotificationTarget(item);
+              }}
+            />}
+          </div>
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */
             <button

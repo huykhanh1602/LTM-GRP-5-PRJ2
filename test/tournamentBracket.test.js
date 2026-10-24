@@ -118,3 +118,71 @@ test("hồ sơ công khai trả về thống kê trận và giải đã tham gia
     assert.throws(() => store.getUserPublicProfile("missing"), /not found/);
   } finally { store.close(); }
 });
+
+// Đấu mọi trận của bảng vòng tròn, mạnh hơn luôn thắng.
+const STRENGTH = { ann: 4, ben: 3, cio: 2, dot: 1 };
+function playAllRoundRobin(store, tournamentId) {
+  let tournament = store.getTournament(tournamentId);
+  for (const [roundIndex, slots] of tournament.bracket.rounds.entries()) {
+    for (const slot of slots) {
+      const stronger = STRENGTH[slot.participantAId] > STRENGTH[slot.participantBId]
+        ? slot.participantAId : slot.participantBId;
+      const weaker = stronger === slot.participantAId ? slot.participantBId : slot.participantAId;
+      tournament = store.attachSlotResult(tournamentId, {
+        roundNo: roundIndex + 1, slotIndex: slot.matchIndex, matchId: playMatch(store, stronger, weaker),
+      });
+    }
+  }
+  return tournament;
+}
+
+test("vòng tròn 4 đội: đủ 6 trận, mỗi cặp gặp nhau đúng một lần, xử thắng theo bảng điểm", () => {
+  const store = createMatchStore({ filename: ":memory:" });
+  try {
+    for (const id of ["ann", "ben", "cio", "dot"]) store.upsertUser({ id, display_name: id });
+    const tournament = store.createTournament({
+      gameId: "rps_chess", code: "RR-4", name: "Vòng tròn 4 đội", format: "round_robin",
+    });
+    for (const id of ["ann", "ben", "cio", "dot"]) store.addTournamentEntry(tournament.id, { userId: id });
+
+    const started = store.generateTournamentBracket(tournament.id);
+    assert.equal(started.status, "in_progress");
+    assert.equal(started.bracket.format, "round_robin");
+    assert.equal(started.bracket.totalRounds, 3);
+    assert.deepEqual(started.bracket.rounds.map((slots) => slots.length), [2, 2, 2]);
+    const pairs = started.bracket.rounds.flat()
+      .map((slot) => [slot.participantAId, slot.participantBId].sort().join("-")).sort();
+    assert.deepEqual(pairs, ["ann-ben", "ann-cio", "ann-dot", "ben-cio", "ben-dot", "cio-dot"]);
+    assert.deepEqual(started.rounds.map((round) => round.status), ["in_progress", "pending", "pending"]);
+
+    const finished = playAllRoundRobin(store, tournament.id);
+    assert.equal(finished.status, "completed");
+    assert.equal(finished.champion.id, "ann");
+    assert.deepEqual(finished.rounds.map((round) => round.status), ["completed", "completed", "completed"]);
+    assert.deepEqual(
+      finished.bracket.rounds.flat().map((slot) => slot.status),
+      ["done", "done", "done", "done", "done", "done"],
+    );
+  } finally { store.close(); }
+});
+
+test("vòng tròn số lẻ: mỗi vòng có một suất nghỉ và không ai đấu với chính mình", () => {
+  const store = createMatchStore({ filename: ":memory:" });
+  try {
+    for (const id of ["ann", "ben", "cio"]) store.upsertUser({ id, display_name: id });
+    const tournament = store.createTournament({
+      gameId: "rps_chess", code: "RR-3", name: "Vòng tròn 3 đội", format: "round_robin",
+    });
+    for (const id of ["ann", "ben", "cio"]) store.addTournamentEntry(tournament.id, { userId: id });
+    const started = store.generateTournamentBracket(tournament.id);
+    assert.equal(started.bracket.totalRounds, 3);
+    assert.deepEqual(started.bracket.rounds.map((slots) => slots.length), [1, 1, 1]);
+    const seen = new Set();
+    for (const slot of started.bracket.rounds.flat()) {
+      assert.notEqual(slot.participantAId, slot.participantBId);
+      assert.doesNotMatch(slot.participantAId, /__BYE__/);
+      seen.add([slot.participantAId, slot.participantBId].sort().join("-"));
+    }
+    assert.equal(seen.size, 3);
+  } finally { store.close(); }
+});
