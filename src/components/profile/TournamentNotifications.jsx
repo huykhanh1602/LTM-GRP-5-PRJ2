@@ -11,8 +11,9 @@ const gameNotices = GAME_CATALOG.filter(game => game.categories?.includes("new")
   message: game.shortDesc, game_id: game.id, target_type: "game", created_at: null,
 }));
 
-export default function TournamentNotifications({ token, onOpenTarget, onUnreadChange }) {
+export default function TournamentNotifications({ token, onOpenTarget, onUnreadChange, compact = false, onViewAll, onClose }) {
   const [data, setData] = useState({ items: [], unread: 0 });
+  const [filter, setFilter] = useState("all");
   const [readGames, setReadGames] = useState(() => {
     try { return JSON.parse(localStorage.getItem(GAME_READ_KEY) || "[]"); } catch { return []; }
   });
@@ -30,6 +31,7 @@ export default function TournamentNotifications({ token, onOpenTarget, onUnreadC
     .sort((a, b) => new Date(b.scheduled_at ?? b.created_at ?? 0) - new Date(a.scheduled_at ?? a.created_at ?? 0));
   const unread = (data.unread ?? 0) + gameNotices.filter(item => !readGames.includes(item.id)).length;
   useEffect(() => { onUnreadChange?.(unread); }, [unread, onUnreadChange]);
+  const visibleItems = compact && filter === "unread" ? items.filter(item => !item.read_at) : items;
 
   const markRead = async (id) => {
     if (String(id).startsWith("game:")) {
@@ -44,6 +46,34 @@ export default function TournamentNotifications({ token, onOpenTarget, onUnreadC
     if (!item.read_at) await markRead(item.id);
     onOpenTarget?.(item);
   };
+
+  if (compact) return <section className="notification-popover" aria-label="Thông báo">
+    <div className="notification-popover__heading">
+      <h2>Thông báo</h2>
+      <button className="notification-popover__close" onClick={onClose} aria-label="Đóng thông báo">×</button>
+    </div>
+    <div className="notification-popover__filters">
+      <div className="notification-popover__tabs" role="tablist" aria-label="Lọc thông báo">
+        <button role="tab" aria-selected={filter === "all"} className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>Tất cả</button>
+        <button role="tab" aria-selected={filter === "unread"} className={filter === "unread" ? "selected" : ""} onClick={() => setFilter("unread")}>Chưa đọc{unread > 0 ? ` (${unread})` : ""}</button>
+      </div>
+      <button className="notification-popover__view-all" onClick={onViewAll}>Xem tất cả</button>
+    </div>
+    {error && <p className="notification-error" role="alert">{error}</p>}
+    <div className="notification-popover__list" aria-live="polite">
+      {loading ? <p className="notification-popover__empty">Đang tải thông báo…</p> : visibleItems.length ? visibleItems.map(item => <button
+        type="button" key={item.id} className={`notification-popover__item ${item.read_at ? "is-read" : "is-unread"}`}
+        onClick={() => openTarget(item)}>
+        <span className="notification-popover__icon" aria-hidden="true">{item.type === "game" ? "🎮" : item.type === "match" ? "⚔️" : item.type === "result" || item.type === "champion" ? "🏆" : "🎟️"}</span>
+        <span className="notification-popover__content">
+          <strong>{item.title}</strong>
+          {item.message && <span className="notification-popover__message">{item.message}</span>}
+          <span className="notification-popover__time">{formatDate(item.scheduled_at ?? item.created_at)}</span>
+        </span>
+        {!item.read_at && <span className="notification-popover__unread-dot" aria-label="Chưa đọc" />}
+      </button>) : <p className="notification-popover__empty">{filter === "unread" ? "Bạn đã đọc hết thông báo." : "Chưa có thông báo mới."}</p>}
+    </div>
+  </section>;
 
   return <section className="tournament-notifications">
     <div className="tournament-notifications-heading">

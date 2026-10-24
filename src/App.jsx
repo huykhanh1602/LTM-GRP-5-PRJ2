@@ -80,9 +80,25 @@ export default function App() {
   const [tournamentRoundNo, setTournamentRoundNo] = useState(null);
   const [lobbyMode, setLobbyMode] = useState("casual");
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsMenuRef = useRef(null);
 
   const room = useRoom();
   const auth = useAuth();
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return undefined;
+    const closeOnOutside = event => {
+      if (!notificationsMenuRef.current?.contains(event.target)) setIsNotificationsOpen(false);
+    };
+    const closeOnEscape = event => { if (event.key === "Escape") setIsNotificationsOpen(false); };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isNotificationsOpen]);
 
   useEffect(() => {
     if (!auth.token) { setUnreadNotifications(0); return undefined; }
@@ -442,13 +458,30 @@ export default function App() {
         {/* ── Khu vực Phải: âm thanh + nút tài khoản ── */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
           <SoundControl />
-          <button className={`topbar-notifications ${view === "notifications" ? "on" : ""}`}
-            onClick={() => {
-              if (!auth.isLoggedIn) { setIsAuthOpen(true); return; }
-              navigate({ view: "notifications", gameId: null, tournamentId: null });
-            }} aria-label="Thông báo" title="Thông báo">
-            🔔 <span>Thông báo{unreadNotifications > 0 ? ` (${unreadNotifications})` : ""}</span>
-          </button>
+          <div className="notification-menu" ref={notificationsMenuRef}>
+            <button className={`topbar-notifications ${isNotificationsOpen || view === "notifications" ? "on" : ""}`}
+              onClick={() => {
+                if (!auth.isLoggedIn) { setIsAuthOpen(true); return; }
+                setIsNotificationsOpen(open => !open);
+              }} aria-label={`Thông báo${unreadNotifications > 0 ? `, ${unreadNotifications} chưa đọc` : ""}`}
+              aria-expanded={isNotificationsOpen} aria-haspopup="dialog" title="Thông báo">
+              🔔 <span>Thông báo</span>{unreadNotifications > 0 && <span className="topbar-notifications__badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+            </button>
+            {isNotificationsOpen && <TournamentNotifications
+              compact
+              token={auth.token}
+              onUnreadChange={setUnreadNotifications}
+              onClose={() => setIsNotificationsOpen(false)}
+              onViewAll={() => {
+                setIsNotificationsOpen(false);
+                navigate({ view: "notifications", gameId: null, tournamentId: null });
+              }}
+              onOpenTarget={item => {
+                setIsNotificationsOpen(false);
+                openNotificationTarget(item);
+              }}
+            />}
+          </div>
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */
             <button
