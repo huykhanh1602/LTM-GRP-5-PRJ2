@@ -1,14 +1,16 @@
 // ─────────────────────────────────────────────────────────────
-// SubmissionModal — Modal nộp / cập nhật Code Bot cho vòng đấu
-// (chỉ khi roundSubmissionMode = PER_ROUND).
+// SubmissionModal — Modal nộp / cập nhật Code Bot cho vòng đấu.
+// - PER_ROUND: nộp code mới cho từng vòng.
+// - SINGLE: nộp bot đại diện lần đầu (dùng cho toàn giải).
 // ─────────────────────────────────────────────────────────────
 import { useRef, useState } from "react";
 
-export function SubmissionModal({ roundNo, deadline, submitting, onClose, onSubmit }) {
+export function SubmissionModal({ roundNo, deadline, submitting, onClose, onSubmit, mode }) {
   const fileInput = useRef(null);
   const [fileName, setFileName] = useState("");
   const [source, setSource] = useState("");
   const [error, setError] = useState(null);
+  const isPerRound = mode === "PER_ROUND";
 
   function pickFile(file) {
     if (!file) return;
@@ -34,13 +36,24 @@ export function SubmissionModal({ roundNo, deadline, submitting, onClose, onSubm
     <div className="tm-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <form className="tm-modal" onSubmit={handleSubmit} onClick={(event) => event.stopPropagation()}>
         <header className="tm-modal__head">
-          <h3>📝 Nộp code cho vòng {roundNo}</h3>
+          <h3>
+            {isPerRound
+              ? `📝 Nộp code cho vòng ${roundNo}`
+              : "📝 Nộp bot đại diện"}
+          </h3>
           {deadline && (
             <span className="tm-countdown">
               ⏳ Hạn nộp: {new Date(deadline).toLocaleTimeString("vi-VN")}
             </span>
           )}
         </header>
+
+        {!isPerRound && (
+          <p className="tm-hint">
+            Bot này sẽ được dùng làm đại diện cho toàn bộ giải đấu.
+            Bạn có thể cập nhật lại trước khi giải khởi tranh.
+          </p>
+        )}
 
         <label className="tm-file-drop">
           <input

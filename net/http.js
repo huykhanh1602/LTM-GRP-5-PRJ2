@@ -259,18 +259,30 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isTeamCreate = url.pathname === "/api/teams" && request.method === "POST";
             const teamMemberRoute = url.pathname.match(/^\/api\/teams\/([^/]+)\/members$/);
             const isTeamMember = Boolean(teamMemberRoute) && request.method === "POST";
+            const teamMemberDeleteRoute = url.pathname.match(/^\/api\/teams\/([^/]+)\/members\/([^/]+)$/);
+            const isTeamMemberDelete = Boolean(teamMemberDeleteRoute) && request.method === "DELETE";
             const entrySubmissionRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries\/submission$/);
             const isEntrySubmission = Boolean(entrySubmissionRoute) && request.method === "PATCH";
             const isOrganizerAction = (Boolean(organizerRoute?.[2]) || isTriggerStart) && ["POST", "PATCH"].includes(request.method);
             const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
             const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
             const isResolveRound = Boolean(resolveRoundRoute) && request.method === "POST";
-            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isEntrySubmission ||
+            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isTeamMemberDelete || isEntrySubmission ||
                 isMyMatchReady || isMyMatchSubmission || isResolveRound) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
                 if (actor.banned) { send(403, { error: "USER_BANNED" }); return; }
                 try {
+                    if (isTeamMemberDelete) {
+                        const teamId = decodePathId(teamMemberDeleteRoute[1]);
+                        const targetUserId = decodePathId(teamMemberDeleteRoute[2]);
+                        const members = await matchStore.getTeamMembers(teamId);
+                        const me = members.find((m) => m.user_id === actor.id);
+                        if (!me || me.role !== 'captain') {
+                            throw new StorageError('FORBIDDEN', 'Chỉ đội trưởng mới có thể xóa thành viên', 403);
+                        }
+                        send(200, await matchStore.removeTeamMember(teamId, targetUserId)); return;
+                    }
                     const body = await readJsonBody(request, 64 * 1024, { allowEmpty: true });
                     if (isCreate) {
                         const { codeSlug, ...input } = buildTournamentInput(body, actor);

@@ -68,6 +68,14 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       throw error;
     }
   }
+  async function removeTeamMember(teamId, userId, client = pool) {
+    teamId = required(teamId, 'teamId'); userId = required(userId, 'userId');
+    const member = (await query('SELECT role FROM team_members WHERE team_id=$1 AND user_id=$2', [teamId, userId], client)).rows[0];
+    if (!member) throw new StorageError('MEMBER_NOT_FOUND', 'Thành viên không tồn tại trong đội', 404);
+    if (member.role === 'captain') throw new StorageError('CANNOT_REMOVE_CAPTAIN', 'Không thể xóa đội trưởng khỏi đội', 403);
+    await query('DELETE FROM team_members WHERE team_id=$1 AND user_id=$2', [teamId, userId], client);
+    return { team_id: teamId, user_id: userId };
+  }
   async function getTeamMembers(teamId, client = pool) {
     return (await query(`SELECT tm.team_id,tm.user_id,tm.role,tm.joined_at,u.display_name,u.avatar_url
       FROM team_members tm JOIN users u ON u.id=tm.user_id WHERE tm.team_id=$1 ORDER BY tm.joined_at`,[teamId],client)).rows;
@@ -602,33 +610,46 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const config=tournament.config??{};
     const myIds=await myEntryIdSet(tournament.id,userId);
     const rounds=await listTournamentRounds(tournament.id);
+    let spectatorSlot=null;
     for(const round of rounds){
-      // Vòng chưa mở cửa sổ nộp code thì chưa tính là trận hiện tại.
       if(!round.submission_started_at) continue;
       for(const slot of round.matches){
-        if(slot.winner_id||slot.match_id||!slot.participant_a_id||!slot.participant_b_id)continue;
+        if(slot.winner_id||!slot.participant_a_id||!slot.participant_b_id)continue;
         const meIsA=myIds.has(slot.participant_a_id);
         const meIsB=myIds.has(slot.participant_b_id);
-        if(!meIsA&&!meIsB)continue;
-        const me=meIsA?slot.participant_a_id:slot.participant_b_id;
-        const opp=meIsA?slot.participant_b_id:slot.participant_a_id;
-        const readyRows=(await query('SELECT participant_id,ready FROM tournament_readiness WHERE tournament_id=$1 AND round_no=$2 AND slot_index=$3',[tournament.id,round.round_no,slot.slot_index])).rows;
-        const ready=new Map(readyRows.map(r=>[r.participant_id,Boolean(r.ready)]));
-        const meSub=await submissionOf(tournament.id,config,me,round.round_no);
-        const oppSub=await submissionOf(tournament.id,config,opp,round.round_no);
-        const meReady=Boolean(ready.get(me));
-        const oppReady=Boolean(ready.get(opp));
-        return {
-          found:true,tournamentId:tournament.id,tournamentStatus:tournament.status,
-          roundNo:round.round_no,slotIndex:slot.slot_index,matchKey:`r${round.round_no}m${slot.slot_index}`,
-          mode:config.roundSubmissionMode??'SINGLE',submissionWindowMinutes:config.submissionWindowMinutes??10,
-          submissionStartedAt:round.submission_started_at??null,
-          submissionDeadline:round.submission_deadline??null,
-          me:{entryId:me,name:meIsA?slot.participant_a_name:slot.participant_b_name,ready:meReady,submitted:Boolean(meSub),submissionId:meSub?.id??null,filename:meSub?.filename??null},
-          opponent:{entryId:opp,name:meIsA?slot.participant_b_name:slot.participant_a_name,ready:oppReady,submitted:Boolean(oppSub),submissionId:oppSub?.id??null,filename:oppSub?.filename??null},
-          bothReady:meReady&&oppReady,matchId:slot.match_id??null,
-        };
+        if(meIsA||meIsB){
+          const me=meIsA?slot.participant_a_id:slot.participant_b_id;
+          const opp=meIsA?slot.participant_b_id:slot.participant_a_id;
+          const readyRows=(await query('SELECT participant_id,ready FROM tournament_readiness WHERE tournament_id=$1 AND round_no=$2 AND slot_index=$3',[tournament.id,round.round_no,slot.slot_index])).rows;
+          const ready=new Map(readyRows.map(r=>[r.participant_id,Boolean(r.ready)]));
+          const meSub=await submissionOf(tournament.id,config,me,round.round_no);
+          const oppSub=await submissionOf(tournament.id,config,opp,round.round_no);
+          const meReady=Boolean(ready.get(me));
+          const oppReady=Boolean(ready.get(opp));
+          return {
+            found:true,isParticipant:true,tournamentId:tournament.id,tournamentStatus:tournament.status,
+            roundNo:round.round_no,slotIndex:slot.slot_index,matchKey:`r${round.round_no}m${slot.slot_index}`,
+            mode:config.roundSubmissionMode??'SINGLE',submissionWindowMinutes:config.submissionWindowMinutes??10,
+            submissionStartedAt:round.submission_started_at??null,
+            submissionDeadline:round.submission_deadline??null,
+            me:{entryId:me,name:meIsA?slot.participant_a_name:slot.participant_b_name,ready:meReady,submitted:Boolean(meSub),submissionId:meSub?.id??null,filename:meSub?.filename??null},
+            opponent:{entryId:opp,name:meIsA?slot.participant_b_name:slot.participant_a_name,ready:oppReady,submitted:Boolean(oppSub),submissionId:oppSub?.id??null,filename:oppSub?.filename??null},
+            bothReady:meReady&&oppReady,matchId:slot.match_id??null,
+          };
+        }
+        if(!spectatorSlot) spectatorSlot={round,slot};
       }
+    }
+    if(spectatorSlot){
+      const{round,slot}=spectatorSlot;
+      return {
+        found:true,isParticipant:false,tournamentId:tournament.id,tournamentStatus:tournament.status,
+        roundNo:round.round_no,slotIndex:slot.slot_index,matchKey:`r${round.round_no}m${slot.slot_index}`,
+        mode:config.roundSubmissionMode??'SINGLE',submissionWindowMinutes:config.submissionWindowMinutes??10,
+        matchId:slot.match_id??null,
+        me:{name:slot.participant_a_name},
+        opponent:{name:slot.participant_b_name},
+      };
     }
     return {found:false,tournamentId:tournament.id,tournamentStatus:tournament.status};
   }
@@ -652,7 +673,6 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const tournament=(await query('SELECT id,status,config FROM tournaments WHERE id=$1 OR code=$1',[tournamentId])).rows[0];
     if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
     const config=tournament.config??{};
-    if(config.roundSubmissionMode!=='PER_ROUND')throw new StorageError('INVALID_MODE','Giải không ở chế độ nộp bot theo vòng (PER_ROUND).');
     if(tournament.status!=='in_progress')throw new StorageError('INVALID_STATE','Giải chưa bắt đầu hoặc đã kết thúc.');
     if(!Number.isSafeInteger(roundNo)||roundNo<1)throw new StorageError('INVALID_INPUT','roundNo phải là số nguyên > 0');
     const myIds=await myEntryIdSet(tournament.id,userId);
@@ -664,10 +684,20 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const entryId=entry.team_id??entry.user_id;
     await registerTeam({id:entryId,name:entry.display_name??entryId});
     const saved=await saveBotSubmission({roomId:`t-${tournament.id}-r${roundNo}`,teamId:entryId,filename:filename??'bot.py',source});
-    await query(`INSERT INTO tournament_round_submissions(tournament_id,round_no,entry_id,submission_id,created_at)
-      VALUES($1,$2,$3,$4,now())
-      ON CONFLICT(tournament_id,round_no,entry_id) DO UPDATE SET submission_id=excluded.submission_id,created_at=now()`,
-      [tournament.id,roundNo,entryId,saved.id]);
+
+    if(config.roundSubmissionMode==='PER_ROUND'){
+      await query(`INSERT INTO tournament_round_submissions(tournament_id,round_no,entry_id,submission_id,created_at)
+        VALUES($1,$2,$3,$4,now())
+        ON CONFLICT(tournament_id,round_no,entry_id) DO UPDATE SET submission_id=excluded.submission_id,created_at=now()`,
+        [tournament.id,roundNo,entryId,saved.id]);
+    } else {
+      // SINGLE: lưu làm bot đại diện cho toàn bộ giải đấu
+      await query(`INSERT INTO tournament_entries(tournament_id,user_id,team_id,display_name,bot_submission_id,created_at)
+        VALUES($1,$2,$3,$4,$5,now())
+        ON CONFLICT(tournament_id,COALESCE(team_id,user_id))
+        DO UPDATE SET bot_submission_id=excluded.bot_submission_id`,
+        [tournament.id,entry.user_id,entry.team_id,entry.display_name,saved.id]);
+    }
     return {id:saved.id,filename:saved.filename,roundNo};
   }
   async function getTournamentSlot(tournamentId,roundNo,slotIndex) {
@@ -743,7 +773,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       return {tournamentId:tournament.id,roundNo,results,resolved:results.length};
     });
   }
-  return { initialize, registerTeam, addTeamMember, getTeamMembers, getTeam,
+  return { initialize, registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam,
     startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,

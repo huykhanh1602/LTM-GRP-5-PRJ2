@@ -143,6 +143,14 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       throw error;
     }
   }
+  function removeTeamMember(teamId, userId) {
+    teamId = requireText(teamId, 'teamId'); userId = requireText(userId, 'userId');
+    const member = db.prepare('SELECT role FROM team_members WHERE team_id=? AND user_id=?').get(teamId, userId);
+    if (!member) throw new StorageError('MEMBER_NOT_FOUND', 'Thành viên không tồn tại trong đội', 404);
+    if (member.role === 'captain') throw new StorageError('CANNOT_REMOVE_CAPTAIN', 'Không thể xóa đội trưởng khỏi đội', 403);
+    db.prepare('DELETE FROM team_members WHERE team_id=? AND user_id=?').run(teamId, userId);
+    return { team_id: teamId, user_id: userId };
+  }
   function getTeamMembers(teamId) {
     return db.prepare(`SELECT tm.team_id,tm.user_id,tm.role,tm.joined_at,u.display_name,u.avatar_url
       FROM team_members tm JOIN users u ON u.id=tm.user_id WHERE tm.team_id=? ORDER BY tm.joined_at`).all(teamId);
@@ -892,6 +900,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   }
 
   // Trận hiện tại của user ở vòng đang diễn ra (slot ready, chưa có winner/matchId).
+  // Nếu user không phải tay đấu, trả về trận active đầu tiên với isParticipant: false (spectator).
   function getTournamentMyMatch(tournamentId, userId) {
     userId = requireText(userId, 'userId');
     const tournament = db.prepare('SELECT id, format, status, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
@@ -901,56 +910,86 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     const myIds = myEntryIdSet(entries, userId);
     const rounds = listTournamentRounds(tournament.id);
 
+    let spectatorSlot = null; // lưu trận active đầu tiên cho spectator
+
     for (const round of rounds) {
-      // Vòng chưa mở cửa sổ nộp code thì chưa tính là trận hiện tại.
       if (!round.submission_started_at) continue;
       for (const slot of round.matches) {
-        if (slot.winner_id || slot.match_id || !slot.participant_a_id || !slot.participant_b_id) continue;
+        if (slot.winner_id || !slot.participant_a_id || !slot.participant_b_id) continue;
         const meIsA = myIds.has(slot.participant_a_id);
         const meIsB = myIds.has(slot.participant_b_id);
-        if (!meIsA && !meIsB) continue;
-        const me = meIsA ? slot.participant_a_id : slot.participant_b_id;
-        const opp = meIsA ? slot.participant_b_id : slot.participant_a_id;
-        const readinessRows = db.prepare(`SELECT participant_id, ready FROM tournament_readiness
-          WHERE tournament_id = ? AND round_no = ? AND slot_index = ?`)
-          .all(tournament.id, round.round_no, slot.slot_index);
-        const ready = new Map(readinessRows.map((row) => [row.participant_id, Boolean(row.ready)]));
-        const meSub = submissionOf(tournament.id, config, me, round.round_no);
-        const oppSub = submissionOf(tournament.id, config, opp, round.round_no);
-        const meReady = Boolean(ready.get(me));
-        const oppReady = Boolean(ready.get(opp));
-        return {
-          found: true,
-          tournamentId: tournament.id,
-          tournamentStatus: tournament.status,
-          roundNo: round.round_no,
-          slotIndex: slot.slot_index,
-          matchKey: `r${round.round_no}m${slot.slot_index}`,
-          mode: config.roundSubmissionMode ?? 'SINGLE',
-          submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
-          submissionStartedAt: round.submission_started_at ?? null,
-          submissionDeadline: round.submission_deadline ?? null,
-          me: {
-            entryId: me,
-            name: meIsA ? slot.participant_a_name : slot.participant_b_name,
-            ready: meReady,
-            submitted: Boolean(meSub),
-            submissionId: meSub?.id ?? null,
-            filename: meSub?.filename ?? null,
-          },
-          opponent: {
-            entryId: opp,
-            name: meIsA ? slot.participant_b_name : slot.participant_a_name,
-            ready: oppReady,
-            submitted: Boolean(oppSub),
-            submissionId: oppSub?.id ?? null,
-            filename: oppSub?.filename ?? null,
-          },
-          bothReady: meReady && oppReady,
-          matchId: slot.match_id ?? null,
-        };
+
+        if (meIsA || meIsB) {
+          // ── User là tay đấu chính ──
+          const me = meIsA ? slot.participant_a_id : slot.participant_b_id;
+          const opp = meIsA ? slot.participant_b_id : slot.participant_a_id;
+          const readinessRows = db.prepare(`SELECT participant_id, ready FROM tournament_readiness
+            WHERE tournament_id = ? AND round_no = ? AND slot_index = ?`)
+            .all(tournament.id, round.round_no, slot.slot_index);
+          const ready = new Map(readinessRows.map((row) => [row.participant_id, Boolean(row.ready)]));
+          const meSub = submissionOf(tournament.id, config, me, round.round_no);
+          const oppSub = submissionOf(tournament.id, config, opp, round.round_no);
+          const meReady = Boolean(ready.get(me));
+          const oppReady = Boolean(ready.get(opp));
+          return {
+            found: true,
+            isParticipant: true,
+            tournamentId: tournament.id,
+            tournamentStatus: tournament.status,
+            roundNo: round.round_no,
+            slotIndex: slot.slot_index,
+            matchKey: `r${round.round_no}m${slot.slot_index}`,
+            mode: config.roundSubmissionMode ?? 'SINGLE',
+            submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
+            submissionStartedAt: round.submission_started_at ?? null,
+            submissionDeadline: round.submission_deadline ?? null,
+            me: {
+              entryId: me,
+              name: meIsA ? slot.participant_a_name : slot.participant_b_name,
+              ready: meReady,
+              submitted: Boolean(meSub),
+              submissionId: meSub?.id ?? null,
+              filename: meSub?.filename ?? null,
+            },
+            opponent: {
+              entryId: opp,
+              name: meIsA ? slot.participant_b_name : slot.participant_a_name,
+              ready: oppReady,
+              submitted: Boolean(oppSub),
+              submissionId: oppSub?.id ?? null,
+              filename: oppSub?.filename ?? null,
+            },
+            bothReady: meReady && oppReady,
+            matchId: slot.match_id ?? null,
+          };
+        }
+
+        // Lưu trận active đầu tiên cho spectator (nếu chưa có)
+        if (!spectatorSlot) {
+          spectatorSlot = { round, slot };
+        }
       }
     }
+
+    // ── Không phải tay đấu → trả về trận active đầu tiên dạng spectator ──
+    if (spectatorSlot) {
+      const { round, slot } = spectatorSlot;
+      return {
+        found: true,
+        isParticipant: false,
+        tournamentId: tournament.id,
+        tournamentStatus: tournament.status,
+        roundNo: round.round_no,
+        slotIndex: slot.slot_index,
+        matchKey: `r${round.round_no}m${slot.slot_index}`,
+        mode: config.roundSubmissionMode ?? 'SINGLE',
+        submissionWindowMinutes: config.submissionWindowMinutes ?? 10,
+        matchId: slot.match_id ?? null,
+        me: { name: slot.participant_a_name },
+        opponent: { name: slot.participant_b_name },
+      };
+    }
+
     return { found: false, tournamentId: tournament.id, tournamentStatus: tournament.status };
   }
 
@@ -978,14 +1017,13 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return refreshed;
   }
 
-  // Nộp bot theo vòng (PER_ROUND). SUBMISSION_REQUIRED nếu mode không cho phép.
+  // Nộp bot cho vòng đấu.
+  // - PER_ROUND: lưu vào tournament_round_submissions (nộp riêng từng vòng).
+  // - SINGLE: lưu vào tournament_entries.bot_submission_id (bot đại diện cho toàn giải).
   function submitTournamentRoundBot(tournamentId, userId, roundNo, { filename, source } = {}) {
     const tournament = db.prepare('SELECT id, status, config_json FROM tournaments WHERE id = ? OR code = ?').get(tournamentId, tournamentId);
     if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
     const config = JSON.parse(tournament.config_json);
-    if (config.roundSubmissionMode !== 'PER_ROUND') {
-      throw new StorageError('INVALID_MODE', 'Giải không ở chế độ nộp bot theo vòng (PER_ROUND).');
-    }
     if (tournament.status !== 'in_progress') {
       throw new StorageError('INVALID_STATE', 'Giải chưa bắt đầu hoặc đã kết thúc.');
     }
@@ -1001,11 +1039,21 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     const roomId = `t-${tournament.id}-r${roundNo}`;
     registerTeam({ id: entryId, name: entry.display_name ?? entryId });
     const saved = saveBotSubmission({ roomId, teamId: entryId, filename: filename ?? 'bot.py', source });
-    db.prepare(`INSERT INTO tournament_round_submissions (tournament_id, round_no, entry_id, submission_id, created_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(tournament_id, round_no, entry_id)
-      DO UPDATE SET submission_id = excluded.submission_id, created_at = excluded.created_at`)
-      .run(tournament.id, roundNo, entryId, saved.id, new Date().toISOString());
+
+    if (config.roundSubmissionMode === 'PER_ROUND') {
+      db.prepare(`INSERT INTO tournament_round_submissions (tournament_id, round_no, entry_id, submission_id, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(tournament_id, round_no, entry_id)
+        DO UPDATE SET submission_id = excluded.submission_id, created_at = excluded.created_at`)
+        .run(tournament.id, roundNo, entryId, saved.id, new Date().toISOString());
+    } else {
+      // SINGLE: lưu làm bot đại diện cho toàn bộ giải đấu
+      db.prepare(`INSERT INTO tournament_entries (tournament_id, user_id, team_id, display_name, bot_submission_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(tournament_id, COALESCE(team_id, user_id))
+        DO UPDATE SET bot_submission_id = excluded.bot_submission_id`)
+        .run(tournament.id, entry.user_id, entry.team_id, entry.display_name, saved.id, new Date().toISOString());
+    }
     return { id: saved.id, filename: saved.filename, roundNo };
   }
 
@@ -1183,7 +1231,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       ended_at = ? WHERE status = 'playing'`).run(new Date().toISOString()).changes;
   }
 
-  return { registerTeam, addTeamMember, getTeamMembers, getTeam,
+  return { registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam,
     startMatch, appendTurn, finishMatch, getMatch, listMatches,
     getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,

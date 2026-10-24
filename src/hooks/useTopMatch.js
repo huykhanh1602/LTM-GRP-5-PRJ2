@@ -60,7 +60,7 @@ export function useTopMatch({ tournamentId = null, token = null, enabled = true,
 
   // Hết giờ nộp code: yêu cầu backend xử lý (xử thua / random nếu cả 2 chưa nộp).
   useEffect(() => {
-    if (!match?.found || !deadline || match.matchId || match.bothReady) return;
+    if (!match?.found || match.isParticipant === false || !deadline || match.matchId || match.bothReady) return;
     const timeout = new Date(deadline).getTime() - Date.now();
     if (timeout > 0) return;
     const key = `${match.tournamentId}:${match.roundNo}`;

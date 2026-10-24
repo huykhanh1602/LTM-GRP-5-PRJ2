@@ -57,6 +57,10 @@ export const createTeam = (name, token) => post(`${V1}/teams`, { name }, token);
 export const getTeam = (id, token) => get(`${V1}/teams/${encodeURIComponent(id)}`, { token });
 export const addTeamMember = (id, userId, token) =>
     post(`${V1}/teams/${encodeURIComponent(id)}/members`, { user_id: userId }, token);
+export const removeTeamMember = (id, userId, token) =>
+    request(`${V1}/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, {
+        method: "DELETE", token,
+    });
 export const setEntrySubmission = (tournamentId, { teamId = null, userId = null, submissionId }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/entries/submission`, {
         method: "PATCH", body: { team_id: teamId, user_id: userId, submission_id: submissionId }, token,
