@@ -1,20 +1,23 @@
-import { useEffect, useState } from "react";
-import { addTeamMember, getBotSubmissions, getTeam, setEntrySubmission } from "../../api.js";
+import { useEffect, useRef, useState } from "react";
+import { addTeamMember, createBotSubmission, getTeam, setEntrySubmission } from "../../api.js";
 import { apiErrorText } from "../../utils/tournamentApi.js";
+import { BOT_LANGUAGES } from "../../utils/botLanguages.js";
 
 // ─────────────────────────────────────────────────────────────
-// Đội của tôi: đội trưởng xem/thêm thành viên và đổi Bot Submission
-// đại diện trước khi giải khởi tranh.
+// Đội của tôi: đội trưởng xem/thêm thành viên và đổi Bot đại diện
+// bằng cách dán code trực tiếp hoặc tải file `.py` lên.
 // ─────────────────────────────────────────────────────────────
 export default function TeamManagementPanel({ tournament, user, token, onUpdated }) {
   const entry = (tournament.raw?.entries ?? []).find(
     (item) => item.team_id && String(item.user_id) === String(user?.id),
   );
   const teamId = entry?.team_id ?? null;
+  const fileRef = useRef(null);
   const [team, setTeam] = useState(null);
   const [memberId, setMemberId] = useState("");
-  const [submissions, setSubmissions] = useState([]);
-  const [submissionId, setSubmissionId] = useState(entry?.bot_submission_id ?? "");
+  const [source, setSource] = useState("");
+  const [filename, setFilename] = useState("bot.py");
+  const [language, setLanguage] = useState("python");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -25,16 +28,28 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
     return () => { active = false; };
   }, [teamId, token]);
 
-  useEffect(() => {
-    let active = true;
-    if (!tournament.code) return undefined;
-    getBotSubmissions(tournament.code, token, { limit: 50 })
-      .then((data) => active && setSubmissions(data.items ?? []))
-      .catch(() => active && setSubmissions([]));
-    return () => { active = false; };
-  }, [tournament.code, token]);
-
   if (!teamId) return null;
+
+  const extensionMap = {
+    py: "python",
+    js: "javascript",
+    cpp: "cpp",
+    cc: "cpp",
+    cxx: "cpp",
+    java: "java",
+  };
+
+  function handleFilePick(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFilename(file.name);
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const detectedLang = extensionMap[ext] ?? "python";
+    setLanguage(detectedLang);
+    const reader = new FileReader();
+    reader.onload = (e) => setSource(e.target.result);
+    reader.readAsText(file);
+  }
 
   async function addMember() {
     if (!memberId.trim()) return;
@@ -53,13 +68,14 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
   }
 
   async function saveSubmission() {
-    if (!submissionId) return;
     setBusy(true);
     setMsg(null);
     try {
+      const sub = await createBotSubmission(tournament.code, filename, source, token);
+      const submissionId = sub.id ?? sub.submission_id;
       await setEntrySubmission(tournament.id, { teamId, submissionId }, token);
       onUpdated?.();
-      setMsg({ tone: "ok", text: "Đã đổi Bot Submission đại diện cho Đội." });
+      setMsg({ tone: "ok", text: "✅ Bot đại diện đã được cập nhật." });
     } catch (err) {
       setMsg({ tone: "err", text: apiErrorText(err) });
     } finally {
@@ -98,24 +114,61 @@ export default function TeamManagementPanel({ tournament, user, token, onUpdated
         </button>
       </div>
 
-      <div className="tl-form-label">Bot Submission đại diện cho Đội</div>
+      <div className="tl-form-label">🤖 Bot đại diện</div>
+
+      <div className="tl-bot-row">
+        <input
+          className="tl-form-input"
+          placeholder="Tên file, ví dụ: bot.py"
+          value={filename}
+          onChange={(e) => {
+            setFilename(e.target.value);
+            const ext = e.target.value.split(".").pop()?.toLowerCase();
+            if (extensionMap[ext]) setLanguage(extensionMap[ext]);
+          }}
+        />
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => fileRef.current?.click()}
+        >
+          📂 Chọn file
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".py,.js,.cpp,.cc,.cxx,.java"
+          style={{ display: "none" }}
+          onChange={handleFilePick}
+        />
+      </div>
+
       <select
         className="tl-form-input"
-        value={submissionId}
-        onChange={(event) => setSubmissionId(event.target.value)}
+        value={language}
+        onChange={(e) => setLanguage(e.target.value)}
       >
-        <option value="">— chọn bot đại diện —</option>
-        {submissions.map((item) => (
-          <option key={item.id} value={item.id}>{item.filename}</option>
+        {BOT_LANGUAGES.map((lang) => (
+          <option key={lang.id} value={lang.id}>{lang.label}</option>
         ))}
       </select>
+
+      <textarea
+        className="tl-bot-textarea"
+        rows={12}
+        placeholder={'# Dán code bot Python (hoặc chọn file ở trên)\ndef my_move(state):\n    return "R"'}
+        value={source}
+        onChange={(e) => setSource(e.target.value)}
+        spellCheck={false}
+      />
+
       <button
         type="button"
         className="btn small primary"
-        disabled={busy || !submissionId}
+        disabled={busy || !source.trim()}
         onClick={saveSubmission}
       >
-        💾 Lưu bot đại diện
+        💾 Lưu Bot đại diện
       </button>
 
       {msg && <p className={msg.tone === "ok" ? "ok" : "err"}>{msg.text}</p>}
