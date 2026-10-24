@@ -15,6 +15,7 @@ import { sound } from "./audio/soundManager.js";
 import { useRoom } from "./hooks/useRoom.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { GAME_CATALOG } from "./games/catalog.js";
+import { getTournamentNotifications } from "./api.js";
 import "./styles/pages.css";
 import "./styles/home.css";
 import "./styles/auth.css";
@@ -78,9 +79,27 @@ export default function App() {
   const [tournamentId, setTournamentId] = useState(null);
   const [tournamentRoundNo, setTournamentRoundNo] = useState(null);
   const [lobbyMode, setLobbyMode] = useState("casual");
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const room = useRoom();
   const auth = useAuth();
+
+  useEffect(() => {
+    if (!auth.token) { setUnreadNotifications(0); return undefined; }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await getTournamentNotifications(auth.token, { limit: 1 });
+        let readGames = [];
+        try { readGames = JSON.parse(localStorage.getItem("botvui.read-game-announcements") || "[]"); } catch { /* Ignore invalid local state. */ }
+        const newGameCount = GAME_CATALOG.filter(game => game.categories?.includes("new") && !readGames.includes(`game:${game.id}`)).length;
+        if (active) setUnreadNotifications((result.unread ?? 0) + newGameCount);
+      } catch { if (active) setUnreadNotifications(0); }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [auth.token]);
 
   // Refs để đọc giá trị mới nhất bên trong callback/effect ổn định.
   const selectedGameIdRef = useRef(selectedGameId);
@@ -237,7 +256,7 @@ export default function App() {
   if (view === "notifications") {
     page = <main className="global-notifications-page">
       <button className="btn small" onClick={goBack}>← Quay lại</button>
-      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} onOpenTarget={openNotificationTarget} /> :
+      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} /> :
         <section className="notifications-login-prompt"><h1>Thông báo giải đấu</h1>
           <p>Đăng nhập để xem lịch thi đấu và kết quả của các giải bạn tham gia.</p>
           <button className="quick-auth-btn" onClick={() => setIsAuthOpen(true)}>👤 Đăng nhập</button>
@@ -428,7 +447,7 @@ export default function App() {
               if (!auth.isLoggedIn) { setIsAuthOpen(true); return; }
               navigate({ view: "notifications", gameId: null, tournamentId: null });
             }} aria-label="Thông báo" title="Thông báo">
-            🔔 <span>Thông báo</span>
+            🔔 <span>Thông báo{unreadNotifications > 0 ? ` (${unreadNotifications})` : ""}</span>
           </button>
           {auth.isLoggedIn ? (
             /* Đã đăng nhập: CHỈ 1 NÚT dẫn vào Trang cá nhân */

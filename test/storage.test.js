@@ -129,7 +129,8 @@ test('tournament notices are persistent, participant scoped and include round re
   store.recordTournamentMatch({ tournamentId: tournament.id, roundId: round.id, participantAId: player.id,
     participantAName: 'Player', participantBId: rival.id, participantBName: 'Rival', winnerId: player.id });
   const notices = store.listTournamentNotifications(player.id);
-  assert.ok(notices.items.some(item => item.type === 'schedule'));
+  assert.ok(notices.items.some(item => item.type === 'schedule' && item.metadata.status === 'open'));
+  assert.ok(notices.items.some(item => item.type === 'schedule' && item.metadata.registrationOpen === true));
   assert.ok(notices.items.some(item => item.type === 'result' && item.title.includes('chiến thắng')
     && item.game_id === 'rps_chess' && item.metadata.roundNo === 1));
   assert.ok(store.listTournamentNotifications(rival.id).items.some(item => item.type === 'result' && item.title.includes('thất bại')));
@@ -139,6 +140,9 @@ test('tournament notices are persistent, participant scoped and include round re
   store.markTournamentNotificationRead(player.id, notices.items[0].id);
   assert.equal(store.listTournamentNotifications(player.id).unread, notices.unread - 1);
   assert.equal(store.listTournamentNotifications(player.id).total, notices.total);
+  store.updateTournamentStatus(tournament.id, 'in_progress');
+  assert.ok(store.listTournamentNotifications(outsider.id).items.some(item =>
+    item.type === 'schedule' && item.metadata.status === 'in_progress'));
 });
 
 test('HTTP APIs support pagination, filters, replay, errors and reject public writes', async t => {

@@ -291,11 +291,17 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(tournament.config?.organizerId)recipients.add(tournament.config.organizerId);
       for(const entry of tournament.entries){if(entry.user_id)recipients.add(entry.user_id);if(entry.team_id)for(const member of await getTeamMembers(entry.team_id))recipients.add(member.user_id);}
       if(['draft','open','in_progress'].includes(tournament.status)){
-        const phase=tournament.status==='in_progress'?'đang diễn ra':tournament.status==='draft'?'dự kiến':'sắp diễn ra';
-        events.push({key:`tournament:schedule:${tournament.status}`,type:'schedule',title:`${tournament.name} — ${phase}`,message:`Giải ${tournament.name} ${phase}${tournament.starts_at?`, bắt đầu lúc ${dateText(tournament.starts_at)}`:''}.`,scheduled:tournament.starts_at});
+        const opensAt=tournament.config?.registrationOpensAt?Date.parse(tournament.config.registrationOpensAt):null;
+        const closesAt=tournament.config?.registrationClosesAt?Date.parse(tournament.config.registrationClosesAt):null;
+        const registrationOpen=tournament.status==='open'&&(opensAt===null||Date.now()>=opensAt)&&(closesAt===null||Date.now()<=closesAt);
+        const phase=tournament.status==='in_progress'?'đang diễn ra':tournament.status==='draft'?'dự kiến':registrationOpen?'đang mở đơn':'sắp diễn ra';
+        events.push({key:`tournament:schedule:${tournament.status}`,type:'schedule',title:`${tournament.name} — ${phase}`,message:`Giải ${tournament.name} ${phase}${tournament.starts_at?`, bắt đầu lúc ${dateText(tournament.starts_at)}`:''}.`,scheduled:tournament.starts_at,tournamentId:tournament.id,metadata:{status:tournament.status,registrationOpen}});
       }
       if(recipients.has(userId)&&tournament.status==='completed')events.push({key:'tournament:completed',type:'status',title:`${tournament.name} đã kết thúc`,message:`Giải đấu đã kết thúc${tournament.champion?.name?`. Nhà vô địch: ${tournament.champion.name}.`:'.'}`});
-      if(!recipients.has(userId))continue;
+      if(!recipients.has(userId)){
+        for(let i=eventStart;i<events.length;i++)events[i].tournamentId=tournament.id;
+        continue;
+      }
       for(const round of tournament.rounds)for(const match of round.matches){
         let isA=match.participant_a_id===userId,isB=match.participant_b_id===userId;
         for(const entry of tournament.entries)if(entry.team_id&&(entry.team_id===match.participant_a_id||entry.team_id===match.participant_b_id)){
