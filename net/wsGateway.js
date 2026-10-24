@@ -96,6 +96,19 @@ export function createWsGateway({
         return (filtered + "ABCD").slice(0, 4);
     }
 
+    // Người dùng có phải 1 trong 2 tuyển thủ của trận không?
+    // So khớp theo userId trực tiếp HOẶC theo tư cách thành viên của đội (TEAM: participantId là teamId).
+    async function isTournamentPlayer(participantId, userId) {
+        if (!participantId || !userId) return false;
+        if (String(participantId) === String(userId)) return true;
+        try {
+            const members = await matchStore.getTeamMembers(participantId);
+            return members.some((member) => String(member.user_id) === String(userId));
+        } catch {
+            return false; // participantId không phải team → không khớp
+        }
+    }
+
     function getOrCreateTournamentRoom({ key, matchStore, tournamentId, roundNo, slotIndex, gameId, config, participants }) {
         const existingCode = tournamentRooms.get(key);
         if (existingCode) {
@@ -668,7 +681,12 @@ export function createWsGateway({
                 participants: { a: slotInfo.participantAId, b: slotInfo.participantBId },
             });
 
-            const isLivePlayer = room.reserved.has(conn.user.id) && !slotOf(room, conn.user.id) &&
+            // Nhận diện người chơi chính: userId === participantId, hoặc userId là thành viên
+            // của team trùng participantId (chế độ TEAM). Nếu không khớp → khán giả.
+            const participantIds = [slotInfo.participantAId, slotInfo.participantBId];
+            const isReserved = (await isTournamentPlayer(participantIds[0], conn.user.id)) ||
+                (await isTournamentPlayer(participantIds[1], conn.user.id));
+            const isLivePlayer = isReserved && !slotOf(room, conn.user.id) &&
                 room.players.some((slot) => !slot.userId);
             if (isLivePlayer || slotOf(room, conn.user.id)) {
                 queue.remove(conn.user.id);
