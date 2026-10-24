@@ -43,6 +43,88 @@ export function pairFirstRound(entries) {
   return slots;
 }
 
+// Vòng tròn (circle method): số lẻ thì mỗi vòng có một suất nghỉ, không đấu với chính mình.
+export function roundRobinPairs(entries) {
+  const players = entries.length % 2 ? [...entries, null] : [...entries];
+  const rotation = [...players];
+  const rounds = [];
+  for (let index = 0; index < players.length - 1; index += 1) {
+    const slots = [];
+    for (let i = 0; i < players.length / 2; i += 1) {
+      const a = rotation[i];
+      const b = rotation[players.length - 1 - i];
+      if (a && b) slots.push({ a, b });
+    }
+    rounds.push(slots);
+    rotation.splice(1, 0, rotation.pop());
+  }
+  return rounds;
+}
+
+// Bảng điểm vòng tròn: thắng 3, hoà 1; bằng nhau thì so đối đầu trực tiếp rồi hạt giống.
+export function roundRobinStandings({ matches = [], participants = [] }) {
+  const table = new Map(participants.map((entry) => [entry.id, {
+    entryId: entry.id, seed: entry.seed ?? null,
+    played: 0, wins: 0, draws: 0, losses: 0, points: 0, headToHead: 0,
+  }]));
+  const decided = matches.filter((match) => match.decided);
+  const score = (id, add) => {
+    const row = table.get(id);
+    if (row) row.headToHead += add;
+  };
+  const sort = (rows) => rows.sort((x, y) =>
+    y.points - x.points || y.wins - x.wins || y.headToHead - x.headToHead ||
+    (x.seed ?? 999) - (y.seed ?? 999) || String(x.entryId).localeCompare(String(y.entryId)));
+
+  for (const match of decided) {
+    const a = table.get(match.participantAId);
+    const b = table.get(match.participantBId);
+    if (!a || !b) continue;
+    a.played += 1;
+    b.played += 1;
+    if (!match.winnerId) {
+      a.draws += 1; b.draws += 1; a.points += 1; b.points += 1;
+    } else if (match.winnerId === a.entryId) {
+      a.wins += 1; a.points += 3; b.losses += 1;
+    } else {
+      b.wins += 1; b.points += 3; a.losses += 1;
+    }
+  }
+
+  const rows = [...table.values()];
+  sort(rows);
+  let start = 0;
+  while (start < rows.length) {
+    let end = start + 1;
+    while (end < rows.length && rows[end].points === rows[start].points && rows[end].wins === rows[start].wins) {
+      end += 1;
+    }
+    if (end - start > 1) {
+      const group = new Set(rows.slice(start, end).map((row) => row.entryId));
+      for (const match of decided) {
+        if (!group.has(match.participantAId) || !group.has(match.participantBId)) continue;
+        if (!match.winnerId) {
+          score(match.participantAId, 1);
+          score(match.participantBId, 1);
+        } else score(match.winnerId, 3);
+      }
+      sort(rows);
+    }
+    start = end;
+  }
+  return rows;
+}
+
+// Quán quân vòng tròn: chỉ khi top 1 không bằng điểm về mọi chỉ số.
+export function roundRobinChampion(rows = []) {
+  const top = rows[0];
+  const second = rows[1];
+  if (!top) return null;
+  const tied = second
+    && top.points === second.points && top.wins === second.wins && top.headToHead === second.headToHead;
+  return tied ? null : top.entryId;
+}
+
 function isBye(id) {
   return id === BYE_ID || id === null || id === undefined;
 }
@@ -67,7 +149,8 @@ function slotFromRow(row, roundIndex, matchIndex, scheduledAt = null) {
     result,
     playedAt: row.played_at ?? null,
     scheduledAt,
-    status: bye ? 'bye' : winnerId ? 'done' : 'ready',
+    // Có result_json là đã chốt (kể cả hoà, winner_id null).
+    status: bye ? "bye" : winnerId || result ? "done" : "ready",
   };
 }
 
@@ -94,7 +177,14 @@ function pendingSlot(roundIndex, matchIndex, roundId, a, b, scheduledAt = null) 
 }
 
 // rounds: [{ id, round_no, matches: [historyRow] }] đã sắp theo round_no.
-export function buildBracket({ rounds = [], entryCount = 0 } = {}) {
+// Vòng tròn đã biết sẵn mọi cặp ngay từ đầu nên chỉ cần dựng lại từ dữ liệu đã ghi.
+export function buildBracket({ rounds = [], entryCount = 0, format = 'single_elimination' } = {}) {
+  if (format === 'round_robin') {
+    const built = rounds.map((round, roundIndex) => (round.matches ?? [])
+      .map((row, matchIndex) => slotFromRow(row, roundIndex, Number(row.slot_index ?? matchIndex), round.scheduled_at ?? null)));
+    return { format: 'round_robin', size: entryCount, totalRounds: built.length, rounds: built };
+  }
+
   const { size, totalRounds } = planSize(entryCount);
   const byRound = new Map(rounds.map((round) => [Number(round.round_no), round]));
   const built = [];

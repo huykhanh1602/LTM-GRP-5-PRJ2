@@ -5,7 +5,7 @@ import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/re
 import { StorageError } from './matchStore.js';
 import { assertRegistrationWindowOpen, assertRegistrationClosed } from './registrationWindow.js';
 import { normalizeSearchText, searchTermMatches } from './searchText.js';
-import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, slotCount } from './tournamentBracket.js';
+import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, roundRobinChampion, roundRobinPairs, roundRobinStandings, slotCount } from './tournamentBracket.js';
 
 const required = (value, field) => {
   if (typeof value !== 'string' || !value.trim()) throw new StorageError('INVALID_INPUT', `${field} must be a non-empty string`);
@@ -279,7 +279,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const champion=row.champion_id?(await query(`SELECT CASE WHEN winner_id=participant_a_id THEN participant_a_name ELSE participant_b_name END AS name
       FROM tournament_match_history WHERE tournament_id=$1 AND winner_id=$2 ORDER BY played_at DESC LIMIT 1`,[row.id,row.champion_id])).rows[0]:null;
     return {...row,starts_at:row.starts_at?.toISOString()??null,ended_at:row.ended_at?.toISOString()??null,created_at:row.created_at.toISOString(),champion:champion?{id:row.champion_id,name:champion.name}:null,
-      participant_count:entries.length,rounds,entries,bracket:row.format==='single_elimination'?buildBracket({rounds,entryCount:entries.length}):null};
+      participant_count:entries.length,rounds,entries,bracket:['single_elimination','round_robin'].includes(row.format)
+        ?buildBracket({rounds,entryCount:entries.length,format:row.format}):null};
   }
   async function invalidateTournamentNotificationSync(client=pool) { await query('DELETE FROM tournament_notification_sync',[],client); }
   async function listTournamentNotifications(userId,{limit=100,offset=0}={}) {
@@ -502,23 +503,36 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     await insertHistorySlot({tournamentId,roundId:roundIds[next.roundNo-1],slotIndex:next.slotIndex,
       a:next.side==='a'?winner:other,b:next.side==='b'?winner:other,playedAt:new Date().toISOString()},client);
   }
-  async function refreshRoundStatuses({tournamentId,totalRounds,entryCount},client=pool) {
+  async function refreshRoundStatuses({tournamentId,totalRounds,entryCount,format='single_elimination'},client=pool) {
+    const roundRobin=format==='round_robin';
     for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
       const round=(await query('SELECT id, submission_started_at FROM tournament_rounds WHERE tournament_id=$1 AND round_no=$2',[tournamentId,roundNo],client)).rows[0];
       if(!round) continue;
-      const rows=(await query('SELECT winner_id FROM tournament_match_history WHERE round_id=$1',[round.id],client)).rows;
-      const expected=slotCount(entryCount,roundNo);
-      const decided=rows.filter(row=>row.winner_id).length;
+      const rows=(await query('SELECT winner_id, result FROM tournament_match_history WHERE round_id=$1',[round.id],client)).rows;
+      // Vòng tròn: mọi trận đã ghi trước, nên đếm đúng số trận của vòng và tính cả trận hoà.
+      const expected=roundRobin?rows.length:slotCount(entryCount,roundNo);
+      const decided=rows.filter(row=>roundRobin?Boolean(row.winner_id||row.result):Boolean(row.winner_id)).length;
       // Chỉ tính là đang diễn ra khi cửa sổ nộp code đã mở; chưa mở vẫn chờ (pending).
       const status=rows.length>=expected&&decided>=expected?'completed':rows.length>0&&round.submission_started_at?'in_progress':'pending';
       await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[status,round.id],client);
     }
   }
+  // Bảng điểm vòng tròn của giải, tính từ các trận đã chốt kết quả.
+  async function roundRobinTable(tournamentId,client=pool) {
+    const rawEntries=await listTournamentEntries(tournamentId,client);
+    const participants=rawEntries.map((entry,index)=>({ id:entry.team_id??entry.user_id, seed:entry.seed??index+1 }));
+    const rows=(await query(`SELECT participant_a_id,participant_b_id,winner_id FROM tournament_match_history
+      WHERE tournament_id=$1 AND (winner_id IS NOT NULL OR result IS NOT NULL)`,[tournamentId],client)).rows;
+    return roundRobinStandings({
+      matches:rows.map(row=>({ participantAId:row.participant_a_id, participantBId:row.participant_b_id, winnerId:row.winner_id??null, decided:true })),
+      participants,
+    });
+  }
   async function generateTournamentBracket(tournamentId) {
     return transaction(async client=>{
       const tournament=(await query('SELECT id,format,status,config,starts_at FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
-      if(tournament.format!=='single_elimination') throw new StorageError('FORMAT_NOT_SUPPORTED','Chỉ thể thức loại trực tiếp mới tạo được nhánh đấu',409);
+      if(!['single_elimination','round_robin'].includes(tournament.format)) throw new StorageError('FORMAT_NOT_SUPPORTED','Thể thức này chưa xếp được sơ đồ đấu',409);
       if(!['open','in_progress'].includes(tournament.status)) throw new StorageError('INVALID_STATUS_TRANSITION','Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra',409);
       assertRegistrationClosed(tournament.config??{});
       if((await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 LIMIT 1',[tournamentId],client)).rows[0]) throw new StorageError('BRACKET_EXISTS','Sơ đồ nhánh của giải đã được tạo trước đó',409);
@@ -529,7 +543,9 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         seed: entry.seed??index+1,
       }));
       if(entries.length<2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS','Cần ít nhất 2 người đăng ký để tạo nhánh đấu',409);
-      const {totalRounds}=planSize(entries.length);
+      const isRoundRobin=tournament.format==='round_robin';
+      const pairings=isRoundRobin?roundRobinPairs(entries):null;
+      const totalRounds=isRoundRobin?pairings.length:planSize(entries.length).totalRounds;
       const config=tournament.config??{};
       const windowMinutes=Number(config.submissionWindowMinutes)||10;
       const nowIso=new Date().toISOString();
@@ -545,6 +561,14 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         roundIds.push(roundId);
       }
       const startedAt=new Date().toISOString();
+      if(isRoundRobin){
+        // Ghi sẵn toàn bộ lịch đấu vòng tròn; các vòng sau vẫn chờ tới lượt.
+        for(const [roundIndex,slots] of pairings.entries()){
+          for(const [slotIndex,{a,b}] of slots.entries()){
+            await insertHistorySlot({tournamentId,roundId:roundIds[roundIndex],slotIndex,a,b,playedAt:startedAt},client);
+          }
+        }
+      } else {
       for(const [slotIndex,pair] of pairFirstRound(entries).entries()){
         const bye=!pair.a||!pair.b;
         const a=pair.a??{id:BYE_ID,name:BYE_NAME};
@@ -553,7 +577,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         await insertHistorySlot({tournamentId,roundId:roundIds[0],slotIndex,a,b,winnerId:winner?.id??null,result:bye?{bye:true}:null,playedAt:startedAt},client);
         if(winner) await promoteWinner({tournamentId,roundIds,totalRounds,roundNo:1,slotIndex,winner},client);
       }
-      await refreshRoundStatuses({tournamentId,totalRounds,entryCount:entries.length},client);
+      }
+      await refreshRoundStatuses({tournamentId,totalRounds,entryCount:entries.length,format:tournament.format},client);
       // Chưa có lịch khởi tranh thì ghi nhận giờ khai mạc ngay lúc mở giải.
       await query('UPDATE tournaments SET starts_at = COALESCE(starts_at, $2) WHERE id=$1',[tournamentId,startedAt],client);
       if(tournament.status==='open') await query("UPDATE tournaments SET status='in_progress' WHERE id=$1",[tournamentId],client);
@@ -565,14 +590,15 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     if(!Number.isSafeInteger(roundNo)||roundNo<1) throw new StorageError('INVALID_INPUT','roundNo must be a positive integer');
     if(!Number.isSafeInteger(slotIndex)||slotIndex<0) throw new StorageError('INVALID_INPUT','slotIndex must not be negative');
     return transaction(async client=>{
-      const tournament=(await query('SELECT id,status FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      const tournament=(await query('SELECT id,status,format FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.status!=='in_progress') throw new StorageError('TOURNAMENT_NOT_RUNNING','Chỉ gắn được kết quả khi giải đang diễn ra',409);
       const match=await getMatch(matchId,client);
       if(match.status!=='finished') throw new StorageError('MATCH_NOT_FINISHED','Trận đấu chưa kết thúc nên chưa có kết quả',409);
       const entries=await listTournamentEntries(tournamentId,client);
       const rounds=await listTournamentRounds(tournamentId,client);
-      const bracket=buildBracket({rounds,entryCount:entries.length});
+      const bracket=buildBracket({rounds,entryCount:entries.length,format:tournament.format});
+      const isRoundRobin=tournament.format==='round_robin';
       const slot=bracket.rounds[roundNo-1]?.[slotIndex];
       if(!slot) throw new StorageError('SLOT_NOT_FOUND','Không tìm thấy trận này trong nhánh đấu',404);
       if(slot.status==='bye') throw new StorageError('SLOT_IS_BYE','Trận này là bye, không cần kết quả',409);
@@ -593,12 +619,21 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         await insertHistorySlot({tournamentId,roundId:round.id,slotIndex,matchId,playedAt,winnerId,result,
           a:{id:slot.participantAId,name:slot.participantAName},b:{id:slot.participantBId,name:slot.participantBName}},client);
       }
-      if(winnerId){
+      if(winnerId&&!isRoundRobin){
         await promoteWinner({tournamentId,roundIds:rounds.map(item=>item.id),totalRounds:bracket.totalRounds,roundNo,slotIndex,
           winner:{id:winnerId,name:winnerId===slot.participantAId?slot.participantAName:slot.participantBName}},client);
       }
-      await refreshRoundStatuses({tournamentId,totalRounds:bracket.totalRounds,entryCount:entries.length},client);
-      if(winnerId&&roundNo===bracket.totalRounds) await query("UPDATE tournaments SET status='completed',champion_id=$1 WHERE id=$2",[winnerId,tournamentId],client);
+      await refreshRoundStatuses({tournamentId,totalRounds:bracket.totalRounds,entryCount:entries.length,format:tournament.format},client);
+      const settled=(await query(`SELECT COUNT(*) AS decided FROM tournament_match_history
+        WHERE round_id=$1 AND (winner_id IS NOT NULL OR result IS NOT NULL)`,[round.id],client)).rows[0].decided;
+      const lastRound=Number(roundNo)===bracket.totalRounds&&settled>=bracket.rounds[roundNo-1].length;
+      if(lastRound){
+        // Vòng tròn khép lại: xử thắng theo bảng điểm; loại trực tiếp: thắng trận chung kết.
+        const champion=isRoundRobin?roundRobinChampion(await roundRobinTable(tournamentId,client)):winnerId;
+        if(champion||!isRoundRobin){
+          await query("UPDATE tournaments SET status='completed',champion_id=$1 WHERE id=$2",[champion,tournamentId],client);
+        }
+      }
       return getTournament(tournamentId);
     });
   }
@@ -759,13 +794,14 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return transaction(async client=>{
       const tournament=(await query('SELECT id,status,format,config FROM tournaments WHERE id=$1 OR code=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
-      if(tournament.format!=='single_elimination') throw new StorageError('FORMAT_NOT_SUPPORTED','Chỉ hỗ trợ xử lý hết giờ cho thể thức loại trực tiếp.');
+      if(!['single_elimination','round_robin'].includes(tournament.format)) throw new StorageError('FORMAT_NOT_SUPPORTED','Thể thức này chưa hỗ trợ xử lý hết giờ nộp code.');
       const config=tournament.config??{};
       const entries=await listTournamentEntries(tournament.id,client);
       const rounds=await listTournamentRounds(tournament.id,client);
       const round=rounds.find(item=>Number(item.round_no)===roundNo);
       if(!round) throw new StorageError('ROUND_NOT_FOUND','Không tìm thấy vòng đấu này.',404);
-      const bracket=buildBracket({rounds,entryCount:entries.length});
+      const bracket=buildBracket({rounds,entryCount:entries.length,format:tournament.format});
+      const isRoundRobin=tournament.format==='round_robin';
       const totalRounds=bracket.totalRounds;
       const roundIds=rounds.map(item=>item.id);
       const results=[];
@@ -784,12 +820,14 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
         const result={reason,source_match_id:null,forfeit:true};
         await query(`UPDATE tournament_match_history SET winner_id=$1,result=$2::jsonb,played_at=now() WHERE round_id=$3 AND slot_index=$4`,
           [winnerId,JSON.stringify(result),round.id,slot.slot_index],client);
-        await promoteWinner({tournamentId:tournament.id,roundIds,totalRounds,roundNo,slotIndex:slot.slot_index,winner},client);
-        await refreshRoundStatuses({tournamentId:tournament.id,totalRounds,entryCount:entries.length},client);
+        if(!isRoundRobin) await promoteWinner({tournamentId:tournament.id,roundIds,totalRounds,roundNo,slotIndex:slot.slot_index,winner},client);
+        await refreshRoundStatuses({tournamentId:tournament.id,totalRounds,entryCount:entries.length,format:tournament.format},client);
         results.push({roundNo,slotIndex:slot.slot_index,winnerId,reason});
       }
-      const winnerRows=(await query('SELECT DISTINCT winner_id FROM tournament_match_history WHERE round_id=$1 AND winner_id IS NOT NULL',[round.id],client)).rows;
-      const allSettled=winnerRows.length===bracket.rounds[roundNo-1].length;
+      // Vòng chỉ khép lại khi mọi trận đã có kết quả (vòng tròn tính cả trận hoà).
+      const winnerRows=(await query(`SELECT COUNT(*) AS decided FROM tournament_match_history
+        WHERE round_id=$1 AND (winner_id IS NOT NULL OR result IS NOT NULL)`,[round.id],client)).rows[0].decided;
+      const allSettled=winnerRows>=bracket.rounds[roundNo-1].length;
       await query('UPDATE tournament_rounds SET status=$1 WHERE id=$2',[allSettled?'completed':'in_progress',round.id],client);
       if(allSettled&&roundNo<totalRounds){
         const next=rounds.find(item=>Number(item.round_no)===roundNo+1);
@@ -804,8 +842,11 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
             ['in_progress',iso(startedAt),iso(deadline),next.id],client);
         }
       }
-      if(roundNo===totalRounds&&results.some(r=>r.winnerId)){
-        await query("UPDATE tournaments SET status='completed',champion_id=$1 WHERE id=$2",[results[0].winnerId,tournament.id],client);
+      if(allSettled&&roundNo===totalRounds){
+        const champion=isRoundRobin?roundRobinChampion(await roundRobinTable(tournament.id,client)):results[0]?.winnerId??null;
+        if(champion||!isRoundRobin){
+          await query("UPDATE tournaments SET status='completed',champion_id=$1 WHERE id=$2",[champion,tournament.id],client);
+        }
       }
       return {tournamentId:tournament.id,roundNo,results,resolved:results.length};
     });
@@ -855,10 +896,11 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   // Giải có lịch khởi tranh tới hạn, đã đóng đơn, còn open, chưa có sơ đồ.
   async function listAutoStartDue(now = Date.now()) {
     const { rows } = await query(
-      "SELECT id, starts_at, config FROM tournaments WHERE status = 'open' AND format = 'single_elimination' AND starts_at IS NOT NULL"
+      "SELECT id, format, starts_at, config FROM tournaments WHERE status = 'open' AND starts_at IS NOT NULL"
     );
     const due = [];
     for (const row of rows) {
+      if (!['single_elimination', 'round_robin'].includes(row.format)) continue;
       if (new Date(row.starts_at).getTime() > now) continue;
       const config = row.config ?? {};
       if (config.registrationClosesAt && now < new Date(config.registrationClosesAt).getTime()) continue;

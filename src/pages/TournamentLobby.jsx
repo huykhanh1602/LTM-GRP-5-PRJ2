@@ -17,7 +17,7 @@ import EditRegistrationWindowModal from "../components/profile/EditRegistrationW
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
-import { attachTournamentSlotResult, registerTournament, startTournament } from "../api.js";
+import { attachTournamentSlotResult, registerTournament } from "../api.js";
 import { apiErrorText, formatStartsAt, participantUnit } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
 import "../styles/tournament.css";
@@ -122,7 +122,6 @@ export function PageTournamentLobby({
   const beforeOpen = opensAt !== null && now < opensAt;
   const afterClose = closesAt !== null && now > closesAt;
   const canRegister = registrationOpen && !beforeOpen && !afterClose;
-  const startReady = registrationOpen && (closesAt === null || now > closesAt);
   const hasBracket = tournament.rounds.length > 0;
   const unit = participantUnit(tournament.participantMode);
   const waitingSlots = tournament.rounds
@@ -261,21 +260,6 @@ export function PageTournamentLobby({
                     onClick={() => setWindowModal(true)}
                   >
                     📅 Sửa mở/đóng đơn
-                  </button>
-                )}
-                {isOrganizer && registrationOpen && !hasBracket && (
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={busy || tournament.registered < 2 || !startReady}
-                    title={!startReady
-                      ? "Chỉ khởi tranh sau thời gian đóng đơn"
-                      : tournament.registered < 2 ? `Cần ít nhất 2 ${unit} đăng ký` : undefined}
-                    onClick={() =>
-                      run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
-                    }
-                  >
-                    ⚔️ Khởi tranh & xếp nhánh
                   </button>
                 )}
                 {isOrganizer && (
