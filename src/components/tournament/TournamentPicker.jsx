@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TrophyIcon from "../TrophyIcon.jsx";
 import { getTournaments } from "../../api.js";
-import { apiErrorText, formatStartsAt, toTournamentCard } from "../../utils/tournamentApi.js";
+import { apiErrorText, participantUnit, registrationWindowState, toTournamentCard, tournamentScheduleLines } from "../../utils/tournamentApi.js";
 import { STATUS_BADGE } from "../../utils/tournamentStatus.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -61,7 +61,10 @@ export default function TournamentPicker({ gameId, onPick, onBack }) {
           )}
 
           <div className="tour-list-container">
-            {visible?.map((item) => (
+            {visible?.map((item) => {
+              const scheduleLines = tournamentScheduleLines(item);
+              const windowState = registrationWindowState(item);
+              return (
               <button key={item.id} type="button" className="tour-card-item" onClick={() => onPick(item.id)}>
                 <div className="tour-card-top">
                   <div>
@@ -77,12 +80,24 @@ export default function TournamentPicker({ gameId, onPick, onBack }) {
                   <span>👑 {item.organizerName}</span>
                   <span>
                     👥 {item.registered}
-                    {item.capacity ? `/${item.capacity}` : ""} người
+                    {item.capacity ? `/${item.capacity}` : ""} {participantUnit(item.participantMode)}
                   </span>
-                  <span>⏰ {formatStartsAt(item.startsAt)}</span>
+                </div>
+                <div className="tour-card-schedule">
+                  {scheduleLines.map((line) => (
+                    <span key={line.label}>
+                      {line.icon} {line.label}: <b>{line.value}</b>
+                    </span>
+                  ))}
+                  {windowState && (
+                    <span className={`tour-window-state tour-window-state--${windowState.cls}`}>
+                      {windowState.text}
+                    </span>
+                  )}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>

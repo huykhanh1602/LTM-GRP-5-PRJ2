@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS games (
 );
 INSERT OR IGNORE INTO games (id, name, default_config_json, active)
 VALUES ('rps_chess', 'Kéo · Búa · Bao Cờ', '{}', 1);
+INSERT OR IGNORE INTO games (id, name, default_config_json, active)
+VALUES ('snake_battle', 'Rắn Săn Mồi (Snake Bot)', '{}', 1);
 CREATE TABLE IF NOT EXISTS tournaments (
   id TEXT PRIMARY KEY,
   game_id TEXT NOT NULL REFERENCES games(id),

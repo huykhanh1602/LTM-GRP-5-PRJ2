@@ -15,7 +15,7 @@ import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
 import { attachTournamentSlotResult, registerTournament, startTournament } from "../api.js";
-import { apiErrorText } from "../utils/tournamentApi.js";
+import { apiErrorText, formatStartsAt, participantUnit } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
 import "../styles/tournament.css";
 
@@ -105,7 +105,16 @@ export function PageTournamentLobby({
 
   const { status, isOrganizer, isRegistered } = tournament;
   const registrationOpen = status === "open";
+  // Khung mở/đóng đơn đăng ký.
+  const now = Date.now();
+  const opensAt = tournament.registrationOpensAt ? new Date(tournament.registrationOpensAt).getTime() : null;
+  const closesAt = tournament.registrationClosesAt ? new Date(tournament.registrationClosesAt).getTime() : null;
+  const beforeOpen = opensAt !== null && now < opensAt;
+  const afterClose = closesAt !== null && now > closesAt;
+  const canRegister = registrationOpen && !beforeOpen && !afterClose;
+  const startReady = registrationOpen && (closesAt === null || now > closesAt);
   const hasBracket = tournament.rounds.length > 0;
+  const unit = participantUnit(tournament.participantMode);
   const waitingSlots = tournament.rounds
     .flat()
     .filter((slot) => slot.status === "ready" && !slot.winnerId && !slot.matchId);
@@ -180,11 +189,11 @@ export function PageTournamentLobby({
             <section className="tl-card" aria-label="Người tham gia giải đấu">
               <header className="tl-card__head">
                 <div>
-                  <h2 className="tl-card__title">Người tham gia</h2>
+                  <h2 className="tl-card__title">{unit === "đội" ? "Đội tham gia" : "Người tham gia"}</h2>
                   <p className="tl-card__desc">
                     {tournament.registered}
-                    {tournament.capacity ? `/${tournament.capacity}` : ""} người đã đăng ký · bấm vào
-                    một người để xem trang cá nhân.
+                    {tournament.capacity ? `/${tournament.capacity}` : ""} {unit} đã đăng ký · bấm vào
+                    một {unit} để xem trang cá nhân.
                   </p>
                 </div>
               </header>
@@ -192,13 +201,20 @@ export function PageTournamentLobby({
               <RegistrationSlots
                 entries={tournament.entries}
                 capacity={tournament.capacity}
+                unit={unit}
                 myEntryId={tournament.myEntryId}
                 onOpenProfile={setProfileId}
                 title="Sơ đồ nhánh sẽ được xếp khi chủ giải khởi tranh"
               />
 
               <div className="tl-actions">
-                {registrationOpen && !isRegistered && tournament.participantMode === "TEAM" && (
+                {registrationOpen && beforeOpen && (
+                  <span className="tl-pill">⏳ Chưa tới ngày mở đơn · {formatStartsAt(tournament.registrationOpensAt)}</span>
+                )}
+                {registrationOpen && afterClose && (
+                  <span className="tl-pill">🔒 Đã đóng đơn · chờ {tournament.startType === "AUTO" ? "tới ngày khởi tranh" : "chủ giải khởi tranh"}</span>
+                )}
+                {canRegister && !isRegistered && tournament.participantMode === "TEAM" && (
                   <button
                     type="button"
                     className="btn primary"
@@ -208,7 +224,7 @@ export function PageTournamentLobby({
                     👥 Đăng ký Đội (Tạo / Chọn)
                   </button>
                 )}
-                {registrationOpen && !isRegistered && tournament.participantMode !== "TEAM" && (
+                {canRegister && !isRegistered && tournament.participantMode !== "TEAM" && (
                   <button
                     type="button"
                     className="btn primary"
@@ -226,30 +242,19 @@ export function PageTournamentLobby({
                 {registrationOpen && isRegistered && (
                   <span className="tl-pill">✔ Bạn đã có trong danh sách thi đấu</span>
                 )}
-                {registrationOpen && isOrganizer && (
+                {isOrganizer && registrationOpen && !hasBracket && (
                   <button
                     type="button"
                     className="btn"
-                    disabled={busy || tournament.registered < 2}
-                    title={tournament.registered < 2 ? "Cần ít nhất 2 người đăng ký" : undefined}
+                    disabled={busy || tournament.registered < 2 || !startReady}
+                    title={!startReady
+                      ? "Chỉ khởi tranh sau thời gian đóng đơn"
+                      : tournament.registered < 2 ? `Cần ít nhất 2 ${unit} đăng ký` : undefined}
                     onClick={() =>
                       run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
                     }
                   >
-                    ⚔️ Khởi tranh & xếp nhánh
-                  </button>
-                )}
-                {registrationOpen && isOrganizer && tournament.startType === "MANUAL" && (
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={busy || tournament.registered < 2}
-                    title={tournament.registered < 2 ? "Cần ít nhất 2 người đăng ký" : undefined}
-                    onClick={() =>
-                      run(() => startTournament(tournament.id, token), "Giải đấu đã khởi tranh, sơ đồ nhánh đã được xếp.")
-                    }
-                  >
-                    🏁 Bắt đầu giải đấu
+                    {tournament.startType === "MANUAL" ? "🏁 Bắt đầu khởi tranh" : "⚔️ Khởi tranh & xếp nhánh"}
                   </button>
                 )}
                 {isOrganizer && hasBracket && (

@@ -18,9 +18,23 @@ function toLocalInputValue(iso) {
 // Bảng điều điều giải (Admin): điều thời gian vòng/trận,
 // Bắt đầu ngay (Trigger Start), hoãn/dời lịch trận đấu.
 // ─────────────────────────────────────────────────────────────
+
+// Vòng mặc định theo "trận tiếp theo": trận đã có mã và chưa có kết quả,
+// rồi tới suất chờ kết quả, cuối cùng là vòng gần nhất.
+function defaultRoundId(rounds) {
+  const playable = (round) => (round.matches ?? []).filter((item) => item.match_id);
+  const hasLive = (round) => playable(round).some((m) => !m.winner_id);
+  const hasPending = (round) => (round.matches ?? []).some((m) => !m.winner_id);
+  return (
+    rounds.find((round) => hasLive(round)) ??
+    rounds.find((round) => hasPending(round)) ??
+    rounds.at(-1)
+  )?.id ?? null;
+}
+
 export default function AdminControlModal({ tournament, token, onClose, onUpdated }) {
   const rawRounds = tournament.raw?.rounds ?? [];
-  const [roundId, setRoundId] = useState(rawRounds[0]?.id ?? null);
+  const [roundId, setRoundId] = useState(() => defaultRoundId(rawRounds));
   const [roundAt, setRoundAt] = useState("");
   const [autoStart, setAutoStart] = useState(true);
   const [matchId, setMatchId] = useState(null);
@@ -29,7 +43,10 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
   const [busy, setBusy] = useState(false);
 
   const activeRound = rawRounds.find((round) => round.id === roundId) ?? null;
-  const matchOptions = (activeRound?.matches ?? []).filter((item) => item.match_id);
+  // Ưu tiên trận chưa có kết quả để mặc định chọn "trận tiếp theo".
+  const matchOptions = [...(activeRound?.matches ?? [])]
+    .filter((item) => item.match_id)
+    .sort((a, b) => Number(Boolean(a.winner_id)) - Number(Boolean(b.winner_id)));
 
   useEffect(() => {
     setRoundAt(toLocalInputValue(activeRound?.scheduled_at));

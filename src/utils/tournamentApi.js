@@ -27,8 +27,11 @@ const ERROR_MESSAGES = {
   ORGANIZER_REQUIRED: "Chỉ người tổ chức giải mới được thao tác.",
   ENTRY_EXISTS: "Bạn đã đăng ký tham gia giải đấu này rồi.",
   TOURNAMENT_NOT_OPEN: "Giải đã khóa đăng ký nên không thể tham gia nữa.",
+  REGISTRATION_NOT_OPEN: "Chưa tới ngày mở đơn, giải chưa cho đăng ký.",
+  REGISTRATION_CLOSED: "Giải đã đóng đơn, không thể đăng ký thêm.",
+  REGISTRATION_STILL_OPEN: "Chưa tới thời gian đóng đơn nên chưa thể khởi tranh.",
   TOURNAMENT_FULL: "Giải đấu đã đủ số lượng người tham gia.",
-  NOT_ENOUGH_PARTICIPANTS: "Cần ít nhất 2 người đăng ký mới có thể khởi tranh.",
+  NOT_ENOUGH_PARTICIPANTS: "Cần ít nhất 2 suất tham gia mới có thể khởi tranh.",
   BRACKET_EXISTS: "Sơ đồ nhánh của giải đã được tạo rồi.",
   FORMAT_NOT_SUPPORTED: "Thể thức này chưa hỗ trợ xếp nhánh đấu.",
   MATCH_NOT_FINISHED: "Trận đấu phải ở trạng thái đã kết thúc.",
@@ -92,6 +95,10 @@ export function toTournamentInput(api, currentUserId) {
     format: api.format,
     status: api.status,
     startAt: api.starts_at,
+    endedAt: ["completed", "cancelled"].includes(api.status) ? api.ended_at ?? null : null,
+    // Chỉ dùng cho timeline: giải cũ suy ra mở đơn từ lúc tạo, đóng đơn khi khai mạc.
+    registrationOpensAt: config.registrationOpensAt ?? api.created_at ?? null,
+    registrationClosesAt: config.registrationClosesAt ?? api.starts_at ?? null,
     championId: api.champion_id,
     prize: config.prize ?? "Cúp vinh danh",
     description: config.description ?? "",
@@ -125,6 +132,8 @@ export function toTournamentView(api, currentUserId) {
     ...view,
     languages: Array.isArray(api.config?.languages) ? api.config.languages : [],
     organizerId: api.config?.organizerId ?? null,
+    registrationOpensAt: api.config?.registrationOpensAt ?? null,
+    registrationClosesAt: api.config?.registrationClosesAt ?? null,
     isOrganizer: Boolean(currentUserId) && api.config?.organizerId === currentUserId,
     isRegistered: Boolean(view.myEntryId),
     raw: api,
@@ -142,6 +151,13 @@ export function toTournamentCard(api) {
     gameName: api.game_name,
     status: api.status,
     startsAt: api.starts_at,
+    endedAt: ["completed", "cancelled"].includes(api.status) ? api.ended_at ?? null : null,
+    createdAt: api.created_at ?? null,
+    registrationOpensAt: config.registrationOpensAt ?? null,
+    registrationClosesAt: config.registrationClosesAt ?? null,
+    hasRegistrationWindow: Boolean(config.registrationOpensAt && config.registrationClosesAt),
+    participantMode: config.participantMode ?? "INDIVIDUAL",
+    startType: config.startType ?? "AUTO",
     organizerId: config.organizerId ?? null,
     organizerName: config.organizerName ?? "Ban Tổ Chức",
     registered: api.participant_count ?? 0,
@@ -150,6 +166,53 @@ export function toTournamentCard(api) {
     description: config.description ?? "",
     languages: Array.isArray(config.languages) ? config.languages : [],
   };
+}
+
+// Đơn vị đếm số suất tham gia: Đội hay Người.
+export const participantUnit = (mode) => (mode === "TEAM" ? "đội" : "người");
+
+// Trạng thái khung đăng ký của giải đang mở đơn.
+export function registrationWindowState(card, now = Date.now()) {
+  if (card.status !== "open") return null;
+  if (!card.hasRegistrationWindow) return { cls: "live", text: "🟢 Đang mở đơn" };
+  const opensAt = card.registrationOpensAt ? Date.parse(card.registrationOpensAt) : null;
+  const closesAt = card.registrationClosesAt ? Date.parse(card.registrationClosesAt) : null;
+  if (opensAt !== null && now < opensAt) return { cls: "locked", text: "⛔ Chưa mở đơn" };
+  if (closesAt !== null && now > closesAt) return { cls: "locked", text: "🔒 Đã đóng đơn" };
+  return { cls: "live", text: "🟢 Đang mở đơn" };
+}
+
+// Các dòng lịch trên card: giải đã đấu chỉ có khai mạc/kết thúc,
+// giải chưa đấu có khai mạc (nếu ấn định) kèm mở đơn - đóng đơn.
+export function tournamentScheduleLines(card) {
+  const kickoff = card.startsAt ? formatStartsAt(card.startsAt) : null;
+  const end = card.endedAt ? formatStartsAt(card.endedAt) : null;
+
+  if (card.status === "in_progress") {
+    return [
+      { icon: "🚀", label: "Khai mạc", value: kickoff ?? "đã diễn ra" },
+      { icon: "🏁", label: "Kết thúc", value: end ?? "đang thi đấu" },
+    ];
+  }
+  if (card.status !== "open") {
+    return [
+      { icon: "🚀", label: "Khai mạc", value: kickoff ?? "Chưa ấn định" },
+      { icon: "🏁", label: "Kết thúc", value: end ?? kickoff ?? "Chưa ghi nhận" },
+    ];
+  }
+
+  // Giải cũ chưa lưu khung đăng ký: mở đơn tính từ lúc tạo, đóng đơn khi khai mạc.
+  const opensAt = card.registrationOpensAt ?? card.createdAt ?? null;
+  const closesAt = card.registrationClosesAt ?? card.startsAt ?? null;
+  const lines = [];
+  lines.push({ icon: "📝", label: "Mở đơn", value: opensAt ? formatStartsAt(opensAt) : "Đang mở" });
+  lines.push({
+    icon: "🔒",
+    label: "Đóng đơn",
+    value: closesAt ? formatStartsAt(closesAt) : "khi chủ giải khởi tranh",
+  });
+  if (kickoff) lines.push({ icon: "🚀", label: "Khai mạc", value: kickoff });
+  return lines;
 }
 
 export function formatStartsAt(value) {

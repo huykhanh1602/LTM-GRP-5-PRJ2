@@ -12,6 +12,11 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
   );
   const [selectedGame, setSelectedGame] = useState(GAME_CATALOG[0]?.id || "rps_chess");
   const [maxTeams, setMaxTeams] = useState(16);
+  // Ngày mở/đóng đơn + ngày khởi tranh (AUTO).
+  const [regOpenDate, setRegOpenDate] = useState("");
+  const [regOpenClock, setRegOpenClock] = useState("");
+  const [regCloseDate, setRegCloseDate] = useState("");
+  const [regCloseClock, setRegCloseClock] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startClock, setStartClock] = useState("");
   const [languages, setLanguages] = useState(["python"]);
@@ -61,15 +66,33 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
 
     if (!token) return setFormError("Bạn cần đăng nhập để mở giải đấu.");
     if (!tourName.trim()) return setFormError("Vui lòng nhập tên giải đấu.");
-    if (!startDate || !startClock) {
-      return setFormError("Vui lòng chọn chính xác ngày và giờ bắt đầu.");
+    if (!regOpenDate || !regOpenClock) {
+      return setFormError("Vui lòng chọn ngày và giờ mở đơn đăng ký.");
     }
-    const startsAt = new Date(`${startDate}T${startClock}`);
-    if (Number.isNaN(startsAt.getTime())) {
-      return setFormError("Ngày hoặc giờ bắt đầu không hợp lệ.");
+    if (!regCloseDate || !regCloseClock) {
+      return setFormError("Vui lòng chọn ngày và giờ đóng đơn đăng ký.");
     }
-    if (startsAt.getTime() <= Date.now()) {
-      return setFormError("Thời gian bắt đầu phải ở tương lai.");
+    const registrationOpensAt = new Date(`${regOpenDate}T${regOpenClock}`);
+    const registrationClosesAt = new Date(`${regCloseDate}T${regCloseClock}`);
+    if (Number.isNaN(registrationOpensAt.getTime()) || Number.isNaN(registrationClosesAt.getTime())) {
+      return setFormError("Ngày mở đơn hoặc đóng đơn không hợp lệ.");
+    }
+    if (registrationClosesAt.getTime() <= registrationOpensAt.getTime()) {
+      return setFormError("Thời gian đóng đơn phải sau thời gian mở đơn.");
+    }
+    // AUTO: ngày khởi tranh phải sau đóng đơn.
+    let startsAt = null;
+    if (startType === "AUTO") {
+      if (!startDate || !startClock) {
+        return setFormError("Giải tự động cần nhập ngày và giờ khởi tranh.");
+      }
+      startsAt = new Date(`${startDate}T${startClock}`);
+      if (Number.isNaN(startsAt.getTime())) {
+        return setFormError("Ngày khởi tranh không hợp lệ.");
+      }
+      if (startsAt.getTime() <= registrationClosesAt.getTime()) {
+        return setFormError("Ngày khởi tranh phải sau thời gian đóng đơn.");
+      }
     }
     if (languages.length === 0) {
       return setFormError("Hãy chọn ít nhất một ngôn ngữ cho bot dự thi.");
@@ -94,7 +117,7 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
           name: tourName.trim(),
           gameId,
           format,
-          startsAt: startsAt.toISOString(),
+          startsAt: startsAt ? startsAt.toISOString() : null,
           maxParticipants: Math.min(Math.max(Number(maxTeams) || 2, 2), 128),
           languages,
           rules: ruleLines,
@@ -103,6 +126,8 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
           startType,
           config: {
             participantMode,
+            registrationOpensAt: registrationOpensAt.toISOString(),
+            registrationClosesAt: registrationClosesAt.toISOString(),
             minTeamSize: participantMode === "TEAM" ? Math.max(1, Number(minTeamSize) || 1) : 1,
             maxTeamSize: participantMode === "TEAM"
               ? Math.max(Number(maxTeamSize) || 5, Number(minTeamSize) || 1)
@@ -117,6 +142,10 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
       );
       setMsg(`🎉 Đã mở giải đấu "${created.name}" (mã ${created.code}).`);
       setTourName("");
+      setRegOpenDate("");
+      setRegOpenClock("");
+      setRegCloseDate("");
+      setRegCloseClock("");
       setStartDate("");
       setStartClock("");
       setLanguages(["python"]);
@@ -143,6 +172,14 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     setSelectedGame,
     maxTeams,
     setMaxTeams,
+    regOpenDate,
+    setRegOpenDate,
+    regOpenClock,
+    setRegOpenClock,
+    regCloseDate,
+    setRegCloseDate,
+    regCloseClock,
+    setRegCloseClock,
     startDate,
     setStartDate,
     startClock,
