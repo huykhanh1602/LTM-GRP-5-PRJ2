@@ -369,9 +369,20 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     participantAName=required(participantAName??participantAId,'participantAName');participantBName=required(participantBName??participantBId,'participantBName');
     if(participantAId===participantBId||(winnerId!==null&&![participantAId,participantBId].includes(winnerId)))throw new StorageError('INVALID_TOURNAMENT_RESULT','Invalid participants or winner');
     if(!(await query('SELECT id FROM tournament_rounds WHERE id=$1 AND tournament_id=$2',[roundId,tournamentId],client)).rows[0])throw new StorageError('ROUND_NOT_FOUND','Tournament round not found',404);
+    const columns='id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at';
+    // Sơ đồ đã có sẵn slot cho cặp này thì ghi vào slot đó, không chèn dòng mới (match_id UNIQUE).
+    const slot=(await query(`SELECT id FROM tournament_match_history WHERE round_id=$1 AND
+      (match_id=$2 OR (match_id IS NULL AND ((participant_a_id=$3 AND participant_b_id=$4) OR (participant_a_id=$5 AND participant_b_id=$6))))
+      LIMIT 1`,[roundId,matchId,participantAId,participantBId,participantBId,participantAId],client)).rows[0];
+    if(slot) {
+      const filled=(await query(`UPDATE tournament_match_history SET match_id=COALESCE($1,match_id),winner_id=$2,result=$3::jsonb,played_at=$4
+        WHERE id=$5 RETURNING ${columns}`,[matchId,winnerId,result===null?null:JSON.stringify(result),iso(playedAt),slot.id],client)).rows[0];
+      await invalidateTournamentNotificationSync(client);
+      return filled;
+    }
     const sql=`INSERT INTO tournament_match_history(id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11) ON CONFLICT(match_id) DO UPDATE SET winner_id=EXCLUDED.winner_id,result=EXCLUDED.result,played_at=EXCLUDED.played_at
-      RETURNING id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at`;
+      RETURNING ${columns}`;
     const saved=(await query(sql,[id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
     await invalidateTournamentNotificationSync(client);
     return saved;
