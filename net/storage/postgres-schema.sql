@@ -125,6 +125,10 @@ CREATE TABLE IF NOT EXISTS tournament_notifications (
   UNIQUE(user_id,event_key)
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_notifications_user ON tournament_notifications(user_id,read_at,created_at DESC);
+CREATE TABLE IF NOT EXISTS tournament_notification_sync (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS tournament_readiness (
   tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round_no INTEGER NOT NULL CHECK(round_no > 0),

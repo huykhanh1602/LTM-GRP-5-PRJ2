@@ -6,26 +6,48 @@ const formatDate = (value) => value ? new Date(value).toLocaleString("vi-VN", { 
 const labels = { schedule: "Lịch giải", match: "Trận đấu", result: "Kết quả", champion: "Nhà vô địch", status: "Cập nhật", game: "Game mới" };
 
 const GAME_READ_KEY = "botvui.read-game-announcements";
+const CACHE_TTL_MS = 90_000;
+const cacheKey = userId => `botvui.tournament-notifications.v1:${userId || "unknown"}`;
+function readCache(userId) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey(userId)) || "null");
+    return cached && Array.isArray(cached.items) ? cached : null;
+  } catch { return null; }
+}
 const gameNotices = GAME_CATALOG.filter(game => game.categories?.includes("new")).map(game => ({
   id: `game:${game.id}`, type: "game", title: game.available ? `Game mới: ${game.name}` : `Sắp ra mắt: ${game.name}`,
   message: game.shortDesc, game_id: game.id, target_type: "game", created_at: null,
 }));
 
-export default function TournamentNotifications({ token, onOpenTarget, onUnreadChange, compact = false, onViewAll, onClose }) {
-  const [data, setData] = useState({ items: [], unread: 0 });
+export default function TournamentNotifications({ token, userId, onOpenTarget, onUnreadChange, compact = false, onViewAll, onClose }) {
+  const [data, setData] = useState(() => {
+    const cached = readCache(userId);
+    return cached ? { items: cached.items, unread: cached.unread ?? 0 } : { items: [], unread: 0 };
+  });
   const [filter, setFilter] = useState("all");
   const [readGames, setReadGames] = useState(() => {
     try { return JSON.parse(localStorage.getItem(GAME_READ_KEY) || "[]"); } catch { return []; }
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const cached = readCache(userId);
+    return !cached || Date.now() - (cached.fetchedAt ?? 0) >= CACHE_TTL_MS;
+  });
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     setLoading(true); setError("");
-    try { setData(await getTournamentNotifications(token)); }
+    try {
+      const next = await getTournamentNotifications(token);
+      setData(next);
+      localStorage.setItem(cacheKey(userId), JSON.stringify({ ...next, fetchedAt: Date.now() }));
+    }
     catch (e) { setError(e.message || "Không tải được thông báo giải đấu."); }
     finally { setLoading(false); }
-  }, [token]);
-  useEffect(() => { load(); }, [load]);
+  }, [token, userId]);
+  useEffect(() => {
+    const cached = readCache(userId);
+    if (!cached || Date.now() - (cached.fetchedAt ?? 0) >= CACHE_TTL_MS) load();
+    else setLoading(false);
+  }, [load, userId]);
 
   const items = [...gameNotices.map(item => ({ ...item, read_at: readGames.includes(item.id) ? "local" : null })), ...(data.items ?? [])]
     .sort((a, b) => new Date(b.scheduled_at ?? b.created_at ?? 0) - new Date(a.scheduled_at ?? a.created_at ?? 0));
@@ -38,7 +60,12 @@ export default function TournamentNotifications({ token, onOpenTarget, onUnreadC
       const next = [...new Set([...readGames, id])];
       setReadGames(next); localStorage.setItem(GAME_READ_KEY, JSON.stringify(next)); return;
     }
-    try { await markTournamentNotificationRead(id, token); await load(); }
+    try {
+      await markTournamentNotificationRead(id, token);
+      const next = { ...data, unread: Math.max(0, data.unread - 1), items: data.items.map(item => item.id === id ? { ...item, read_at: new Date().toISOString() } : item) };
+      setData(next);
+      localStorage.setItem(cacheKey(userId), JSON.stringify({ ...next, fetchedAt: Date.now() }));
+    }
     catch (e) { setError(e.message || "Không cập nhật được trạng thái thông báo."); }
   };
 
@@ -61,7 +88,7 @@ export default function TournamentNotifications({ token, onOpenTarget, onUnreadC
     </div>
     {error && <p className="notification-error" role="alert">{error}</p>}
     <div className="notification-popover__list" aria-live="polite">
-      {loading ? <p className="notification-popover__empty">Đang tải thông báo…</p> : visibleItems.length ? visibleItems.map(item => <button
+      {loading && !visibleItems.length ? <p className="notification-popover__empty">Đang tải thông báo…</p> : visibleItems.length ? visibleItems.map(item => <button
         type="button" key={item.id} className={`notification-popover__item ${item.read_at ? "is-read" : "is-unread"}`}
         onClick={() => openTarget(item)}>
         <span className="notification-popover__icon" aria-hidden="true">{item.type === "game" ? "🎮" : item.type === "match" ? "⚔️" : item.type === "result" || item.type === "champion" ? "🏆" : "🎟️"}</span>

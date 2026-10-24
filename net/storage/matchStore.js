@@ -467,9 +467,14 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       bracket: tournament.format === 'single_elimination' ? buildBracket({ rounds, entryCount: entries.length }) : null };
   }
 
+  function invalidateTournamentNotificationSync() { db.prepare('DELETE FROM tournament_notification_sync').run(); }
+
   function listTournamentNotifications(userId, { limit = 100, offset = 0 } = {}) {
     userId = requireText(userId, 'userId'); limit = pageValue(limit, 100, 200); offset = pageValue(offset, 0, Number.MAX_SAFE_INTEGER);
     if (!limit) throw new StorageError('INVALID_PAGINATION', 'limit must be positive');
+    const sync = db.prepare('SELECT synced_at FROM tournament_notification_sync WHERE user_id=?').get(userId);
+    const shouldSync = !sync || Date.now() - Date.parse(sync.synced_at) >= 60_000;
+    if (shouldSync) {
     const upsert = db.prepare(`INSERT INTO tournament_notifications
       (id,user_id,tournament_id,event_key,type,title,message,scheduled_at,metadata_json,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,event_key) DO UPDATE SET
@@ -523,6 +528,9 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       for (const event of events) upsert.run(randomUUID(), userId, tournament.id, event.key, event.type, event.title,
         event.message, event.scheduled ?? null, JSON.stringify(event.metadata ?? {}), created);
     }
+    db.prepare(`INSERT INTO tournament_notification_sync(user_id,synced_at) VALUES(?,?)
+      ON CONFLICT(user_id) DO UPDATE SET synced_at=excluded.synced_at`).run(userId, new Date().toISOString());
+    }
     const total = db.prepare('SELECT COUNT(*) AS total FROM tournament_notifications WHERE user_id=?').get(userId).total;
     const unread = db.prepare('SELECT COUNT(*) AS total FROM tournament_notifications WHERE user_id=? AND read_at IS NULL').get(userId).total;
     const items = db.prepare(`SELECT n.id,n.user_id,n.tournament_id,t.game_id,n.event_key,n.type,n.title,n.message,n.scheduled_at,n.metadata_json,n.created_at,n.read_at
@@ -557,6 +565,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (constraintKind(error) === 'UNIQUE') throw new StorageError('TOURNAMENT_EXISTS', 'Tournament code already exists', 409);
       throw error;
     }
+    invalidateTournamentNotificationSync();
     return getTournament(id);
   }
 
@@ -570,11 +579,13 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (constraintKind(error) === 'UNIQUE') throw new StorageError('ROUND_EXISTS', 'Round number already exists', 409);
       throw error;
     }
+    invalidateTournamentNotificationSync();
     return db.prepare('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = ?').get(id);
   }
 
   function updateTournamentSchedule(tournamentId, scheduledAt) {
     db.prepare('UPDATE tournaments SET starts_at = ? WHERE id = ?').run(scheduledAt ? timestamp(scheduledAt) : null, tournamentId);
+    invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }
 
@@ -598,6 +609,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     }
     db.prepare('UPDATE tournaments SET config_json = ?, starts_at = ? WHERE id = ?')
       .run(JSON.stringify(config), beginsAt, tournamentId);
+    invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }
 
@@ -635,6 +647,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   function updateRoundSchedule(tournamentId, roundId, scheduledAt, autoStart) {
     db.prepare('UPDATE tournament_rounds SET scheduled_at = ?, auto_start = ? WHERE id = ? AND tournament_id = ?')
       .run(scheduledAt ? timestamp(scheduledAt) : null, Number(autoStart), roundId, tournamentId);
+    invalidateTournamentNotificationSync();
     return db.prepare('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = ?').get(roundId);
   }
 
@@ -679,6 +692,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       ON CONFLICT(match_id) DO UPDATE SET winner_id=excluded.winner_id,result_json=excluded.result_json,played_at=excluded.played_at`)
       .run(id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,
         result===null?null:JSON.stringify(result),timestamp(playedAt));
+    invalidateTournamentNotificationSync();
     return db.prepare(`SELECT id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,
       participant_b_name,winner_id,result_json,played_at FROM tournament_match_history WHERE (match_id IS ? AND ? IS NOT NULL) OR id=?`)
       .get(matchId,matchId,id);
@@ -702,10 +716,12 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (teamId) {
         db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, team_id, seed, bot_submission_id) VALUES (?, ?, ?, ?, ?)')
           .run(tournamentId, userId, teamId, seed, botSubmissionId);
+        invalidateTournamentNotificationSync();
         return db.prepare('SELECT tournament_id, user_id, team_id, seed, points, bot_submission_id FROM tournament_entries WHERE tournament_id = ? AND team_id = ?')
           .get(tournamentId, teamId);
       }
       db.prepare('INSERT INTO tournament_entries (tournament_id, user_id, seed) VALUES (?, ?, ?)').run(tournamentId, userId, seed);
+      invalidateTournamentNotificationSync();
       return db.prepare('SELECT tournament_id, user_id, seed, points FROM tournament_entries WHERE tournament_id = ? AND user_id = ?').get(tournamentId, userId);
     } catch (error) {
       if (constraintKind(error) === 'FOREIGNKEY') {
@@ -743,6 +759,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if(!db.prepare('SELECT id FROM tournament_match_history WHERE tournament_id=? AND winner_id=?').get(id,championId)) throw new StorageError('INVALID_CHAMPION','Champion must have won a recorded tournament match');
     } else if(championId) throw new StorageError('INVALID_INPUT','Champion can only be set when completing a tournament');
     db.prepare('UPDATE tournaments SET status = ?, champion_id = ? WHERE id = ?').run(status,status==='completed'?championId:null,id);
+    invalidateTournamentNotificationSync();
     return getTournament(id);
   }
 

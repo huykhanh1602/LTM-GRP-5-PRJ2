@@ -272,7 +272,7 @@ export default function App() {
   if (view === "notifications") {
     page = <main className="global-notifications-page">
       <button className="btn small" onClick={goBack}>← Quay lại</button>
-      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} /> :
+      {auth.isLoggedIn ? <TournamentNotifications token={auth.token} userId={auth.user?.id} onOpenTarget={openNotificationTarget} onUnreadChange={setUnreadNotifications} /> :
         <section className="notifications-login-prompt"><h1>Thông báo giải đấu</h1>
           <p>Đăng nhập để xem lịch thi đấu và kết quả của các giải bạn tham gia.</p>
           <button className="quick-auth-btn" onClick={() => setIsAuthOpen(true)}>👤 Đăng nhập</button>
@@ -471,6 +471,7 @@ export default function App() {
             {isNotificationsOpen && <TournamentNotifications
               compact
               token={auth.token}
+              userId={auth.user?.id}
               onUnreadChange={setUnreadNotifications}
               onClose={() => setIsNotificationsOpen(false)}
               onViewAll={() => {

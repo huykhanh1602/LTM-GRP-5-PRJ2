@@ -281,9 +281,13 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     return {...row,starts_at:row.starts_at?.toISOString()??null,ended_at:row.ended_at?.toISOString()??null,created_at:row.created_at.toISOString(),champion:champion?{id:row.champion_id,name:champion.name}:null,
       participant_count:entries.length,rounds,entries,bracket:row.format==='single_elimination'?buildBracket({rounds,entryCount:entries.length}):null};
   }
+  async function invalidateTournamentNotificationSync(client=pool) { await query('DELETE FROM tournament_notification_sync',[],client); }
   async function listTournamentNotifications(userId,{limit=100,offset=0}={}) {
     userId=required(userId,'userId');limit=page(limit,100,200);offset=page(offset,0,Number.MAX_SAFE_INTEGER);
     if(!limit)throw new StorageError('INVALID_PAGINATION','limit must be positive');
+    const sync=(await query('SELECT synced_at FROM tournament_notification_sync WHERE user_id=$1',[userId])).rows[0];
+    const shouldSync=!sync||Date.now()-new Date(sync.synced_at).getTime()>=60_000;
+    if(shouldSync){
     const ids=(await query('SELECT id FROM tournaments')).rows.map(row=>row.id), events=[];
     const dateText=value=>value?new Date(value).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'}):null;
     for(const id of ids){
@@ -318,6 +322,9 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT(user_id,event_key) DO UPDATE SET tournament_id=EXCLUDED.tournament_id,
       type=EXCLUDED.type,title=EXCLUDED.title,message=EXCLUDED.message,scheduled_at=EXCLUDED.scheduled_at,metadata=EXCLUDED.metadata`,
       [randomUUID(),userId,event.tournamentId,event.key,event.type,event.title,event.message,event.scheduled??null,JSON.stringify(event.metadata??{})]);
+    await query(`INSERT INTO tournament_notification_sync(user_id,synced_at) VALUES($1,now())
+      ON CONFLICT(user_id) DO UPDATE SET synced_at=EXCLUDED.synced_at`,[userId]);
+    }
     const counts=(await query('SELECT COUNT(*)::int AS total,COUNT(*) FILTER(WHERE read_at IS NULL)::int AS unread FROM tournament_notifications WHERE user_id=$1',[userId])).rows[0];
     const rows=(await query(`SELECT n.id,n.user_id,n.tournament_id,t.game_id,n.event_key,n.type,n.title,n.message,n.scheduled_at,n.metadata,n.created_at,n.read_at
       FROM tournament_notifications n LEFT JOIN tournaments t ON t.id=n.tournament_id
@@ -333,12 +340,17 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     if (!/^[A-Z0-9-]{3,24}$/.test(code)||name.length>100||!['single_elimination','round_robin','swiss'].includes(format)||!['draft','open'].includes(status)||!config||typeof config!=='object'||Array.isArray(config)) throw new StorageError('INVALID_INPUT','Invalid tournament data');
     try { await query(`INSERT INTO tournaments(id,game_id,code,name,format,status,config,starts_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,[id,gameId,code,name,format,status,JSON.stringify(config),startsAt===null?null:iso(startsAt)]); }
     catch(error){ if(error.code==='23503') throw new StorageError('GAME_NOT_FOUND','Game not found',404); if(error.code==='23505') throw new StorageError('TOURNAMENT_EXISTS','Tournament code already exists',409); throw error; }
+    await invalidateTournamentNotificationSync();
     return getTournament(id);
   }
   async function createTournamentRound(tournamentId,{id=randomUUID(),roundNo,scheduledAt=null,autoStart=true}) {
     if(!Number.isSafeInteger(roundNo)||roundNo<1) throw new StorageError('INVALID_INPUT','roundNo must be a positive integer');
-    try { return (await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,scheduled_at,auto_start) VALUES($1,$2,$3,$4,$5) RETURNING id,tournament_id,round_no,status,scheduled_at,auto_start',
-      [id,tournamentId,roundNo,scheduledAt?iso(scheduledAt):null,autoStart])).rows[0]; }
+    try {
+      const row=(await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,scheduled_at,auto_start) VALUES($1,$2,$3,$4,$5) RETURNING id,tournament_id,round_no,status,scheduled_at,auto_start',
+        [id,tournamentId,roundNo,scheduledAt?iso(scheduledAt):null,autoStart])).rows[0];
+      await invalidateTournamentNotificationSync();
+      return row;
+    }
     catch(error){ if(error.code==='23503') throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404); if(error.code==='23505') throw new StorageError('ROUND_EXISTS','Round number already exists',409); throw error; }
   }
   async function recordTournamentMatchInternal({id=randomUUID(),tournamentId,roundId,matchId=null,participantAId,participantAName,
@@ -351,7 +363,9 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const sql=`INSERT INTO tournament_match_history(id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11) ON CONFLICT(match_id) DO UPDATE SET winner_id=EXCLUDED.winner_id,result=EXCLUDED.result,played_at=EXCLUDED.played_at
       RETURNING id,tournament_id,round_id,match_id,participant_a_id,participant_a_name,participant_b_id,participant_b_name,winner_id,result,played_at`;
-    return (await query(sql,[id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
+    const saved=(await query(sql,[id,tournamentId,roundId,matchId,participantAId,participantAName,participantBId,participantBName,winnerId,result===null?null:JSON.stringify(result),iso(playedAt)],client)).rows[0];
+    await invalidateTournamentNotificationSync(client);
+    return saved;
   }
   async function recordTournamentMatch(input) { return transaction(client=>recordTournamentMatchInternal(input,client)); }
   async function addTournamentEntry(tournamentId,{userId=null,teamId=null,seed=null,botSubmissionId=null}) {
@@ -370,11 +384,15 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       seed ??= Number((await query('SELECT COUNT(*)::int AS total FROM tournament_entries WHERE tournament_id=$1',[tournamentId],client)).rows[0].total)+1;
       try{
         if(teamId) {
-          return (await query('INSERT INTO tournament_entries(tournament_id,user_id,team_id,seed,bot_submission_id) VALUES($1,$2,$3,$4,$5) RETURNING tournament_id,user_id,team_id,seed,points,bot_submission_id',
+          const row=(await query('INSERT INTO tournament_entries(tournament_id,user_id,team_id,seed,bot_submission_id) VALUES($1,$2,$3,$4,$5) RETURNING tournament_id,user_id,team_id,seed,points,bot_submission_id',
             [tournamentId,userId,teamId,seed,botSubmissionId],client)).rows[0];
+          await invalidateTournamentNotificationSync(client);
+          return row;
         }
-        return (await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',
+        const row=(await query('INSERT INTO tournament_entries(tournament_id,user_id,seed) VALUES($1,$2,$3) RETURNING tournament_id,user_id,seed,points',
           [tournamentId,userId,seed],client)).rows[0];
+        await invalidateTournamentNotificationSync(client);
+        return row;
       }
       catch(error){
         if(error.code==='23503'){
@@ -410,7 +428,9 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(!championId)throw new StorageError('CHAMPION_REQUIRED','A completed tournament must have a champion');
       if(!(await query('SELECT id FROM tournament_match_history WHERE tournament_id=$1 AND winner_id=$2',[id,championId])).rows[0])throw new StorageError('INVALID_CHAMPION','Champion must have won a recorded tournament match');
     } else if(championId) throw new StorageError('INVALID_INPUT','Champion can only be set when completing a tournament');
-    await query('UPDATE tournaments SET status=$1,champion_id=$2 WHERE id=$3',[status,status==='completed'?championId:null,id]); return getTournament(id);
+    await query('UPDATE tournaments SET status=$1,champion_id=$2 WHERE id=$3',[status,status==='completed'?championId:null,id]);
+    await invalidateTournamentNotificationSync();
+    return getTournament(id);
   }
   async function saveBotSubmission({id=randomUUID(),roomId,teamId,filename,source}) {
     roomId=required(roomId,'roomId');teamId=required(teamId,'teamId');filename=required(filename,'filename');required(source,'source');
@@ -804,6 +824,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
 
   async function updateTournamentSchedule(tournamentId, scheduledAt) {
     await query('UPDATE tournaments SET starts_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, tournamentId]);
+    await invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }
 
@@ -827,6 +848,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       throw new StorageError('KICKOFF_BEFORE_CLOSE', 'Ngày khởi tranh phải sau thời gian đóng đơn', 400);
     }
     await query('UPDATE tournaments SET config=$1::jsonb, starts_at=$2 WHERE id=$3', [JSON.stringify(config), beginsAt, tournamentId]);
+    await invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }
 
@@ -865,6 +887,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   async function updateRoundSchedule(tournamentId, roundId, scheduledAt, autoStart) {
     await query('UPDATE tournament_rounds SET scheduled_at = $1, auto_start = $2 WHERE id = $3 AND tournament_id = $4',
       [scheduledAt ? iso(scheduledAt) : null, autoStart, roundId, tournamentId]);
+    await invalidateTournamentNotificationSync();
     return (await query('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = $1', [roundId])).rows[0];
   }
 
@@ -885,6 +908,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       await query(`UPDATE tournament_rounds SET status='in_progress',scheduled_at=$1,auto_start=TRUE,
         submission_started_at=$2,submission_deadline=$3 WHERE id=$4 AND tournament_id=$5`,
         [iso(nowIso),iso(nowIso),iso(deadlineIso),roundId,tournamentId],client);
+      await invalidateTournamentNotificationSync(client);
       return (await query('SELECT id,tournament_id,round_no,status,scheduled_at,auto_start,submission_started_at,submission_deadline FROM tournament_rounds WHERE id=$1',[roundId],client)).rows[0];
     });
   }
