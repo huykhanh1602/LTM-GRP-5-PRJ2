@@ -10,6 +10,7 @@ export default function MyTournamentsSection({
   createOpen,
   onToggleCreate,
   onOpenTournament,
+  onEditWindow,
 }) {
   return (
     <div>
@@ -58,6 +59,15 @@ export default function MyTournamentsSection({
               <span className={`tour-status-badge ${TOUR_STATUS[t.status]?.className ?? "upcoming"}`}>
                 {TOUR_STATUS[t.status]?.label ?? t.status}
               </span>
+              {t.status === "open" && (
+                <button
+                  className="btn small"
+                  title="Đổi ngày mở đơn và đóng đơn"
+                  onClick={() => onEditWindow?.(t)}
+                >
+                  📅 Sửa mở/đóng đơn
+                </button>
+              )}
               <button className="btn small" onClick={() => onOpenTournament?.(t.id)}>
                 Vào phòng chờ
               </button>

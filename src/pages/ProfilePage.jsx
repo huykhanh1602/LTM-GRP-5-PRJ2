@@ -3,6 +3,7 @@ import ProfileHeader from "../components/profile/ProfileHeader.jsx";
 import MyTournamentsSection from "../components/profile/MyTournamentsSection.jsx";
 import CreateTournamentForm from "../components/profile/CreateTournamentForm.jsx";
 import ProfileSettingsPanel from "../components/profile/ProfileSettingsPanel.jsx";
+import EditRegistrationWindowModal from "../components/profile/EditRegistrationWindowModal.jsx";
 import AvatarModal from "../components/profile/AvatarModal.jsx";
 import { getTournaments } from "../api.js";
 import { apiErrorText, toTournamentCard } from "../utils/tournamentApi.js";
@@ -10,6 +11,7 @@ import { useCreateTournamentForm } from "../hooks/useCreateTournamentForm.js";
 import { usePasswordSettings } from "../hooks/usePasswordSettings.js";
 import { useAvatarModal } from "../hooks/useAvatarModal.js";
 import "../styles/auth.css";
+import "../styles/tournament.css";
 
 export default function ProfilePage({
   user,
@@ -27,6 +29,9 @@ export default function ProfilePage({
   const [activeTab, setActiveTab] = useState("profile"); // "profile" | "settings"
   const [createOpen, setCreateOpen] = useState(false);
   const [myTournaments, setMyTournaments] = useState([]);
+  const [editWindow, setEditWindow] = useState(null);
+  const [windowEditMsg, setWindowEditMsg] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   const createForm = useCreateTournamentForm({ token, onOpenTournament });
   const password = usePasswordSettings({ isLoggedIn, onChangePassword, onSetPassword });
@@ -58,7 +63,7 @@ export default function ProfilePage({
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, user?.id, createForm.msg]);
+  }, [isLoggedIn, user?.id, createForm.msg, reloadTick]);
 
   return (
     <div className="profile-page">
@@ -116,11 +121,13 @@ export default function ProfilePage({
         {/* TAB 1: TRANG CÁ NHÂN — giải đấu của tôi + mở giải mới */}
         {activeTab === "profile" && (
           <div>
+            {windowEditMsg && <p className="tour-edit-notice">{windowEditMsg}</p>}
             <MyTournamentsSection
               tournaments={myTournaments}
               createOpen={createOpen}
               onToggleCreate={() => setCreateOpen((v) => !v)}
               onOpenTournament={onOpenTournament}
+              onEditWindow={setEditWindow}
             />
 
             {/* Form mở giải đấu mới (ẩn/hiện trong tab Trang cá nhân, ghi thẳng vào server) */}
@@ -143,6 +150,20 @@ export default function ProfilePage({
 
       {/* ── Modal Đổi Avatar ── */}
       <AvatarModal editor={avatar} />
+
+      {/* ── Modal sửa khung mở/đóng đơn của giải do mình tổ chức ── */}
+      {editWindow && (
+        <EditRegistrationWindowModal
+          tournament={editWindow}
+          token={token}
+          onClose={() => setEditWindow(null)}
+          onSaved={(updated) => {
+            setEditWindow(null);
+            setWindowEditMsg(`📅 Đã cập nhật khung đăng ký của "${updated.name}".`);
+            setReloadTick((value) => value + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2602,6 +2602,51 @@ button.tour-card-item:hover {
   border-color: var(--c-purple-deep);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.18);
 }
+/* Modal sửa khung mở/đóng đơn: mỗi mốc thời gian một hàng, ô ngày + giờ cạnh nhau */
+.tl-window-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0;
+}
+.tl-window-field > label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-text-main);
+}
+.tl-window-pair {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tl-window-input {
+  flex: 1 1 180px;
+  min-width: 170px;
+  padding: 13px 16px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text-main);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(148, 163, 184, 0.55);
+  border-radius: 12px;
+}
+.tl-window-input:focus {
+  outline: none;
+  border-color: var(--c-purple-deep);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
+}
+.tl-window-current {
+  margin: 6px 0 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.07);
+  font-size: 13.5px;
+  color: var(--c-text-main);
+}
+.tl-window-current b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 /* Modal đăng ký Đội: chips thành viên + ô tìm nick có gợi ý avatar */
 .tl-member-chips {
   display: flex;

@@ -30,6 +30,8 @@ const ERROR_MESSAGES = {
   REGISTRATION_NOT_OPEN: "Chưa tới ngày mở đơn, giải chưa cho đăng ký.",
   REGISTRATION_CLOSED: "Giải đã đóng đơn, không thể đăng ký thêm.",
   REGISTRATION_STILL_OPEN: "Chưa tới thời gian đóng đơn nên chưa thể khởi tranh.",
+  TOURNAMENT_STARTED: "Giải đã khởi tranh nên không sửa được khung mở/đóng đơn nữa.",
+  KICKOFF_BEFORE_CLOSE: "Ngày khởi tranh phải sau thời gian đóng đơn.",
   TOURNAMENT_FULL: "Giải đấu đã đủ số lượng người tham gia.",
   NOT_ENOUGH_PARTICIPANTS: "Cần ít nhất 2 suất tham gia mới có thể khởi tranh.",
   BRACKET_EXISTS: "Sơ đồ nhánh của giải đã được tạo rồi.",

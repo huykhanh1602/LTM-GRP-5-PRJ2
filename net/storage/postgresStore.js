@@ -535,9 +535,10 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const term = normalizeSearchText(q);
     if (!term) return { items: [] };
     const { rows } = await query(
-      'SELECT id, display_name, avatar_url, guest FROM users ORDER BY display_name LIMIT 1000',
+      'SELECT id, display_name, avatar_url FROM users ORDER BY display_name LIMIT 1000',
     );
-    return { items: rows.filter((row) => searchTermMatches(row.display_name, term)).slice(0, limit) };
+    // Bảng users của Postgres không có cột guest nên bổ sung giả để khớp shape của sqlite.
+    return { items: rows.map((row) => ({ ...row, guest: false })).filter((row) => searchTermMatches(row.display_name, term)).slice(0, limit) };
   }
 
   async function getUserPublicProfile(id) {
@@ -740,11 +741,34 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     getTournamentSlot, resolveRoundSubmissionDeadline,
-    updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
+    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
     abortInterruptedMatches, close:()=>pool.end() };
 
   async function updateTournamentSchedule(tournamentId, scheduledAt) {
     await query('UPDATE tournaments SET starts_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, tournamentId]);
+    return getTournament(tournamentId);
+  }
+
+  // Chủ giải sửa khung mở/đóng đơn; chỉ khi giải còn đang mở đơn.
+  async function updateTournamentRegistrationWindow(tournamentId, { registrationOpensAt, registrationClosesAt, startsAt } = {}) {
+    const row = (await query('SELECT status, config, starts_at FROM tournaments WHERE id=$1', [tournamentId])).rows[0];
+    if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    if (row.status !== 'open') {
+      throw new StorageError('TOURNAMENT_STARTED', 'Giải đã khởi tranh, không sửa được khung đăng ký', 409);
+    }
+    const opensAt = iso(required(registrationOpensAt, 'registrationOpensAt'));
+    const closesAt = iso(required(registrationClosesAt, 'registrationClosesAt'));
+    if (Date.parse(closesAt) <= Date.parse(opensAt)) {
+      throw new StorageError('INVALID_INPUT', 'registrationClosesAt phải sau registrationOpensAt');
+    }
+    const config = { ...(row.config ?? {}), registrationOpensAt: opensAt, registrationClosesAt: closesAt };
+    const beginsAt = startsAt === undefined || startsAt === null
+      ? (row.starts_at ? iso(row.starts_at) : null) : iso(startsAt);
+    // Giải AUTO: giữ nguyên mốc khởi tranh cũ cũng phải sau đóng đơn.
+    if ((config.startType ?? 'AUTO') === 'AUTO' && beginsAt && Date.parse(beginsAt) <= Date.parse(closesAt)) {
+      throw new StorageError('KICKOFF_BEFORE_CLOSE', 'Ngày khởi tranh phải sau thời gian đóng đơn', 400);
+    }
+    await query('UPDATE tournaments SET config=$1::jsonb, starts_at=$2 WHERE id=$3', [JSON.stringify(config), beginsAt, tournamentId]);
     return getTournament(tournamentId);
   }
 

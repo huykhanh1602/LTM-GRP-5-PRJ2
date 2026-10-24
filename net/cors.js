@@ -6,7 +6,7 @@
 //
 // Cho phép ghi đè origin bằng biến môi trường CORS_ORIGIN (mặc định là "*").
 
-const ALLOW_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+const ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const ALLOW_HEADERS = "Content-Type, Authorization, X-Requested-With";
 const MAX_AGE = "86400";
 

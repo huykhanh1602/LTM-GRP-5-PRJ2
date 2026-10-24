@@ -507,6 +507,29 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return getTournament(tournamentId);
   }
 
+  // Chủ giải sửa khung mở/đóng đơn; chỉ khi giải còn đang mở đơn.
+  function updateTournamentRegistrationWindow(tournamentId, { registrationOpensAt, registrationClosesAt, startsAt } = {}) {
+    const row = db.prepare('SELECT status, config_json, starts_at FROM tournaments WHERE id = ?').get(tournamentId);
+    if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    if (row.status !== 'open') {
+      throw new StorageError('TOURNAMENT_STARTED', 'Giải đã khởi tranh, không sửa được khung đăng ký', 409);
+    }
+    const opensAt = timestamp(requireText(registrationOpensAt, 'registrationOpensAt'));
+    const closesAt = timestamp(requireText(registrationClosesAt, 'registrationClosesAt'));
+    if (Date.parse(closesAt) <= Date.parse(opensAt)) {
+      throw new StorageError('INVALID_INPUT', 'registrationClosesAt phải sau registrationOpensAt');
+    }
+    const config = { ...JSON.parse(row.config_json ?? '{}'), registrationOpensAt: opensAt, registrationClosesAt: closesAt };
+    const beginsAt = startsAt === undefined || startsAt === null ? row.starts_at : timestamp(startsAt);
+    // Giải AUTO: giữ nguyên mốc khởi tranh cũ cũng phải sau đóng đơn.
+    if ((config.startType ?? 'AUTO') === 'AUTO' && beginsAt && Date.parse(beginsAt) <= Date.parse(closesAt)) {
+      throw new StorageError('KICKOFF_BEFORE_CLOSE', 'Ngày khởi tranh phải sau thời gian đóng đơn', 400);
+    }
+    db.prepare('UPDATE tournaments SET config_json = ?, starts_at = ? WHERE id = ?')
+      .run(JSON.stringify(config), beginsAt, tournamentId);
+    return getTournament(tournamentId);
+  }
+
   // Giải AUTO tới hạn khởi tranh, đã đóng đơn, còn open, chưa có sơ đồ.
   function listAutoStartDue(now = Date.now()) {
     const rows = db.prepare(
@@ -1125,7 +1148,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
-    updateTournamentSchedule, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
+    updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue,
     listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay, abortInterruptedMatches,
     getTournamentMyMatch, setTournamentReady, submitTournamentRoundBot,
     getTournamentSlot, resolveRoundSubmissionDeadline, close: () => db.close() };

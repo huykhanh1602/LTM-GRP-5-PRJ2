@@ -5,7 +5,7 @@ import { createHttpServer } from "../net/http.js";
 import { createRoomGateway } from "../net/roomGateway.js";
 
 const FRONTEND_ORIGIN = "https://ltm-grp-5-prj-2.vercel.app";
-const EXPECTED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+const EXPECTED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const EXPECTED_HEADERS = "Content-Type, Authorization, X-Requested-With";
 
 async function withServer(t, { matchStore } = {}) {

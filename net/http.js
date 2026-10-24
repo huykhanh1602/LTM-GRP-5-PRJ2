@@ -249,7 +249,7 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 send(401, { error: "AUTHENTICATION_FAILED" });
                 return;
             }
-            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|matches|start|schedule))?$/);
+            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|matches|start|schedule|registration-window))?$/);
             const entryRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries$/);
             const slotRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/slots\/(\d+)\/result$/);
             const triggerStartRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/trigger-start$/);
@@ -406,6 +406,13 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     }
                     if (organizerRoute?.[2] === "schedule" && request.method === "PATCH") {
                         send(200, await matchStore.updateTournamentSchedule(id, body.scheduled_at)); return;
+                    }
+                    if (organizerRoute?.[2] === "registration-window" && request.method === "PATCH") {
+                        send(200, await matchStore.updateTournamentRegistrationWindow(id, {
+                            registrationOpensAt: body.registrationOpensAt ?? body.registration_opens_at,
+                            registrationClosesAt: body.registrationClosesAt ?? body.registration_closes_at,
+                            startsAt: body.startsAt ?? body.starts_at,
+                        })); return;
                     }
                     if (organizerRoute?.[2] === "rounds" && request.method === "PATCH") {
                         const roundId = body.round_id;

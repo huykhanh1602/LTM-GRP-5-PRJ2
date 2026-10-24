@@ -67,6 +67,10 @@ export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
         method: "PATCH", body: { scheduled_at: scheduledAt }, token,
     });
+export const updateRegistrationWindow = (tournamentId, { registrationOpensAt, registrationClosesAt, startsAt = null }, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/registration-window`, {
+        method: "PATCH", body: { registrationOpensAt, registrationClosesAt, startsAt }, token,
+    });
 export const updateRoundSchedule = (idOrCode, roundId, scheduledAt, autoStart, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds`, {
         method: "PATCH", body: { round_id: roundId, scheduled_at: scheduledAt, auto_start: autoStart }, token,

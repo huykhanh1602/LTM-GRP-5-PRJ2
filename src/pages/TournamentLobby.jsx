@@ -1,4 +1,5 @@
 import TournamentLayout from "../layouts/TournamentLayout.jsx";
+import { useState } from "react";
 import TournamentHeader from "../components/tournament/TournamentHeader.jsx";
 import BracketView from "../components/tournament/BracketView.jsx";
 import RoundRobinView from "../components/tournament/RoundRobinView.jsx";
@@ -11,6 +12,7 @@ import AttachResultModal from "../components/tournament/AttachResultModal.jsx";
 import TeamRegistrationModal from "../components/tournament/TeamRegistrationModal.jsx";
 import TeamManagementPanel from "../components/tournament/TeamManagementPanel.jsx";
 import AdminControlModal from "../components/tournament/AdminControlModal.jsx";
+import EditRegistrationWindowModal from "../components/profile/EditRegistrationWindowModal.jsx";
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
@@ -63,6 +65,7 @@ export function PageTournamentLobby({
     enabled: Boolean(user?.id) && tournament?.status === "in_progress",
     onResolved: () => load().catch(() => {}),
   });
+  const [windowModal, setWindowModal] = useState(false);
 
   if (!activeId) {
     return <TournamentPicker gameId={gameId} onPick={setPickedId} onBack={onBack} />;
@@ -241,6 +244,17 @@ export function PageTournamentLobby({
                 )}
                 {registrationOpen && isRegistered && (
                   <span className="tl-pill">✔ Bạn đã có trong danh sách thi đấu</span>
+                )}
+                {isOrganizer && status === "open" && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy}
+                    title="Đổi ngày mở đơn và đóng đơn của giải"
+                    onClick={() => setWindowModal(true)}
+                  >
+                    📅 Sửa mở/đóng đơn
+                  </button>
                 )}
                 {isOrganizer && registrationOpen && !hasBracket && (
                   <button
@@ -463,6 +477,19 @@ export function PageTournamentLobby({
           onUpdated={(data) => {
             setRaw(data);
             setMessage({ tone: "ok", text: "Bảng điều điều giải đã cập nhật." });
+          }}
+        />
+      )}
+
+      {windowModal && (
+        <EditRegistrationWindowModal
+          tournament={tournament}
+          token={token}
+          onClose={() => setWindowModal(false)}
+          onSaved={(data) => {
+            setRaw(data);
+            setWindowModal(false);
+            setMessage({ tone: "ok", text: "📅 Đã cập nhật khung mở/đóng đơn của giải." });
           }}
         />
       )}
