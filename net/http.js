@@ -56,12 +56,6 @@ function buildTournamentConfig(body, organizer) {
         organizerId: organizer.id,
         organizerName: organizer.display_name ?? organizer.id,
     };
-    if (body.startType !== undefined) {
-        if (!['AUTO', 'MANUAL'].includes(body.startType)) {
-            throw new StorageError('INVALID_INPUT', 'startType phải là AUTO hoặc MANUAL');
-        }
-        config.startType = body.startType;
-    }
     if (body.description !== undefined) config.description = limitedText(body.description, "description", 1000);
     if (body.prize !== undefined) config.prize = limitedText(body.prize, "prize", 120);
     if (body.rules !== undefined) {

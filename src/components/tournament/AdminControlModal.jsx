@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal.jsx";
-import { rescheduleMatch, triggerRoundStart, updateRoundSchedule } from "../../api.js";
+import {
+  rescheduleMatch,
+  triggerRoundStart,
+  updateRoundSchedule,
+  updateTournamentSchedule,
+} from "../../api.js";
 import { apiErrorText } from "../../utils/tournamentApi.js";
+import { getRoundLabels } from "../../utils/tournamentView.js";
 
 // Chuyển ISO sang giá trị cho input datetime-local (giờ địa phương)
 function toLocalInputValue(iso) {
@@ -15,28 +21,33 @@ function toLocalInputValue(iso) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Bảng điều khiển giải: luôn nhắm vòng sắp diễn ra tiếp theo.
-// Giải MANUAL: chỉ có nút chủ giải bấm mở vòng.
-// Giải AUTO: bảng đặt lịch, tới giờ vòng tự khởi tranh.
+// Bảng điều khiển giải: chưa có sơ đồ thì chọn giờ khởi tranh (tự gen nhánh);
+// đã có sơ đồ thì mặc định chỉ hiện vòng đang diễn ra + vòng kế tiếp để đặt lịch.
+// Vòng kế tiếp tự dịch dần theo tiến trình, tới Chung kết thì hết mục để đặt.
 // ─────────────────────────────────────────────────────────────
 
 const STATUS_LABELS = { pending: "chờ khởi tranh", in_progress: "đang diễn ra", completed: "đã kết thúc" };
+const STATUS_PILL = { pending: "", in_progress: "tl-pill--green", completed: "tl-pill--gold" };
 
-// Vòng sắp diễn ra tiếp theo: vòng chưa mở đầu tiên, rồi vòng đang đấu, rồi vòng cuối.
-function nextRound(rounds) {
-  return (
-    rounds.find((round) => round.status === "pending") ??
-    rounds.find((round) => round.status === "in_progress") ??
-    rounds.at(-1) ??
-    null
-  );
+// Vòng cần điều khiển: vòng đang diễn ra (để theo dõi) + vòng pending kế tiếp (để đặt lịch).
+function focusRounds(rounds) {
+  const running = rounds.find((round) => round.status === "in_progress");
+  const nextPending = rounds.find((round) => round.status === "pending");
+  const picked = [running, nextPending].filter(Boolean);
+  if (picked.length === 0) return rounds.length > 0 ? [rounds.at(-1)] : [];
+  return [...new Set(picked)].sort((a, b) => a.round_no - b.round_no);
 }
 
 export default function AdminControlModal({ tournament, token, onClose, onUpdated }) {
   const rawRounds = tournament.raw?.rounds ?? [];
-  const isAuto = tournament.startType === "AUTO";
-  const targetRound = nextRound(rawRounds);
-  const [roundAt, setRoundAt] = useState("");
+  const hasBracket = rawRounds.length > 0;
+  const labels = getRoundLabels(rawRounds.length, tournament.format);
+  const visibleRounds = focusRounds(rawRounds);
+  const closesAt = tournament.registrationClosesAt
+    ? new Date(tournament.registrationClosesAt).getTime()
+    : null;
+  const [kickoffAt, setKickoffAt] = useState(() => toLocalInputValue(tournament.raw?.starts_at));
+  const [roundAtById, setRoundAtById] = useState({});
   const [matchId, setMatchId] = useState(null);
   const [matchAt, setMatchAt] = useState("");
   const [error, setError] = useState(null);
@@ -50,13 +61,27 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
       (a, b) =>
         Number(Boolean(a.winner_id)) - Number(Boolean(b.winner_id)) || a.roundNo - b.roundNo,
     );
+  const firstMatchKey = matchOptions[0]?.match_id ?? null;
+  const roundKey = rawRounds.map((round) => round.id).join(",");
+
+  // Chỉ điền sẵn cho vòng chưa có giá trị, giữ nguyên giờ chủ giải đang gõ.
+  useEffect(() => {
+    setRoundAtById((prev) => {
+      const next = { ...prev };
+      for (const round of rawRounds) {
+        if (!(round.id in next)) next[round.id] = toLocalInputValue(round.scheduled_at);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundKey]);
 
   useEffect(() => {
-    setRoundAt(toLocalInputValue(targetRound?.scheduled_at));
-    setMatchId(matchOptions[0]?.match_id ?? null);
-    setMatchAt(toLocalInputValue(matchOptions[0]?.played_at ?? null));
+    const picked = matchOptions.find((item) => item.match_id === firstMatchKey);
+    setMatchId(firstMatchKey);
+    setMatchAt(toLocalInputValue(picked?.played_at ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetRound?.id]);
+  }, [firstMatchKey]);
 
   async function run(action, successText) {
     setBusy(true);
@@ -71,12 +96,10 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
     }
   }
 
-  const canControl = targetRound?.status === "pending";
-
   return (
     <Modal
       title="Bảng điều khiển giải"
-      subtitle="Điều khiển vòng sắp diễn ra và hoãn/dời lịch trận đấu"
+      subtitle="Điều khiển lịch khởi tranh, vòng đấu và hoãn/dời lịch trận"
       onClose={onClose}
     >
       {error && (
@@ -85,71 +108,135 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
         </p>
       )}
 
-      <h3 className="tl-admin-title">⏰ Vòng sắp diễn ra</h3>
-      <p className="tl-form-note">
-        {targetRound
-          ? `Vòng ${targetRound.round_no} · ${STATUS_LABELS[targetRound.status] ?? targetRound.status}`
-          : "Giải chưa có vòng đấu."}
-      </p>
-
-      {!targetRound ? (
-        <p className="tl-form-note">Giải chưa có vòng đấu.</p>
-      ) : targetRound.status === "completed" ? (
-        <p className="tl-form-note">🎉 Tất cả vòng đấu đã kết thúc.</p>
-      ) : !canControl ? (
-        <p className="tl-form-note">🟢 Vòng này đang diễn ra.</p>
-      ) : isAuto ? (
+      {!hasBracket ? (
         <>
-          <label className="tl-form-label" htmlFor="tl-admin-round-at">
-            Thời gian thi đấu
+          <h3 className="tl-admin-title">⛳ Khởi tranh — tạo sơ đồ tự động</h3>
+          <label className="tl-form-label" htmlFor="tl-admin-kickoff">
+            Thời gian khởi tranh
           </label>
           <input
-            id="tl-admin-round-at"
+            id="tl-admin-kickoff"
             type="datetime-local"
             className="tl-form-input"
-            value={roundAt}
-            onChange={(event) => setRoundAt(event.target.value)}
+            value={kickoffAt}
+            onChange={(event) => setKickoffAt(event.target.value)}
           />
-          <p className="tl-form-note">Tới thời gian trên, vòng sẽ tự động khởi tranh.</p>
+          <p className="tl-form-note">
+            Tới thời gian này hệ thống tự động tạo sơ đồ nhánh (khi đã đóng đơn và đủ tối thiểu 2
+            người/đội).
+          </p>
           <div className="tl-actions">
             <button
               type="button"
               className="btn primary"
-              disabled={busy || !targetRound}
-              onClick={() =>
+              disabled={busy}
+              onClick={() => {
+                if (kickoffAt && closesAt !== null && Date.parse(kickoffAt) <= closesAt) {
+                  setError({ tone: "err", text: "Thời gian khởi tranh phải sau thời gian đóng đơn." });
+                  return;
+                }
                 run(
                   () =>
-                    updateRoundSchedule(
+                    updateTournamentSchedule(
                       tournament.id,
-                      targetRound.id,
-                      roundAt ? new Date(roundAt).toISOString() : null,
-                      true,
+                      kickoffAt ? new Date(kickoffAt).toISOString() : null,
                       token,
                     ),
-                  "Lịch vòng đã cập nhật.",
-                )
-              }
+                  "Lịch khởi tranh đã lưu.",
+                );
+              }}
             >
-              💾 Lưu lịch vòng
+              💾 Lưu lịch khởi tranh
             </button>
           </div>
         </>
       ) : (
-        <div className="tl-actions">
-          <button
-            type="button"
-            className="btn primary"
-            disabled={busy || !targetRound}
-            onClick={() =>
-              run(
-                () => triggerRoundStart(tournament.id, targetRound.id, token),
-                "Vòng đã khởi tranh ngay.",
-              )
-            }
-          >
-            ▶ Bắt đầu ngay
-          </button>
-        </div>
+        <>
+          <h3 className="tl-admin-title">⏰ Vòng sắp diễn ra</h3>
+          <div className="tl-admin-rounds">
+            {visibleRounds.map((round) => {
+              const label = labels[round.round_no - 1] ?? `Vòng ${round.round_no}`;
+              const prevCompleted =
+                round.round_no === 1 ||
+                rawRounds.some((item) => item.round_no === round.round_no - 1 && item.status === "completed");
+              const atValue = roundAtById[round.id] ?? "";
+              return (
+                <div className="tl-admin-round" key={round.id}>
+                  <div className="tl-admin-round__head">
+                    <h4>
+                      Vòng {round.round_no} · {label}
+                    </h4>
+                    <span className={`tl-pill ${STATUS_PILL[round.status] ?? ""}`}>
+                      {STATUS_LABELS[round.status] ?? round.status}
+                    </span>
+                  </div>
+
+                  {round.status === "completed" ? (
+                    <p className="tl-form-note">🎉 Vòng này đã kết thúc.</p>
+                  ) : round.status === "in_progress" ? (
+                    <p className="tl-form-note">🟢 Vòng này đang diễn ra.</p>
+                  ) : (
+                    <>
+                      <label className="tl-form-label" htmlFor={`tl-admin-round-at-${round.id}`}>
+                        Thời gian khởi tranh
+                      </label>
+                      <input
+                        id={`tl-admin-round-at-${round.id}`}
+                        type="datetime-local"
+                        className="tl-form-input"
+                        value={atValue}
+                        onChange={(event) =>
+                          setRoundAtById((prev) => ({ ...prev, [round.id]: event.target.value }))
+                        }
+                      />
+                      <p className="tl-form-note">
+                        {prevCompleted
+                          ? "Tới thời gian trên, vòng sẽ tự động khởi tranh."
+                          : "Vòng trước chưa kết thúc — đặt giờ trước, tới giờ vòng sẽ tự mở sau khi vòng trước xong."}
+                      </p>
+                      <div className="tl-actions">
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={busy}
+                          onClick={() =>
+                            run(
+                              () =>
+                                updateRoundSchedule(
+                                  tournament.id,
+                                  round.id,
+                                  atValue ? new Date(atValue).toISOString() : null,
+                                  true,
+                                  token,
+                                ),
+                              `Lịch vòng ${round.round_no} đã cập nhật.`,
+                            )
+                          }
+                        >
+                          💾 Lưu lịch vòng {round.round_no}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy || !prevCompleted}
+                          title={prevCompleted ? undefined : "Vòng trước chưa kết thúc"}
+                          onClick={() =>
+                            run(
+                              () => triggerRoundStart(tournament.id, round.id, token),
+                              `Vòng ${round.round_no} đã khởi tranh ngay.`,
+                            )
+                          }
+                        >
+                          ▶ Bắt đầu ngay
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {matchOptions.length > 0 && (

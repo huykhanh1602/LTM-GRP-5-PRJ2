@@ -2754,6 +2754,36 @@ button.tour-card-item:hover {
 .tl-admin-title + .tl-form-input {
   margin-top: 8px;
 }
+.tl-admin-rounds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.tl-admin-round {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+}
+.tl-admin-round__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tl-admin-round__head h4 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--c-purple-deep);
+}
+.tl-pill--green {
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
 
 /* ── Bảng xác nhận lập Đội + Quản lý Đội ─────────────────── */
 .tl-team-confirm {

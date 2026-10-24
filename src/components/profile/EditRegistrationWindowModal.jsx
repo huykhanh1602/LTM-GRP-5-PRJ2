@@ -21,11 +21,11 @@ function toDate({ day, clock }) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function DateTimeField({ id, label, value, onChange }) {
+function DateTimeField({ id, label, value, onChange, required = true }) {
   return (
     <div className="tl-window-field">
       <label htmlFor={`${id}-day`}>
-        {label} <b className="tl-form-req">*</b>
+        {label} {required && <b className="tl-form-req">*</b>}
       </label>
       <div className="tl-window-pair">
         <input

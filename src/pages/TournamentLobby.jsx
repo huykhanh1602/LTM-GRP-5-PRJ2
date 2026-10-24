@@ -271,7 +271,7 @@ export function PageTournamentLobby({
                     {tournament.startType === "MANUAL" ? "🏁 Bắt đầu khởi tranh" : "⚔️ Khởi tranh & xếp nhánh"}
                   </button>
                 )}
-                {isOrganizer && hasBracket && (
+                {isOrganizer && (
                   <button
                     type="button"
                     className="btn"

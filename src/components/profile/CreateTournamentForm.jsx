@@ -43,8 +43,6 @@ export default function CreateTournamentForm({ form, onCancel }) {
     setMinTeamSize,
     maxTeamSize,
     setMaxTeamSize,
-    startType,
-    setStartType,
     roundSubmissionMode,
     setRoundSubmissionMode,
     submissionWindowMinutes,
@@ -172,35 +170,6 @@ export default function CreateTournamentForm({ form, onCancel }) {
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="reg-field">
-          <label>Hình thức khởi tranh</label>
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <label className={`reg-lang ${startType === "AUTO" ? "is-checked" : ""}`}>
-              <input
-                type="radio"
-                name="startType"
-                checked={startType === "AUTO"}
-                onChange={() => setStartType("AUTO")}
-              />
-              <span>⚡ Tự động</span>
-            </label>
-            <label className={`reg-lang ${startType === "MANUAL" ? "is-checked" : ""}`}>
-              <input
-                type="radio"
-                name="startType"
-                checked={startType === "MANUAL"}
-                onChange={() => setStartType("MANUAL")}
-              />
-              <span>✋ Thủ công (chủ giải bấm)</span>
-            </label>
-          </div>
-          <p className="reg-hint">
-            {startType === "AUTO"
-              ? "Đến ngày khởi tranh (bên dưới, sau khi đóng đơn), hệ thống tự động ghép sơ đồ trận đấu."
-              : "Chủ giải bấm nút \"Bắt đầu khởi tranh\" trong phòng giải (chỉ dùng được sau khi đóng đơn) để ghép sơ đồ."}
-          </p>
         </div>
 
         <div className="reg-field">
@@ -364,30 +333,27 @@ export default function CreateTournamentForm({ form, onCancel }) {
           <p className="reg-hint">Ngoài khung giờ này, giải vẫn hiện nhưng không đăng ký được.</p>
         </div>
 
-        {startType === "AUTO" && (
-          <div className="reg-field">
-            <label>Ngày khởi tranh *</label>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input
-                type="date"
-                className="reg-input"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-              <input
-                type="time"
-                className="reg-input"
-                value={startClock}
-                onChange={(e) => setStartClock(e.target.value)}
-                required
-              />
-            </div>
-            <p className="reg-hint">
-              Đúng thời điểm này (sau khi đóng đơn), hệ thống sẽ tự động ghép sơ đồ trận đấu.
-            </p>
+        <div className="reg-field">
+          <label>Ngày khởi tranh</label>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="date"
+              className="reg-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <input
+              type="time"
+              className="reg-input"
+              value={startClock}
+              onChange={(e) => setStartClock(e.target.value)}
+            />
           </div>
-        )}
+          <p className="reg-hint">
+            Không bắt buộc. Đúng thời điểm này (sau khi đóng đơn), hệ thống tự động ghép sơ đồ trận
+            đấu. Để trống thì chủ giải chọn giờ khởi tranh sau trong "Bảng điều khiển giải".
+          </p>
+        </div>
 
         <div className="reg-field">
           <label>Giải thưởng / Vinh danh</label>

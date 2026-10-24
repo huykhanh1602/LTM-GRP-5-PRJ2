@@ -464,18 +464,17 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(entries.length<2) throw new StorageError('NOT_ENOUGH_PARTICIPANTS','Cần ít nhất 2 người đăng ký để tạo nhánh đấu',409);
       const {totalRounds}=planSize(entries.length);
       const config=tournament.config??{};
-      const isAuto=(config.startType??'AUTO')==='AUTO';
       const windowMinutes=Number(config.submissionWindowMinutes)||10;
       const nowIso=new Date().toISOString();
       const deadlineIso=new Date(Date.now()+windowMinutes*60*1000).toISOString();
-      // Vòng 1 mặc định đúng ngày khởi tranh đã khai trong form; các vòng sau do lịch AUTO hoặc nút chủ giải (MANUAL).
+      // Vòng 1 mở ngay theo ngày khởi tranh; các vòng sau chờ chủ giải đặt giờ hoặc bấm mở trong bảng điều khiển.
       const roundOneAt=tournament.starts_at?iso(tournament.starts_at):nowIso;
       const roundIds=[];
       for(let roundNo=1;roundNo<=totalRounds;roundNo+=1){
         const roundId=randomUUID();
         await query('INSERT INTO tournament_rounds(id,tournament_id,round_no,status,submission_started_at,submission_deadline,scheduled_at,auto_start) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
           [roundId,tournamentId,roundNo,roundNo===1?'in_progress':'pending',roundNo===1?iso(nowIso):null,roundNo===1?iso(deadlineIso):null,
-            roundNo===1?roundOneAt:null,roundNo===1?true:isAuto],client);
+            roundNo===1?roundOneAt:null,roundNo===1?true:false],client);
         roundIds.push(roundId);
       }
       const startedAt=new Date().toISOString();
@@ -775,24 +774,23 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const config = { ...(row.config ?? {}), registrationOpensAt: opensAt, registrationClosesAt: closesAt };
     const beginsAt = startsAt === undefined || startsAt === null
       ? (row.starts_at ? iso(row.starts_at) : null) : iso(startsAt);
-    // Giải AUTO: giữ nguyên mốc khởi tranh cũ cũng phải sau đóng đơn.
-    if ((config.startType ?? 'AUTO') === 'AUTO' && beginsAt && Date.parse(beginsAt) <= Date.parse(closesAt)) {
+    // Mốc khởi tranh (giữ nguyên hoặc mới) luôn phải sau đóng đơn.
+    if (beginsAt && Date.parse(beginsAt) <= Date.parse(closesAt)) {
       throw new StorageError('KICKOFF_BEFORE_CLOSE', 'Ngày khởi tranh phải sau thời gian đóng đơn', 400);
     }
     await query('UPDATE tournaments SET config=$1::jsonb, starts_at=$2 WHERE id=$3', [JSON.stringify(config), beginsAt, tournamentId]);
     return getTournament(tournamentId);
   }
 
-  // Giải AUTO tới hạn, đã đóng đơn, còn open, chưa có sơ đồ.
+  // Giải có lịch khởi tranh tới hạn, đã đóng đơn, còn open, chưa có sơ đồ.
   async function listAutoStartDue(now = Date.now()) {
     const { rows } = await query(
       "SELECT id, starts_at, config FROM tournaments WHERE status = 'open' AND format = 'single_elimination' AND starts_at IS NOT NULL"
     );
     const due = [];
     for (const row of rows) {
-      const config = row.config ?? {};
-      if (config.startType !== 'AUTO') continue;
       if (new Date(row.starts_at).getTime() > now) continue;
+      const config = row.config ?? {};
       if (config.registrationClosesAt && now < new Date(config.registrationClosesAt).getTime()) continue;
       const hasBracket = (await query('SELECT id FROM tournament_rounds WHERE tournament_id = $1 LIMIT 1', [row.id])).rows[0];
       if (hasBracket) continue;

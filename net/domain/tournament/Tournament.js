@@ -37,7 +37,6 @@ export function createTournament({
       participantMode: ParticipantMode.INDIVIDUAL,
       minTeamSize: 1,
       maxTeamSize: 5,
-      startType: 'AUTO',
       roundSubmissionMode: RoundSubmissionMode.SINGLE,
       submissionWindowMinutes: 10,
       ...config,

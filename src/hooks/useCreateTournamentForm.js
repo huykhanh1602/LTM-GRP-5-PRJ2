@@ -29,7 +29,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
   const [participantMode, setParticipantMode] = useState("INDIVIDUAL");
   const [minTeamSize, setMinTeamSize] = useState(1);
   const [maxTeamSize, setMaxTeamSize] = useState(5);
-  const [startType, setStartType] = useState("AUTO");
   const [roundSubmissionMode, setRoundSubmissionMode] = useState("SINGLE");
   const [submissionWindowMinutes, setSubmissionWindowMinutes] = useState(10);
   const [msg, setMsg] = useState("");
@@ -80,11 +79,11 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     if (registrationClosesAt.getTime() <= registrationOpensAt.getTime()) {
       return setFormError("Thời gian đóng đơn phải sau thời gian mở đơn.");
     }
-    // AUTO: ngày khởi tranh phải sau đóng đơn.
+    // Ngày khởi tranh không bắt buộc: để trống thì chủ giải đặt sau trong bảng điều khiển giải.
     let startsAt = null;
-    if (startType === "AUTO") {
+    if (startDate || startClock) {
       if (!startDate || !startClock) {
-        return setFormError("Giải tự động cần nhập ngày và giờ khởi tranh.");
+        return setFormError("Hãy chọn đủ ngày và giờ khởi tranh, hoặc để trống cả hai.");
       }
       startsAt = new Date(`${startDate}T${startClock}`);
       if (Number.isNaN(startsAt.getTime())) {
@@ -123,7 +122,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
           rules: ruleLines,
           prize: prize.trim(),
           description: description.trim(),
-          startType,
           config: {
             participantMode,
             registrationOpensAt: registrationOpensAt.toISOString(),
@@ -204,8 +202,6 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
     setMinTeamSize,
     maxTeamSize,
     setMaxTeamSize,
-    startType,
-    setStartType,
     roundSubmissionMode,
     setRoundSubmissionMode,
     submissionWindowMinutes,
