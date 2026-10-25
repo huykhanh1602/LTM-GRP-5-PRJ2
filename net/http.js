@@ -2,6 +2,7 @@ import http from "node:http";
 import { randomInt, randomUUID } from "node:crypto";
 import { StorageError } from "./storage/matchStore.js";
 import { applyCorsHeaders, handleCorsPreflight } from "./cors.js";
+import { ControlsMode, normalizeControlsMode } from "../shared/domain/tournament.js";
 
 const BOT_LANGUAGES = ["python", "javascript", "cpp"];
 const TOURNAMENT_FORMATS = ["single_elimination", "round_robin", "swiss"];
@@ -48,6 +49,15 @@ function randomCode(prefix) {
     let suffix = "";
     for (let index = 0; index < 4; index += 1) suffix += CODE_CHARS[randomInt(CODE_CHARS.length)];
     return `${prefix}${prefix ? "-" : ""}${suffix}`.slice(0, 24);
+}
+
+// Chủ giải chọn kiểu điều khiển; giá trị cũ/rỗng coi như chỉ cho đấu bot.
+function controlsModeOrError(value) {
+    try {
+        return normalizeControlsMode(value);
+    } catch {
+        throw new StorageError("INVALID_INPUT", `allowedControls phải thuộc ${Object.values(ControlsMode).join(", ")}`);
+    }
 }
 
 // Luật/mô tả/ngôn ngữ do người tạo giải khai báo, lưu trong config của giải.
@@ -113,6 +123,10 @@ function buildTournamentConfig(body, organizer) {
         throw new StorageError('INVALID_INPUT', 'submissionWindowMinutes phải là số nguyên từ 1 đến 60');
       }
       config.submissionWindowMinutes = minutes;
+    }
+    // Kiểu điều khiển được phép trong trận của giải: BOT / HUMAN / BOTH.
+    if (body.config?.allowedControls !== undefined) {
+      config.allowedControls = controlsModeOrError(body.config.allowedControls);
     }
     // Khung thời gian đăng ký (mở đơn / đóng đơn) — lưu ISO trong config.
     const isoOrNull = (value, field) => {
@@ -426,7 +440,10 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         send(200, await matchStore.updateTournamentStatus(id, body.status, body.champion_id ?? null)); return;
                     }
                     if (organizerRoute?.[2] === "schedule" && request.method === "PATCH") {
-                        send(200, await matchStore.updateTournamentSchedule(id, body.scheduled_at)); return;
+                        const controls = body.allowed_controls ?? body.allowedControls;
+                        send(200, await matchStore.updateTournamentSchedule(
+                            id, body.scheduled_at, controls === undefined ? undefined : controlsModeOrError(controls)));
+                        return;
                     }
                     if (organizerRoute?.[2] === "registration-window" && request.method === "PATCH") {
                         send(200, await matchStore.updateTournamentRegistrationWindow(id, {

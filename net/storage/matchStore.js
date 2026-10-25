@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, roundRobinChampion, roundRobinPairs, roundRobinStandings, slotCount } from './tournamentBracket.js';
 import { normalizeSearchText, searchTermMatches } from './searchText.js';
+import { normalizeControlsMode } from '../../shared/domain/tournament.js';
 
 export class StorageError extends Error {
   constructor(code, message, status = 400) {
@@ -654,8 +655,18 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     return db.prepare('SELECT id, tournament_id, round_no, status, scheduled_at, auto_start FROM tournament_rounds WHERE id = ?').get(id);
   }
 
-  function updateTournamentSchedule(tournamentId, scheduledAt) {
-    db.prepare('UPDATE tournaments SET starts_at = ? WHERE id = ?').run(scheduledAt ? timestamp(scheduledAt) : null, tournamentId);
+  function updateTournamentSchedule(tournamentId, scheduledAt, allowedControls = undefined) {
+    // Bỏ trống = giữa nguyên lịch đã có (chủ giải chỉ đổi kiểu điều khiển).
+    if (scheduledAt !== undefined) {
+      db.prepare('UPDATE tournaments SET starts_at = ? WHERE id = ?').run(scheduledAt ? timestamp(scheduledAt) : null, tournamentId);
+    }
+    if (allowedControls !== undefined) {
+      const value = normalizeControlsMode(allowedControls);
+      const row = db.prepare('SELECT config_json FROM tournaments WHERE id = ?').get(tournamentId);
+      if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+      const config = { ...JSON.parse(row.config_json ?? '{}'), allowedControls: value };
+      db.prepare('UPDATE tournaments SET config_json = ? WHERE id = ?').run(JSON.stringify(config), tournamentId);
+    }
     invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }

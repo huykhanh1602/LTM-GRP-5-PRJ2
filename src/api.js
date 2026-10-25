@@ -82,6 +82,11 @@ export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
         method: "PATCH", body: { scheduled_at: scheduledAt }, token,
     });
+// Kiểu điều khiển giải cho phép: BOT / HUMAN / BOTH (không đụng tới lịch khởi tranh).
+export const updateTournamentControls = (idOrCode, allowedControls, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
+        method: "PATCH", body: { allowed_controls: allowedControls }, token,
+    });
 export const updateRegistrationWindow = (tournamentId, { registrationOpensAt, registrationClosesAt, startsAt = null }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/registration-window`, {
         method: "PATCH", body: { registrationOpensAt, registrationClosesAt, startsAt }, token,

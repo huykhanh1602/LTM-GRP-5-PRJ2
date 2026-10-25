@@ -24,10 +24,11 @@ import sys
 from game_engine import (
     TEAM_A,
     TEAM_B,
-    BotProcess,
     GameConfig,
     GameEngine,
     ReplayExporter,
+    create_player,
+    normalize_control,
 )
 
 
@@ -95,6 +96,24 @@ def parse_args(argv=None):
         action="store_true",
         help="Phát sự kiện match_start, turn, match_end dưới dạng NDJSON.",
     )
+    parser.add_argument(
+        "--control-a",
+        choices=("bot", "human"),
+        default="bot",
+        help="Đội A do bot chạy file hay người thật cầm chuột (mặc định: bot).",
+    )
+    parser.add_argument(
+        "--control-b",
+        choices=("bot", "human"),
+        default="bot",
+        help="Đội B do bot chạy file hay người thật cầm chuột (mặc định: bot).",
+    )
+    parser.add_argument(
+        "--human-turn-ms",
+        type=int,
+        default=30_000,
+        help="Thời lượng (ms) một lượt của người chơi cầm chuột (mặc định: 30000).",
+    )
     return parser.parse_args(argv)
 
 
@@ -110,8 +129,13 @@ def main(argv=None) -> int:
 
     config = GameConfig.load(config_path)
 
-    bot_a = BotProcess(bot_a_path, TEAM_A, config.bot_time_ms)
-    bot_b = BotProcess(bot_b_path, TEAM_B, config.bot_time_ms)
+    player_state: dict = {}
+    bot_a = create_player(
+        args.control_a, TEAM_A, bot_a_path, config.bot_time_ms, args.human_turn_ms, player_state
+    )
+    bot_b = create_player(
+        args.control_b, TEAM_B, bot_b_path, config.bot_time_ms, args.human_turn_ms, player_state
+    )
 
     try:
         engine = GameEngine(config, {TEAM_A: bot_a, TEAM_B: bot_b})
@@ -126,6 +150,10 @@ def main(argv=None) -> int:
         bot_a.close()
         bot_b.close()
 
+    replay["controls"] = {
+        TEAM_A: normalize_control(args.control_a),
+        TEAM_B: normalize_control(args.control_b),
+    }
     written_path = ReplayExporter.write(replay, out_path)
 
     info = replay["match_info"]

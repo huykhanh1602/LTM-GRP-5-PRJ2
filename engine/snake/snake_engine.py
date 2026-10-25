@@ -222,7 +222,9 @@ class SnakeEngine:
                 "turn": self.turn_number,
                 "player": team,
                 "actions": [],
-                "events": [{"type": "BOT_FAILED", "team": team, "status": status}],
+                "events": [
+                    {"type": "BOT_FAILED", "team": team, "status": status, "error": resp.get("error")}
+                ],
             }
 
         action = resp.get("action")

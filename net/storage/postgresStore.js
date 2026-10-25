@@ -958,8 +958,17 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     updateTournamentSchedule, updateTournamentRegistrationWindow, updateRoundSchedule, triggerRoundStart, rescheduleMatch, listAutoStartDue, listRoundsDueToStart,
     abortInterruptedMatches, close:()=>pool.end() };
 
-  async function updateTournamentSchedule(tournamentId, scheduledAt) {
-    await query('UPDATE tournaments SET starts_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, tournamentId]);
+  async function updateTournamentSchedule(tournamentId, scheduledAt, allowedControls = undefined) {
+    if (scheduledAt !== undefined) {
+      await query('UPDATE tournaments SET starts_at = $1 WHERE id = $2', [scheduledAt ? iso(scheduledAt) : null, tournamentId]);
+    }
+    if (allowedControls !== undefined) {
+      const value = normalizeControlsMode(allowedControls);
+      const row = (await query('SELECT config FROM tournaments WHERE id = $1', [tournamentId])).rows[0];
+      if (!row) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+      const config = { ...(row.config ?? {}), allowedControls: value };
+      await query('UPDATE tournaments SET config = $1::jsonb WHERE id = $2', [JSON.stringify(config), tournamentId]);
+    }
     await invalidateTournamentNotificationSync();
     return getTournament(tournamentId);
   }

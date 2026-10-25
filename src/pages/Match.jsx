@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Board from "../components/Board.jsx";
 import Controls from "../components/Controls.jsx";
+import MatchOutcome from "../components/MatchOutcome.jsx";
+import Modal from "../components/tournament/Modal.jsx";
 import ResultBanner from "../components/ResultBanner.jsx";
 import TeamInfo from "../components/TeamInfo.jsx";
 import TurnList from "../components/TurnList.jsx";
+import TurnBar from "../components/TurnBar.jsx";
 import { useLivePlayback } from "../hooks/useLivePlayback.js";
+import { humanMoveTargets, movablePieces } from "../utils/humanMoves.js";
 import { makeColorOf } from "../utils/colors.js";
 import { sound } from "../audio/soundManager.js";
 
@@ -20,11 +24,53 @@ const SFX_BY_EVENT = {
 };
 
 // Xem trận TRỰC TIẾP (frames tăng dần khi server gửi lượt mới).
-export default function Match({ state, onReturnToRoom, onLeave }) {
+export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
   const { init, frames, finished } = state;
-  const player = useLivePlayback(frames);
+  const me = state.room?.teams.find((team) => team.isMe) ?? null;
+  const gameId = state.room?.game_id ?? state.params?.gameId ?? "rps_chess";
+  const byMouse = me?.control === "human";
+  const player = useLivePlayback(frames, { followLive: byMouse });
   const colorOf = makeColorOf(Object.keys(init.match_info.teams));
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedPiece, setSelectedPiece] = useState(null);
+  const [askExit, setAskExit] = useState(false); // hỏi xác nhận bỏ ván đang chơi
+
+  // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
+  const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
+  // Banner kết quả chỉ hiện khi bàn chơi đã chạy tới nước cuối (bot đánh bot xong trong 1 giây).
+  const showOutcome = Boolean(state.result) && state.result.outcome !== "watch" && player.index >= player.last;
+
+  // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
+  const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
+  const turnNo = turn?.payload?.board_state?.turn ?? null;
+  useEffect(() => { setSelectedPiece(null); }, [turnNo]); // nước mới thì bỏ quân đang chọn
+
+  const movable = useMemo(
+    () => (turn && byMouse ? movablePieces(gameId, turn.payload) : []),
+    [turn, gameId, byMouse],
+  );
+  const targets = useMemo(() => {
+    if (!turn || !byMouse) return new Map();
+    const list = humanMoveTargets(gameId, turn.payload, gameId === "snake_battle" ? null : selectedPiece);
+    return new Map(list.map((t) => [`${t.x},${t.y}`, t]));
+  }, [turn, gameId, selectedPiece, byMouse]);
+  const selectedCell = useMemo(() => {
+    const piece = movable.find((p) => p.id === selectedPiece);
+    return piece ? `${piece.x},${piece.y}` : null;
+  }, [movable, selectedPiece]);
+  const pick = turn ? { targets, selected: selectedCell } : null;
+
+  function clickCell(x, y) {
+    if (!turn) return;
+    const target = targets.get(`${x},${y}`);
+    if (target) {
+      state.playMove(target.action);
+      setSelectedPiece(null);
+      return;
+    }
+    const piece = movable.find((p) => p.x === x && p.y === y);
+    setSelectedPiece(piece && piece.id === selectedPiece ? null : piece?.id ?? null);
+  }
 
   // Phát SFX khi khung hình mới xuất hiện (khi tua lại sẽ không phát trùng cùng 1 frame).
   const lastSfxIndex = useRef(-1);
@@ -34,13 +80,8 @@ export default function Match({ state, onReturnToRoom, onLeave }) {
     lastSfxIndex.current = frame.index;
     const cue = frame.event && SFX_BY_EVENT[frame.event.type];
     if (cue) sound.play(cue);
-    if (frame.over) {
-      const myTeam = state.params?.teamId;
-      const winner = frame.over.winner;
-      if (!winner) sound.play("draw");
-      else if (myTeam) sound.play(winner === myTeam ? "win" : "lose");
-      else sound.play("win"); // người xem không phải người chơi → tiếng thắng chung
-    }
+    // Người chơi đã có banner MatchOutcome phát tiếng thắng/thua; ở đây chỉ lo người xem.
+    if (frame.over && !state.params?.teamId) sound.play(frame.over.winner ? "win" : "draw");
   }, [player.frame, state.params]);
 
   return (
@@ -52,20 +93,54 @@ export default function Match({ state, onReturnToRoom, onLeave }) {
           ) : (
             <span className="badge live"><i /> TRỰC TIẾP</span>
           )}
-          <button className="btn small" onClick={onReturnToRoom}>← Phòng chờ</button>
+          <button
+            className="btn small"
+            onClick={() => (inPlay ? setAskExit(true) : onReturnToRoom())}
+          >
+            ← Phòng chờ
+          </button>
         </div>
-        {!finished && player.behind > 0 && (
+        {player.behind > 0 && (
           <button className="btn small" onClick={() => player.seek(player.last)}>
             Đang chậm {player.behind} bước · Về trực tiếp ⏭
           </button>
         )}
-        <button className="btn small" onClick={onLeave}>Thoát phòng</button>
+        <button className="btn small" onClick={() => (inPlay ? setAskExit(true) : onLeave())}>
+          Thoát phòng
+        </button>
       </div>
+
+      {askExit && (
+        <Modal
+          title="Rời ván đang chơi?"
+          subtitle="Bỏ giữa ván sẽ bị xử thua ngay lập tức."
+          onClose={() => setAskExit(false)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setAskExit(false)}>
+                Ở lại đánh tiếp
+              </button>
+              <button type="button" className="btn danger" onClick={() => { setAskExit(false); onForfeit(); }}>
+                Rời ván, chịu thua
+              </button>
+            </>
+          }
+        >
+          <p className="forfeit-warn">
+            Bạn đang giữa ván. Rời khỏi màn hình lúc này được tính là bỏ ván và bạn sẽ thua ngay.
+          </p>
+        </Modal>
+      )}
+
+      {showOutcome && (
+        <MatchOutcome result={state.result} myTeamId={state.result.myTeamId} onDone={onLeave} />
+      )}
 
       <main className={`layout ${showHistory ? "history-expanded" : "history-collapsed"}`}>
         <section className="stage">
           <TeamInfo replay={init} frame={player.frame} colorOf={colorOf} />
-          <Board board={init.game_config.board} frame={player.frame} colorOf={colorOf} />
+          <TurnBar turn={turn} myName={me?.name ?? ""} gameId={gameId} hasPieceSelected={Boolean(selectedPiece)} />
+          <Board board={init.game_config.board} frame={player.frame} colorOf={colorOf} pick={pick} onCellClick={turn ? clickCell : undefined} />
           <ResultBanner replay={init} frame={player.frame} />
           <Controls {...player} />
           {finished && (

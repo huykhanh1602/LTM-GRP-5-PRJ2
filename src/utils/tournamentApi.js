@@ -3,8 +3,20 @@
 // Không còn dữ liệu giả: mọi trường đều lấy từ backend.
 // ============================================================
 import { normalizeTournament } from "./tournamentView.js";
+import { CONTROLS_BY_MODE } from "../../shared/domain/tournament.js";
 
 export const BYE_ID = "__BYE__";
+
+// Danh sách kiểu điều khiển giải cho phép, mặc định chỉ bot.
+export const controlsListOf = (config) => CONTROLS_BY_MODE[config?.allowedControls ?? "BOT"] ?? ["bot"];
+
+// Nhãn ngắn cho giao diện biết giải cho đấu kiểu gì.
+export function controlsLabel(allowedControls) {
+  const set = [...(allowedControls ?? ["bot"])].sort().join("+");
+  if (set === "human") return "🖱️ Chỉ đấu bằng chuột";
+  if (set === "bot+human") return "🤖/🖱️ Bot hoặc chuột, tự chọn";
+  return "🤖 Chỉ đấu bot";
+}
 
 const BYE_ENTRY = {
   user_id: BYE_ID,
@@ -135,6 +147,7 @@ export function toTournamentView(api, currentUserId) {
     organizerId: api.config?.organizerId ?? null,
     registrationOpensAt: api.config?.registrationOpensAt ?? null,
     registrationClosesAt: api.config?.registrationClosesAt ?? null,
+    allowedControls: controlsListOf(api.config),
     isOrganizer: Boolean(currentUserId) && api.config?.organizerId === currentUserId,
     isRegistered: Boolean(view.myEntryId),
     raw: api,
@@ -165,6 +178,8 @@ export function toTournamentCard(api) {
     prize: config.prize ?? "",
     description: config.description ?? "",
     languages: Array.isArray(config.languages) ? config.languages : [],
+    allowedControls: controlsListOf(config),
+    controlsMode: config.allowedControls ?? "BOT",
   };
 }
 

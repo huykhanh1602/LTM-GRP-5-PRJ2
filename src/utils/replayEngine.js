@@ -20,6 +20,7 @@ export const REASON_LABELS = {
   SNAKE_HIT_WALL: "đối phương đâm vào tường",
   SNAKE_HIT_BODY: "đối phương đâm vào thân rắn",
   ILLEGAL_MOVE: "đối phương đi sai luật",
+  FORFEIT: "đối phương bỏ ván",
 };
 
 export function teamName(replay, id) {
