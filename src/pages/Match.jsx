@@ -37,8 +37,9 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
 
   // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
   const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
-  // Banner kết quả chỉ hiện khi bàn chơi đã chạy tới nước cuối (bot đánh bot xong trong 1 giây).
-  const showOutcome = Boolean(state.result) && state.result.outcome !== "watch" && player.index >= player.last;
+  // Người chơi bằng chuột bám theo realtime; không chờ playback index cập nhật sau match_end.
+  const showOutcome = Boolean(state.result) && state.result.outcome !== "watch" &&
+    (byMouse || player.index >= player.last);
 
   // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
   const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
