@@ -27,7 +27,9 @@ function snakeTargets(payload) {
   const mine = payload.my_pieces ?? [];
   if (mine.length === 0) return [];
   const [headX, headY] = mine[0].pos;
-  const blocked = new Set([...occupied(mine.slice(1, -1)), ...occupied(payload.opponent_pieces)]);
+  // Đuôi đã rụng (board_state.obstacles) cũng là ô chết: đâm vào là thua.
+  const dropped = occupied((board.obstacles ?? []).map((pos) => ({ pos })));
+  const blocked = new Set([...occupied(mine.slice(1, -1)), ...occupied(payload.opponent_pieces), ...dropped]);
   const targets = [];
   for (const [direction, [dx, dy]] of Object.entries(SNAKE_DIRS)) {
     const x = headX + dx;

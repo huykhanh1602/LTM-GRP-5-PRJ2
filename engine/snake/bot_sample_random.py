@@ -11,7 +11,12 @@ def make_move(board_state, my_pieces, opponent_pieces, config):
     width = board_state["width"]
     height = board_state["height"]
 
-    obstacles = {tuple(p["pos"]) for p in my_pieces} | {tuple(p["pos"]) for p in opponent_pieces}
+    # Gồm cả đuôi đã rụng (board_state["obstacles"]): đâm vào là thua.
+    obstacles = (
+        {tuple(p["pos"]) for p in my_pieces}
+        | {tuple(p["pos"]) for p in opponent_pieces}
+        | {tuple(pos) for pos in board_state.get("obstacles", [])}
+    )
     moves = [
         ("UP", (0, -1)),
         ("DOWN", (0, 1)),

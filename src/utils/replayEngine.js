@@ -21,6 +21,7 @@ export const REASON_LABELS = {
   SNAKE_HIT_BODY: "đối phương đâm vào thân rắn",
   ILLEGAL_MOVE: "đối phương đi sai luật",
   FORFEIT: "đối phương bỏ ván",
+  SNAKE_HIT_OBSTACLE: "đối phương đâm vào đuôi đã rụng",
 };
 
 export function teamName(replay, id) {
@@ -93,6 +94,10 @@ function applyEvent(prev, ev, step, index) {
 
     case "SNAKE_CRASH":
       next.flash = { kind: "trap", pos: ev.pos };
+      break;
+
+    case "TAIL_SHED":
+      next.flash = { kind: "trap", pos: ev.cells?.[0] };
       break;
 
     case "SCORE_UPDATED":
@@ -202,8 +207,12 @@ export function describeEvent(ev, replay) {
       return { icon: "🐍", text: "Cập nhật bàn cờ" };
     case "FOOD_EATEN":
       return { icon: "🍎", text: `${tn(ev.team)} ăn mồi ${pos(ev.pos)} (${ev.score} điểm)` };
-    case "SNAKE_CRASH":
-      return { icon: "💥", text: `${tn(ev.team)} đâm ${ev.reason === "HIT_WALL" ? "vào tường" : "vào thân rắn"} ${pos(ev.pos)}` };
+    case "TAIL_SHED":
+      return { icon: "🦎", text: `${tn(ev.team)} rụng ${ev.cells?.length ?? 0} đốt đuôi thành chướng ngại vật (còn dài ${ev.remaining_length})` };
+    case "SNAKE_CRASH": {
+      const target = ev.reason === "HIT_WALL" ? "vào tường" : ev.reason === "HIT_OBSTACLE" ? "vào đuôi đã rụng" : "vào thân rắn";
+      return { icon: "💥", text: `${tn(ev.team)} đâm ${target} ${pos(ev.pos)}` };
+    }
     case "SCORE_UPDATED":
       return { icon: "🔢", text: "Cập nhật điểm" };
     case "BOT_TIMEOUT":

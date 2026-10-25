@@ -24,7 +24,8 @@ function snakeFallback(payload) {
     const theirs = payload.opponent_pieces ?? [];
     const [headX, headY] = mine[0].pos;
     // Đuôi sẽ dịch đi nên ô của nó không tính là chắn.
-    const blocked = cells(mine.slice(1, -1)).union(cells(theirs));
+    const dropped = cells((board.obstacles ?? []).map((pos) => ({ pos })));
+    const blocked = cells(mine.slice(1, -1)).union(cells(theirs)).union(dropped);
     const opponentHead = theirs[0]?.pos ?? null;
     const legal = [];
     for (const [name, [dx, dy]] of Object.entries(SNAKE_DIRS)) {

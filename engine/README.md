@@ -1,5 +1,7 @@
 # Game Engine - "Oẳn Tù Tì Trên Bàn Cờ"
 
+> Game **Rắn Săn Mồi** (`snake_battle`) nằm ở [`snake/`](snake/README.md): hợp đồng bot, luật rụng đuôi, chướng ngại vật và mẫu bot.
+
 Bộ engine Python chạy một trận đấu lượt đi giữa **hai bot** trên bàn cờ ma trận,
 xử lý va chạm theo luật oẳn tù tì, cô lập timeout/crash của bot và xuất file
 `replay.json` theo đúng định dạng mà giải đấu yêu cầu. Server Node gọi engine

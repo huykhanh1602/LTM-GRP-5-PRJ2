@@ -99,6 +99,11 @@ export default function SnakeLayer({ shapes, width, height }) {
   );
 }
 
+// Đuôi đã rụng: khối đá cố định, viền theo màu rắn đã rụng nó.
+export function SnakeObstacle({ source }) {
+  return <div className={`snake-obstacle snake-obstacle-${source ?? "none"}`} title="Đuôi đã rụng: đâm vào là thua" />;
+}
+
 export function SnakeFood() {
   return <div className="snake-food" title="Mồi" />;
 }

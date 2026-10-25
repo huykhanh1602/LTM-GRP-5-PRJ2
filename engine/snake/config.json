@@ -9,5 +9,12 @@
     "max_turns": 200,
     "bot_time_ms": 1000,
     "food_count": 5
+  },
+  "rules": {
+    "tail_shed": {
+      "every": 5,
+      "min_length": 4,
+      "count": 2
+    }
   }
 }

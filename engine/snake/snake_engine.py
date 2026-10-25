@@ -37,6 +37,13 @@ class SnakeEngine:
         self.seed = int(seed)
         self.rng = random.Random(self.seed)
 
+        # Luật rụng đuôi: cứ mỗi `every` nước đi của MỘT con rắn, nếu nó dài hơn `min_length`
+        # thì `count` đốt cuối rụng ra thành chướng ngại vật cố định; ai đâm vào (kể cả chủ nhân) đều thua.
+        shed = config.get("rules", {}).get("tail_shed", {})
+        self.shed_every = int(shed.get("every", 5))
+        self.shed_min_length = int(shed.get("min_length", 4))
+        self.shed_count = int(shed.get("count", 2))
+
         # Mỗi con rắn là danh sách tọa độ [(x, y), ...], phần tử 0 là ĐẦU
         self.snakes: Dict[str, List[Tuple[int, int]]] = {
             TEAM_A: [(3, 3), (3, 2), (3, 1)],
@@ -49,6 +56,9 @@ class SnakeEngine:
         self.scores: Dict[str, int] = {TEAM_A: 0, TEAM_B: 0}
         self.alive: Dict[str, bool] = {TEAM_A: True, TEAM_B: True}
         self.foods: List[Tuple[int, int]] = []
+        # Chướng ngại vật do đuôi rụng: danh sách (vị trí, đội đã rụng đuôi).
+        self.obstacles: List[Tuple[Tuple[int, int], str]] = []
+        self.moves_made: Dict[str, int] = {TEAM_A: 0, TEAM_B: 0}
         self._init_foods()
 
         self.turns: List[Dict[str, Any]] = []
@@ -65,11 +75,34 @@ class SnakeEngine:
                 self.foods.append(pos)
 
     def _spawn_food(self) -> None:
-        occupied = set(self.snakes[TEAM_A] + self.snakes[TEAM_B] + self.foods)
+        occupied = set(self.snakes[TEAM_A] + self.snakes[TEAM_B] + self.foods) | self._obstacle_cells()
         all_cells = [(x, y) for x in range(self.width) for y in range(self.height)]
         available = [c for c in all_cells if c not in occupied]
         if available:
             self.foods.append(self.rng.choice(available))
+
+    def _obstacle_cells(self) -> set:
+        return {pos for pos, _team in self.obstacles}
+
+    def _maybe_shed_tail(self, team: str) -> Optional[Dict[str, Any]]:
+        """Gọi sau mỗi nước đi hợp lệ. Đủ `every` nước và rắn dài hơn `min_length` thì rụng đuôi."""
+        self.moves_made[team] += 1
+        if self.shed_every <= 0 or self.moves_made[team] % self.shed_every != 0:
+            return None
+        snake = self.snakes[team]
+        if len(snake) <= self.shed_min_length:
+            return None
+        count = min(self.shed_count, len(snake) - 1)  # luôn còn ít nhất cái đầu
+        dropped = snake[-count:]
+        del snake[-count:]
+        for pos in dropped:
+            self.obstacles.append((pos, team))
+        return {
+            "type": "TAIL_SHED",
+            "team": team,
+            "cells": [list(pos) for pos in dropped],
+            "remaining_length": len(snake),
+        }
 
     def _get_pieces_list(self) -> List[Dict[str, Any]]:
         pieces: List[Dict[str, Any]] = []
@@ -92,6 +125,16 @@ class SnakeEngine:
                 "owner": "neutral",
                 "type": "FOOD",
                 "pos": list(fpos),
+                "hp": 1,
+                "alive": True,
+            })
+        for i, (opos, source) in enumerate(self.obstacles):
+            pieces.append({
+                "id": f"OBSTACLE_{i+1}",
+                "owner": "neutral",
+                "source": source,
+                "type": "OBSTACLE",
+                "pos": list(opos),
                 "hp": 1,
                 "alive": True,
             })
@@ -145,6 +188,7 @@ class SnakeEngine:
                     "turn": self.turn_number,
                     "current_player": current_team,
                     "foods": [list(f) for f in self.foods],
+                    "obstacles": [list(pos) for pos, _team in self.obstacles],
                     "score": self.scores[current_team],
                     "opponent_score": self.scores[other_team],
                 },
@@ -284,6 +328,28 @@ class SnakeEngine:
                 "events": events,
             }
 
+        # Đâm vào đuôi đã rụng: thua, kể cả khi là đuôi của chính mình.
+        if new_head in self._obstacle_cells():
+            self.alive[team] = False
+            self.game_over = {"winner": other_team, "reason": "SNAKE_HIT_OBSTACLE"}
+            events.append({
+                "type": "SNAKE_CRASH",
+                "team": team,
+                "reason": "HIT_OBSTACLE",
+                "pos": list(new_head),
+            })
+            return {
+                "turn": self.turn_number,
+                "player": team,
+                "actions": [{
+                    "piece_id": f"{'A' if team == TEAM_A else 'B'}_HEAD_0",
+                    "action_type": "MOVE",
+                    "from": [head_x, head_y],
+                    "to": list(new_head),
+                }],
+                "events": events,
+            }
+
         # Kiểm tra đâm vào thân mình hoặc thân đối thủ
         if new_head in snake[:-1] or new_head in self.snakes[other_team]:
             self.alive[team] = False
@@ -326,6 +392,10 @@ class SnakeEngine:
             self._spawn_food()
         else:
             snake.pop()
+
+        shed_event = self._maybe_shed_tail(team)
+        if shed_event:
+            events.append(shed_event)
 
         return {
             "turn": self.turn_number,

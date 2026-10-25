@@ -1,6 +1,6 @@
 import Media from "./Media.jsx";
 import { theme } from "../theme/theme.js";
-import { SnakeFood } from "./SnakeLayer.jsx";
+import { SnakeFood, SnakeObstacle } from "./SnakeLayer.jsx";
 
 const ICONS = {
   ROCK: "✊",
@@ -29,6 +29,13 @@ export default function Piece({ piece, cell, width, height, color, isMover }) {
     return (
       <div className="piece snake-piece" data-owner={piece.owner} style={style}>
         <SnakeFood />
+      </div>
+    );
+  }
+  if (piece.type === "OBSTACLE") {
+    return (
+      <div className="piece snake-piece" data-owner={piece.owner} style={style}>
+        <SnakeObstacle source={piece.source} />
       </div>
     );
   }
