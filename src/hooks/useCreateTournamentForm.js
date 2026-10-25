@@ -127,16 +127,11 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
       setRegOpenClock("");
       setRegCloseDate("");
       setRegCloseClock("");
-      setStartDate("");
-      setStartClock("");
       setLanguages(["python"]);
       setRules("");
       setPrize("");
       setDescription("");
-      setTimeout(() => {
-        setMsg("");
-        onOpenTournament?.(created.id);
-      }, 900);
+      onOpenTournament?.(created.id, null, created.game_id);
     } catch (error) {
       setFormError(apiErrorText(error));
     } finally {
