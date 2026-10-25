@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fallbackAction, maskHiddenInfo } from "./humanTurn.js";
+import { acquireMatchSlot } from "./matchLimiter.js";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const engineDirectory = join(projectRoot, "engine");
@@ -25,15 +26,18 @@ const HUMAN_TURN_MS_DEFAULT = 30_000;
 const isHuman = (team) => team?.control === "human";
 
 export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPatch = null, gameId = "rps_chess", humanTurnMs = HUMAN_TURN_MS_DEFAULT, abortSignal = null }) {
+    const releaseMatchSlot = await acquireMatchSlot(abortSignal);
+    if (!releaseMatchSlot) return null;
+
     const engineConfig = GAME_ENGINES[gameId] ?? GAME_ENGINES.rps_chess;
     const configTemplatePath = engineConfig.configTemplate;
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), "ltm-match-"));
-    const botAPath = join(temporaryDirectory, "team_a.py");
-    const botBPath = join(temporaryDirectory, "team_b.py");
-    const configPath = join(temporaryDirectory, "config.json");
-    const outputPath = join(temporaryDirectory, "replay.json");
-
+    let temporaryDirectory;
     try {
+        temporaryDirectory = await mkdtemp(join(tmpdir(), "ltm-match-"));
+        const botAPath = join(temporaryDirectory, "team_a.py");
+        const botBPath = join(temporaryDirectory, "team_b.py");
+        const configPath = join(temporaryDirectory, "config.json");
+        const outputPath = join(temporaryDirectory, "replay.json");
         const config = JSON.parse(await readFile(configTemplatePath, "utf8"));
         const matchId = `M-${roomCode}-${randomUUID()}`;
         // Chỉ phòng casual có configPatch; gateway đã lọc sẵn các khóa được phép.
@@ -57,7 +61,18 @@ export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPa
 
         let aborted = false;
         await new Promise((resolvePromise, rejectPromise) => {
-            const child = spawn(python, args, { cwd: projectRoot, windowsHide: true });
+            const env = {};
+            for (const key of ["PATH", "SYSTEMROOT", "WINDIR"]) {
+                if (process.env[key]) env[key] = process.env[key];
+            }
+            Object.assign(env, {
+                HOME: temporaryDirectory,
+                TMPDIR: temporaryDirectory,
+                TEMP: temporaryDirectory,
+                TMP: temporaryDirectory,
+                USERPROFILE: temporaryDirectory,
+            });
+            const child = spawn(python, args, { cwd: projectRoot, windowsHide: true, env });
             let pendingOutput = "";
             let diagnostics = "";
             let settled = false;
@@ -179,6 +194,10 @@ export async function runEngineMatch({ roomCode, teamA, teamB, onEvent, configPa
         if (aborted) return null;
         return JSON.parse(await readFile(outputPath, "utf8"));
     } finally {
-        await rm(temporaryDirectory, { recursive: true, force: true });
+        try {
+            if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
+        } finally {
+            releaseMatchSlot();
+        }
     }
 }

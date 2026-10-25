@@ -539,6 +539,14 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
         ? buildBracket({ rounds, entryCount: entries.length, format: tournament.format }) : null };
   }
 
+  function getTournamentForMatch(matchId) {
+    const row = db.prepare(`SELECT t.id FROM matches m
+      JOIN tournament_rounds r ON r.id = m.round_id
+      JOIN tournaments t ON t.id = r.tournament_id
+      WHERE m.id = ?`).get(matchId);
+    return row ? getTournament(row.id) : null;
+  }
+
   function invalidateTournamentNotificationSync() { db.prepare('DELETE FROM tournament_notification_sync').run(); }
 
   function listTournamentNotifications(userId, { limit = 100, offset = 0 } = {}) {
@@ -1451,7 +1459,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
   return { registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam, createPlayerInvitation, listPlayerInvitations, respondToPlayerInvitation,
     startMatch, appendTurn, finishMatch, getMatch, listMatches,
     getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
-    getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament,
+    getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, getTournamentForMatch, createTournament,
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
     listTournamentNotifications, markTournamentNotificationRead,

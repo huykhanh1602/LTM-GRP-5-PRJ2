@@ -5,6 +5,11 @@ import { createHttpServer } from "../net/http.js";
 import { createRoomGateway } from "../net/roomGateway.js";
 import { createMatchStore } from '../net/storage/matchStore.js';
 
+const testBotValidator = async (source) => ({
+  ok: source.includes("make_move"),
+  message: "Bot phải định nghĩa hàm make_move.",
+});
+
 function createClient(url) {
   const socket = new WebSocket(url);
   const queue = [];
@@ -77,6 +82,7 @@ test("players upload bots, ready up, and receive streamed engine events", async 
   const gateway = createRoomGateway({
     matchStore: store,
     countdownMs: 1,
+    validateBot: testBotValidator,
     async runMatch({ roomCode, teamA, teamB, onEvent }) {
       engineRun = true;
       matchRuns++;
@@ -184,6 +190,7 @@ test("engine continues streaming to the connected player after the opponent disc
   const started = new Promise((resolve) => { engineStarted = resolve; });
   const gateway = createRoomGateway({
     countdownMs: 1,
+    validateBot: testBotValidator,
     async runMatch({ onEvent }) {
       onEvent({
         type: "match_start",
@@ -237,7 +244,7 @@ test("engine continues streaming to the connected player after the opponent disc
 });
 
 test("bot submissions require a room token and reject unsupported or oversized files", async (t) => {
-  const gateway = createRoomGateway();
+  const gateway = createRoomGateway({ validateBot: testBotValidator });
   const { httpUrl, wsUrl } = await startServer(t, gateway);
   const player = createClient(`${wsUrl}/rooms/CD45`);
   t.after(() => player.close());
@@ -274,6 +281,14 @@ test("bot submissions require a room token and reject unsupported or oversized f
   });
   assert.equal(invalidExtension.status, 400);
 
+  const invalidBot = await fetch(`${endpoint}?filename=bot.py`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${rejoined.player_token}` },
+    body: "print('not a bot')",
+  });
+  assert.equal(invalidBot.status, 422);
+  assert.equal((await invalidBot.json()).error, "INVALID_BOT");
+
   const oversized = await fetch(`${endpoint}?filename=bot.py`, {
     method: "POST",
     headers: { Authorization: `Bearer ${rejoined.player_token}` },
@@ -285,6 +300,7 @@ test("bot submissions require a room token and reject unsupported or oversized f
 test("engine startup failure clears countdown and leaves the error visible", async (t) => {
   const gateway = createRoomGateway({
     countdownMs: 1,
+    validateBot: testBotValidator,
     async runMatch() {
       throw new Error("Python unavailable");
     },

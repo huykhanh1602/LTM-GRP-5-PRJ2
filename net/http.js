@@ -462,6 +462,14 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     }
                     if (url.pathname.startsWith("/api/matches/") && url.pathname.endsWith("/reschedule") && request.method === "POST") {
                         const matchId = decodePathId(url.pathname.split("/")[3]);
+                        if (actor.role !== "admin") {
+                            const targetMatch = await matchStore.getMatch(matchId);
+                            const tournament = await matchStore.getTournamentForMatch?.(targetMatch.id);
+                            if (!tournament?.config?.organizerId || tournament.config.organizerId !== actor.id) {
+                                send(403, { error: "ORGANIZER_REQUIRED", message: "Chỉ chủ giải hoặc quản trị viên mới được đổi lịch trận." });
+                                return;
+                            }
+                        }
                         send(200, await matchStore.rescheduleMatch(matchId, body.scheduled_at)); return;
                     }
                 } catch (error) {

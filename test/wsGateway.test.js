@@ -126,6 +126,25 @@ test("auth: guest HTTP login, WS auth, and rejection before/with bad token", asy
   assert.equal(bad.status, 400);
 });
 
+test("auth: banned users cannot authenticate over WebSocket", async (t) => {
+  const server = await startServer(t, {
+    gateway: {
+      users: {
+        get: async (id) => ({ id, display_name: "Banned", role: "player", banned: true }),
+        publicUser: (user) => ({ id: user.id, display_name: user.display_name }),
+      },
+    },
+  });
+  const { token } = await guestToken(server.httpUrl, "Banned");
+  const client = createClient(server.wsUrl);
+  t.after(() => client.close());
+  await client.open();
+  client.send({ type: "auth", token });
+
+  const error = await client.waitFor((message) => message.type === "error");
+  assert.equal(error.code, "USER_BANNED");
+});
+
 test("auth: Google login verifies the id_token and keeps the same user", async (t) => {
   const calls = [];
   const server = await startServer(t, {

@@ -82,6 +82,23 @@ test("HTTP Admin: quản lý lịch trình giải đấu", async (t) => {
   }));
   assert.equal(rescheduled.status, 200);
   assert.ok(rescheduled.body.scheduled_at);
+
+  const unauthorizedReschedule = await json(await call(`/api/matches/${match.id}/reschedule`, {
+    method: "POST", token: "token-org",
+    body: { scheduled_at: new Date().toISOString() },
+  }));
+  assert.equal(unauthorizedReschedule.status, 403);
+
+  const tournamentMatch = store.startMatch({
+    roomId: "TR", mode: "tournament", roundId,
+    teamA: { id: "org", name: "A" }, teamB: { id: "two", name: "B" },
+    ranked: false, startedAt: new Date().toISOString(),
+  });
+  const ownerReschedule = await json(await call(`/api/matches/${tournamentMatch.id}/reschedule`, {
+    method: "POST", token: "token-org",
+    body: { scheduled_at: new Date().toISOString() },
+  }));
+  assert.equal(ownerReschedule.status, 200);
 });
 
 test("HTTP Admin: chủ giải chọn kiểu điều khiển của giải", async (t) => {

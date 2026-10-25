@@ -344,6 +344,13 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       participant_count:entries.length,rounds,entries,bracket:['single_elimination','round_robin'].includes(row.format)
         ?buildBracket({rounds,entryCount:entries.length,format:row.format}):null};
   }
+  async function getTournamentForMatch(matchId) {
+    const row = (await query(`SELECT t.id FROM matches m
+        JOIN tournament_rounds r ON r.id = m.round_id
+        JOIN tournaments t ON t.id = r.tournament_id
+        WHERE m.id = $1`, [matchId])).rows[0];
+    return row ? getTournament(row.id) : null;
+  }
   async function invalidateTournamentNotificationSync(client=pool) { await query('DELETE FROM tournament_notification_sync',[],client); }
   async function listTournamentNotifications(userId,{limit=100,offset=0}={}) {
     userId=required(userId,'userId');limit=page(limit,100,200);offset=page(offset,0,Number.MAX_SAFE_INTEGER);
@@ -949,7 +956,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   return { initialize, registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam, createPlayerInvitation, listPlayerInvitations, respondToPlayerInvitation,
     startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
-    listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
+    listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, getTournamentForMatch, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,
     listTournamentNotifications, markTournamentNotificationRead,

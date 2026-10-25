@@ -725,6 +725,11 @@ export function createWsGateway({
                 conn.socket.close(1008, "invalid token");
                 return;
             }
+            if (user.banned) {
+                sendError(conn, "USER_BANNED", "Tài khoản đã bị khóa.");
+                conn.socket.close(1008, "user banned");
+                return;
+            }
             clearTimeout(conn.authTimer);
 
             const previous = connections.get(user.id);
