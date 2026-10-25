@@ -491,8 +491,9 @@ export function PageTournamentLobby({
           tournament={tournament}
           token={token}
           onClose={() => setAdminModal(false)}
-          onUpdated={() => {
-            load().catch(() => {});
+          onUpdated={(updated) => {
+            if (updated?.config && String(updated.id) === String(tournament.id)) setRaw(updated);
+            else load().catch(() => {});
             setMessage({ tone: "ok", text: "Bảng điều điều giải đã cập nhật." });
           }}
         />

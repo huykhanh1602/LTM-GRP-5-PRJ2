@@ -57,6 +57,10 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    setControlsMode(tournament.raw?.config?.allowedControls ?? "BOT");
+  }, [tournament.id, tournament.raw?.config?.allowedControls]);
+
   // Trận có mã trận (mọi vòng): ưu tiên chưa có kết quả để mặc định chọn "trận tiếp theo".
   const matchOptions = rawRounds
     .flatMap((round) => (round.matches ?? []).map((item) => ({ ...item, roundNo: round.round_no })))
@@ -284,12 +288,13 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
           type="button"
           className="btn primary"
           disabled={busy}
-          onClick={() =>
-            run(
-              () => updateTournamentControls(tournament.id, controlsMode, token),
-              "Đã lưu kiểu điều khiển.",
-            )
-          }
+          onClick={() => run(async () => {
+            const updated = await updateTournamentControls(tournament.id, controlsMode, token);
+            if (updated.config?.allowedControls !== controlsMode) {
+              throw new Error("Máy chủ chưa xác nhận đã lưu kiểu điều khiển. Hãy tải lại giải và thử lại.");
+            }
+            return updated;
+          }, "Đã lưu kiểu điều khiển.")}
         >
           💾 Lưu kiểu điều khiển
         </button>

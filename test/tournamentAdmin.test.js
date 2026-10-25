@@ -139,6 +139,14 @@ test("HTTP Admin: chủ giải chọn kiểu điều khiển của giải", asyn
   assert.equal(updated.body.config.allowedControls, "HUMAN");
   assert.equal(updated.body.starts_at, kickoff);
 
+  const savedBoth = await json(await call(`/api/tournaments/${created.body.id}/schedule`, {
+    method: "PATCH", token: "token-org", body: { allowed_controls: "BOTH" },
+  }));
+  assert.equal(savedBoth.status, 200);
+  assert.equal(savedBoth.body.config.allowedControls, "BOTH");
+  const reloaded = await json(await call(`/api/tournaments/${created.body.id}`));
+  assert.equal(reloaded.body.config.allowedControls, "BOTH");
+
   // Giá trị lạ bị chặn ngay ở HTTP.
   const bad = await json(await call(`/api/tournaments/${created.body.id}/schedule`, {
     method: "PATCH", token: "token-org", body: { allowed_controls: "DRONE" },
@@ -152,5 +160,5 @@ test("HTTP Admin: chủ giải chọn kiểu điều khiển của giải", asyn
   }));
   assert.equal(round.status, 201);
   const slot = store.getTournamentSlot(created.body.id, 1, 0);
-  assert.equal(slot.config.allowedControls, "HUMAN");
+  assert.equal(slot.config.allowedControls, "BOTH");
 });
