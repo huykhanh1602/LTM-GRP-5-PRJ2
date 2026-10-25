@@ -86,6 +86,7 @@ export function createWsGateway({
     authTimeoutMs = 10000,
     humanTurnMs = HUMAN_TURN_MS,
     sweepMs = 1000,
+    matchmakerMaxPairs = 50,
     queueStateEveryMs = 2000,
     maxMessagesPerSecond = 30,
     allowGuestRanked = process.env.ALLOW_GUEST_RANKED === "1",
@@ -96,6 +97,7 @@ export function createWsGateway({
     const userRoom = new Map(); // userId -> room mà người đó đang giữ chỗ
     const tournamentRooms = new Map(); // "t{tournamentId}:r{round}:s{slot}" -> room.code (phòng cố định của 1 trận giải)
     let sweepTimer = null;
+    let closed = false;
     let lastQueueStateAt = 0;
 
     // ------------------------------------------------------------------ phòng
@@ -631,42 +633,66 @@ export function createWsGateway({
         });
     }
 
+    // Ghép trận chạy ở một lượt riêng (setImmediate), không chạy trong handler find_match:
+    // nhiều yêu cầu đến cùng lúc chỉ gộp thành một lượt, và mỗi lượt chỉ xử lý tối đa
+    // `matchmakerMaxPairs` cặp (queue.takePairs cũng chặn số người và số ứng viên được xét).
+    let matchmakerHandle = null;
+    let matchmakerRunning = false;
+
+    function scheduleMatchmaker() {
+        if (matchmakerHandle || matchmakerRunning || closed) return;
+        matchmakerHandle = setImmediate(() => {
+            matchmakerHandle = null;
+            runMatchmaker();
+            if (queue.hasWork()) scheduleMatchmaker();
+        });
+    }
+
     function runMatchmaker() {
-        for (const [entryA, entryB] of queue.takePairs()) {
-            const connA = connections.get(entryA.userId);
-            const connB = connections.get(entryB.userId);
-            if (!connA || !connB) {
-                // Một bên đã rời: trả bên còn lại về hàng đợi.
-                for (const [entry, conn] of [[entryA, connA], [entryB, connB]]) {
-                    if (conn) {
-                        queue.add({ userId: entry.userId, gameId: entry.gameId, mode: entry.mode, rating: entry.rating });
+        if (matchmakerRunning) return; // không bao giờ chạy hai lượt chồng nhau
+        matchmakerRunning = true;
+        try {
+            for (const [entryA, entryB] of queue.takePairs({ maxPairs: matchmakerMaxPairs })) {
+                const connA = connections.get(entryA.userId);
+                const connB = connections.get(entryB.userId);
+                // Một bên đã rời hoặc đã ở trong phòng khác thì không được ghép: người còn hợp lệ
+                // được trả về hàng với thời gian chờ cũ.
+                const usableA = connA && !userRoom.has(entryA.userId);
+                const usableB = connB && !userRoom.has(entryB.userId);
+                if (!usableA || !usableB) {
+                    for (const [entry, usable] of [[entryA, usableA], [entryB, usableB]]) {
+                        if (usable) {
+                            queue.add({ userId: entry.userId, gameId: entry.gameId, mode: entry.mode, rating: entry.rating, joinedAt: entry.joinedAt });
+                        }
                     }
+                    continue;
                 }
-                continue;
-            }
-            const room = createRoom({
-                gameId: entryA.gameId,
-                mode: entryA.mode,
-                config: { ...GAMES[entryA.gameId].defaultConfig },
-                reserved: new Set([entryA.userId, entryB.userId]),
-            });
-            seat(room, connA);
-            seat(room, connB);
-            for (const [conn, other, otherEntry] of [[connA, connB, entryB], [connB, connA, entryA]]) {
-                sendQueueState(conn, null);
-                send(conn, {
-                    type: "match_found",
-                    room_id: room.code,
-                    game_id: room.gameId,
-                    mode: room.mode,
-                    opponent: {
-                        id: other.user.id,
-                        display_name: other.user.display_name,
-                        rating: room.mode === "ranked" ? otherEntry.rating : undefined,
-                    },
+                const room = createRoom({
+                    gameId: entryA.gameId,
+                    mode: entryA.mode,
+                    config: { ...GAMES[entryA.gameId].defaultConfig },
+                    reserved: new Set([entryA.userId, entryB.userId]),
                 });
+                seat(room, connA);
+                seat(room, connB);
+                for (const [conn, other, otherEntry] of [[connA, connB, entryB], [connB, connA, entryA]]) {
+                    sendQueueState(conn, null);
+                    send(conn, {
+                        type: "match_found",
+                        room_id: room.code,
+                        game_id: room.gameId,
+                        mode: room.mode,
+                        opponent: {
+                            id: other.user.id,
+                            display_name: other.user.display_name,
+                            rating: room.mode === "ranked" ? otherEntry.rating : undefined,
+                        },
+                    });
+                }
+                broadcastRoom(room);
             }
-            broadcastRoom(room);
+        } finally {
+            matchmakerRunning = false;
         }
         if (queue.size === 0 && sweepTimer) {
             clearInterval(sweepTimer);
@@ -677,7 +703,8 @@ export function createWsGateway({
     function ensureSweep() {
         if (sweepTimer) return;
         sweepTimer = setInterval(() => {
-            runMatchmaker();
+            queue.requestScan(); // cửa sổ rating đã nới thêm: quét lại, chia nhỏ qua nhiều lượt
+            scheduleMatchmaker();
             const nowMs = Date.now();
             if (nowMs - lastQueueStateAt >= queueStateEveryMs) {
                 lastQueueStateAt = nowMs;
@@ -769,8 +796,8 @@ export function createWsGateway({
                 rating: ratings.get(message.game_id, conn.user.id),
             });
             sendQueueState(conn, entry);
-            runMatchmaker();
-            if (queue.has(conn.user.id)) ensureSweep();
+            scheduleMatchmaker();
+            ensureSweep();
         },
 
         cancel_match(conn) {
@@ -1072,6 +1099,9 @@ export function createWsGateway({
     }
 
     function close() {
+        closed = true;
+        clearImmediate(matchmakerHandle);
+        matchmakerHandle = null;
         clearInterval(sweepTimer);
         sweepTimer = null;
         for (const room of rooms.values()) {
