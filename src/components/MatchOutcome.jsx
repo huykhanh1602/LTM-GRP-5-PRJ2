@@ -7,11 +7,14 @@ const AUTO_RETURN_MS = 6000;
 const TITLES = { win: "CHIẾN THẮNG", lose: "BẠN THUA", draw: "HÒA" };
 const ICONS = { win: "🏆", lose: "💀", draw: "🤝" };
 
-// Banner thắng/thua giữa màn hình, tự động đưa người chơi về phòng chờ.
-export default function MatchOutcome({ result, myTeamId, onDone }) {
+// Banner thắng/thua giữa màn hình. Mặc định tự đưa người chơi về phòng chờ sau vài giây;
+// bấm "Trạng thái" (onViewState) để đóng banner và xem nguyên trạng thái cuối ván trên bàn cờ.
+// autoReturn=false khi người chơi mở lại banner thủ công: không tự thoát và không phát lại âm thanh.
+export default function MatchOutcome({ result, myTeamId, onDone, onViewState, autoReturn = true }) {
   const [left, setLeft] = useState(AUTO_RETURN_MS);
 
   useEffect(() => {
+    if (!autoReturn) return undefined;
     sound.play(result.outcome === "draw" ? "draw" : result.outcome);
     const started = Date.now();
     const tick = setInterval(() => setLeft(Math.max(0, AUTO_RETURN_MS - (Date.now() - started))), 200);
@@ -45,9 +48,16 @@ export default function MatchOutcome({ result, myTeamId, onDone }) {
         {typeof change === "number" && (
           <div className="outcome__elo">Elo {change >= 0 ? `+${change}` : change}</div>
         )}
-        <button className="btn big" onClick={onDone}>
-          Về phòng chờ ({Math.ceil(left / 1000)}s)
-        </button>
+        <div className="outcome__actions">
+          <button className="btn big" onClick={onDone}>
+            {autoReturn ? `Về phòng chờ (${Math.ceil(left / 1000)}s)` : "Về phòng chờ"}
+          </button>
+          {onViewState && (
+            <button className="btn big outcome__view" onClick={onViewState}>
+              📋 Trạng thái
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

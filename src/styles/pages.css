@@ -273,6 +273,8 @@ input[type="text"]:focus, .field input:focus, .code-input:focus {
   font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums;
 }
 .outcome .btn.big { margin-top: 30px; }
+.outcome__actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.outcome__actions .btn.big { margin-top: 30px; }
 
 /* Thắng: ánh vàng tỏa ra */
 .outcome--win {

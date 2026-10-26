@@ -34,12 +34,19 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [askExit, setAskExit] = useState(false); // hỏi xác nhận bỏ ván đang chơi
+  // "Trạng thái": người chơi đóng banner kết quả để xem trạng thái cuối ván; "reopened" = mở lại banner (không tự thoát).
+  const [outcomeHidden, setOutcomeHidden] = useState(false);
+  const [outcomeReopened, setOutcomeReopened] = useState(false);
+  useEffect(() => {
+    setOutcomeHidden(false);
+    setOutcomeReopened(false);
+  }, [state.result]);
 
   // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
   const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
   // Người chơi bằng chuột bám theo realtime; không chờ playback index cập nhật sau match_end.
-  const showOutcome = Boolean(state.result) && state.result.outcome !== "watch" &&
-    (byMouse || player.index >= player.last);
+  const hasOutcome = Boolean(state.result) && state.result.outcome !== "watch";
+  const showOutcome = hasOutcome && !outcomeHidden && (byMouse || player.index >= player.last);
 
   // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
   const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
@@ -134,7 +141,13 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
       )}
 
       {showOutcome && (
-        <MatchOutcome result={state.result} myTeamId={state.result.myTeamId} onDone={onLeave} />
+        <MatchOutcome
+          result={state.result}
+          myTeamId={state.result.myTeamId}
+          onDone={onLeave}
+          onViewState={() => setOutcomeHidden(true)}
+          autoReturn={!outcomeReopened}
+        />
       )}
 
       <main className={`layout ${showHistory ? "history-expanded" : "history-collapsed"}`}>
@@ -147,6 +160,14 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
           {finished && (
             <div className="end-actions">
               <button className="btn" onClick={onReturnToRoom}>← Quay lại phòng chờ</button>
+              {hasOutcome && outcomeHidden && (
+                <button
+                  className="btn"
+                  onClick={() => { setOutcomeReopened(true); setOutcomeHidden(false); }}
+                >
+                  🏁 Xem kết quả
+                </button>
+              )}
             </div>
           )}
         </section>
