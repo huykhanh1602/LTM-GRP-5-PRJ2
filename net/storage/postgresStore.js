@@ -250,17 +250,41 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       total_turns: turns.length, final_scores: { team_a: match.winner_id === match.team_a_id ? 1 : 0, team_b: match.winner_id === match.team_b_id ? 1 : 0 } },
       game_config: normalize(match.config), initial_state: normalize(match.initial_state), turns, final_state: normalize(match.final_state) };
   }
-  async function getRankings() {
+  async function getRankings({ gameId = null } = {}) {
+    if(gameId)gameId=required(gameId,'gameId');
     const { rows } = await query(`SELECT t.id AS team_id,t.name,COUNT(m.id)::int AS played,
       COUNT(*) FILTER (WHERE m.winner_id=t.id)::int AS wins,
       COUNT(*) FILTER (WHERE m.id IS NOT NULL AND m.winner_id IS NULL)::int AS draws,
       COUNT(*) FILTER (WHERE m.winner_id IS NOT NULL AND m.winner_id<>t.id)::int AS losses
       FROM teams t LEFT JOIN matches m ON (m.team_a_id=t.id OR m.team_b_id=t.id) AND m.status='finished' AND m.ranked=TRUE
-      GROUP BY t.id`).then(result => result);
+        AND m.mode<>'tournament' AND ($1::text IS NULL OR m.game_id=$1)
+      GROUP BY t.id HAVING ($1::text IS NULL OR COUNT(m.id)>0)`,[gameId]).then(result => result);
     const ranked = rows.map(row => ({ ...row, points: row.wins * 3 + row.draws, win_rate: row.played ? row.wins / row.played : 0 }))
       .sort((a,b) => b.points-a.points || b.wins-a.wins || b.win_rate-a.win_rate || a.team_id.localeCompare(b.team_id));
     let rank = 0;
     return ranked.map((row,index) => { const previous = ranked[index-1]; if (!previous || row.points!==previous.points || row.wins!==previous.wins || row.win_rate!==previous.win_rate) rank=index+1; return { rank,...row }; });
+  }
+  async function getTournamentRankings(tournamentId) {
+    tournamentId=required(tournamentId,'tournamentId');
+    const tournament=(await query('SELECT id,status,champion_id FROM tournaments WHERE id=$1 OR code=$1',[tournamentId])).rows[0];
+    if(!tournament)throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
+    const entries=await listTournamentEntries(tournament.id);
+    const rows=entries.map((entry,index)=>({team_id:entry.team_id??entry.user_id,name:entry.display_name??entry.team_id??entry.user_id,
+      played:0,wins:0,draws:0,losses:0,points:0,seed:entry.seed??index+1}));
+    const byId=new Map(rows.map(row=>[row.team_id,row]));
+    const matches=(await query('SELECT participant_a_id,participant_b_id,winner_id,result FROM tournament_match_history WHERE tournament_id=$1',[tournament.id])).rows;
+    for(const match of matches){
+      if(match.result?.bye||(!match.winner_id&&!match.result))continue;
+      const a=byId.get(match.participant_a_id),b=byId.get(match.participant_b_id);if(!a||!b)continue;
+      a.played+=1;b.played+=1;
+      if(!match.winner_id){a.draws+=1;b.draws+=1;a.points+=1;b.points+=1;}
+      else if(match.winner_id===a.team_id){a.wins+=1;a.points+=3;b.losses+=1;}
+      else{b.wins+=1;b.points+=3;a.losses+=1;}
+    }
+    rows.sort((a,b)=>b.points-a.points||b.wins-a.wins||a.losses-b.losses||a.seed-b.seed||String(a.team_id).localeCompare(String(b.team_id)));
+    let rank=0;
+    return rows.map((row,index)=>{const previous=rows[index-1];if(!previous||row.points!==previous.points||row.wins!==previous.wins||row.losses!==previous.losses)rank=index+1;
+      return {...row,rank,win_rate:row.played?row.wins/row.played:0,status:row.played===0?'Chưa đấu':row.team_id===tournament.champion_id?'Vô địch':tournament.status==='completed'?'Hoàn tất':'Đang đấu'};});
   }
   async function listGames() { return (await query('SELECT id,name,default_config,active FROM games WHERE active=TRUE ORDER BY name,id')).rows; }
   async function upsertUser(user) {
@@ -968,7 +992,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     });
   }
   return { initialize, registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam, createPlayerInvitation, listPlayerInvitations, respondToPlayerInvitation,
-    startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings,
+    startMatch, appendTurn, finishMatch, getMatch, listMatches, getReplay, getRankings, getTournamentRankings,
     listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword, getAuthIdentity, addAuthIdentity,
     listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, getTournamentForMatch, createTournament, createTournamentRound, addTournamentEntry, setEntrySubmission,
     recordTournamentMatch, updateTournamentStatus, saveBotSubmission, listBotSubmissions, getBotSubmission, getBotSubmissionById, importReplay,

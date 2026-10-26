@@ -403,15 +403,17 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     });
   }
 
-  function getRankings() {
+  function getRankings({ gameId = null } = {}) {
+    if (gameId) gameId = requireText(gameId, 'gameId');
     const rows = db.prepare(`SELECT t.id AS team_id, t.name,
       COUNT(m.id) AS played,
       SUM(CASE WHEN m.winner_id = t.id THEN 1 ELSE 0 END) AS wins,
       SUM(CASE WHEN m.id IS NOT NULL AND m.winner_id IS NULL THEN 1 ELSE 0 END) AS draws,
       SUM(CASE WHEN m.winner_id IS NOT NULL AND m.winner_id <> t.id THEN 1 ELSE 0 END) AS losses
       FROM teams t LEFT JOIN matches m ON (m.team_a_id = t.id OR m.team_b_id = t.id)
-        AND m.status = 'finished' AND m.ranked = 1
-      GROUP BY t.id`).all().map(row => ({ ...row, points: row.wins * 3 + row.draws,
+        AND m.status = 'finished' AND m.ranked = 1 AND m.mode <> 'tournament'
+        AND (? IS NULL OR m.game_id = ?)
+      GROUP BY t.id HAVING (? IS NULL OR COUNT(m.id) > 0)`).all(gameId, gameId, gameId).map(row => ({ ...row, points: row.wins * 3 + row.draws,
         win_rate: row.played ? row.wins / row.played : 0 }));
     rows.sort((a, b) => b.points - a.points || b.wins - a.wins || b.win_rate - a.win_rate || a.team_id.localeCompare(b.team_id));
     let rank = 0;
@@ -419,6 +421,39 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       const previous = rows[index - 1];
       if (!previous || row.points !== previous.points || row.wins !== previous.wins || row.win_rate !== previous.win_rate) rank = index + 1;
       return { rank, ...row };
+    });
+  }
+
+  function getTournamentRankings(tournamentId) {
+    tournamentId = requireText(tournamentId, 'tournamentId');
+    const tournament = db.prepare('SELECT id,status,champion_id FROM tournaments WHERE id=? OR code=?').get(tournamentId, tournamentId);
+    if (!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND', 'Tournament not found', 404);
+    const rows = listTournamentEntries(tournament.id).map((entry, index) => ({
+      team_id: entry.team_id ?? entry.user_id,
+      name: entry.display_name ?? entry.team_id ?? entry.user_id,
+      played: 0, wins: 0, draws: 0, losses: 0, points: 0,
+      seed: entry.seed ?? index + 1,
+    }));
+    const byId = new Map(rows.map(row => [row.team_id, row]));
+    const matches = db.prepare(`SELECT participant_a_id,participant_b_id,winner_id,result_json
+      FROM tournament_match_history WHERE tournament_id=?`).all(tournament.id);
+    for (const match of matches) {
+      const result = match.result_json ? JSON.parse(match.result_json) : null;
+      if (result?.bye || (!match.winner_id && !result)) continue;
+      const a = byId.get(match.participant_a_id), b = byId.get(match.participant_b_id);
+      if (!a || !b) continue;
+      a.played += 1; b.played += 1;
+      if (!match.winner_id) { a.draws += 1; b.draws += 1; a.points += 1; b.points += 1; }
+      else if (match.winner_id === a.team_id) { a.wins += 1; a.points += 3; b.losses += 1; }
+      else { b.wins += 1; b.points += 3; a.losses += 1; }
+    }
+    rows.sort((a,b) => b.points-a.points || b.wins-a.wins || a.losses-b.losses || a.seed-b.seed || String(a.team_id).localeCompare(String(b.team_id)));
+    let rank = 0;
+    return rows.map((row,index) => {
+      const previous = rows[index-1];
+      if (!previous || row.points!==previous.points || row.wins!==previous.wins || row.losses!==previous.losses) rank=index+1;
+      return {rank,...row,win_rate:row.played?row.wins/row.played:0,
+        status:row.played===0?'Chưa đấu':row.team_id===tournament.champion_id?'Vô địch':tournament.status==='completed'?'Hoàn tất':'Đang đấu'};
     });
   }
 
@@ -1469,7 +1504,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
 
   return { registerTeam, addTeamMember, removeTeamMember, getTeamMembers, getTeam, createPlayerInvitation, listPlayerInvitations, respondToPlayerInvitation,
     startMatch, appendTurn, finishMatch, getMatch, listMatches,
-    getReplay, getRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
+    getReplay, getRankings, getTournamentRankings, listGames, upsertUser, getAuthUser, findAuthUser, createAuthUser, updateAuthPassword,
     getAuthIdentity, addAuthIdentity, listAuthIdentities, saveAuthSession, getAuthSession, deleteAuthSession, listTournaments, getTournament, getTournamentForMatch, createTournament,
     createTournamentRound, addTournamentEntry, setEntrySubmission, recordTournamentMatch, updateTournamentStatus, saveBotSubmission,
     generateTournamentBracket, attachSlotResult, getUserPublicProfile, searchUsers,

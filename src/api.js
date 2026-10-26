@@ -42,7 +42,9 @@ async function request(path, { method = "GET", token, body } = {}) {
 const get = (path, options = {}) => request(path, options);
 const post = (path, body, token) => request(path, { method: "POST", body, token });
 
-export const getRankings = () => get("/api/rankings");
+export const getRankings = (gameId = null) => get(`/api/rankings${gameId ? `?gameId=${encodeURIComponent(gameId)}` : ""}`);
+export const getTournamentRankings = (tournamentId) =>
+    get(`/api/tournaments/${encodeURIComponent(tournamentId)}/rankings`);
 
 export function sessionToken() {
     try { return JSON.parse(localStorage.getItem("daubot_session") ?? "null")?.token ?? null; }
