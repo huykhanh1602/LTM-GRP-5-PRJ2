@@ -38,8 +38,7 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
   // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
   const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
   const hasOutcome = Boolean(state.result) && state.result.outcome !== "watch";
-  const playbackAtEnd = player.last >= 0 && player.index >= player.last;
-  const outcomeVisibleToPlayer = byMouse || playbackAtEnd;
+  const outcomeVisibleToPlayer = byMouse || Boolean(player.frame?.over);
 
   // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
   const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
