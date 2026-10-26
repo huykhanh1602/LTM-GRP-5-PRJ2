@@ -19,6 +19,7 @@ Giao diện chỉ là **người xem + người điều khiển phòng**. Code P
 - HTTP nộp code: `POST /api/rooms/<MÃ_PHÒNG>/submissions?filename=bot.py`
   - Header: `Authorization: Bearer <player_token>` (nhận từ thông điệp `joined`).
   - Body: nội dung file Python dạng `application/octet-stream`, tối đa 100 KB.
+  - Server xác thực cú pháp và hàm `make_move` trước khi lưu; nếu không chạy được Python để kiểm tra, bot bị từ chối. Đây chỉ là kiểm tra hợp lệ, không phải sandbox an toàn cho mã Python không tin cậy.
   - Thành công: `200 { "id": "...", "filename": "bot.py" }`.
   - Lỗi: mã khác 200 và JSON `{ "error": "...", "message": "..." }`.
 - Mỗi phòng nhận tối đa hai đội chơi. Người chơi đầu tiên vào là `team_a`, người tiếp theo là `team_b`; người xem có thể vào bằng mã phòng.
@@ -72,3 +73,5 @@ Giao diện chỉ là **người xem + người điều khiển phòng**. Code P
 - Mọi `turn` / `match_start` dùng **cùng định dạng với file replay**, nên cùng một giao diện phát được cả trận trực tiếp lẫn replay cũ.
 - Server kiểm tra đuôi file `.py`, UTF-8 và dung lượng; đội phải nộp bot trước khi sẵn sàng.
 - Engine dùng cấu hình mặc định trong `engine/config.json`; đặt `PYTHON_EXECUTABLE` nếu máy không gọi được lệnh Python mặc định.
+- Engine giới hạn mặc định 1 trận chạy đồng thời và 24 trận chờ. Có thể đặt `MAX_CONCURRENT_MATCHES` và `MAX_QUEUED_MATCHES` để cấu hình giới hạn này.
+- Validator chỉ kiểm tra cú pháp và sự hiện diện của `make_move`; bot vẫn là mã không tin cậy chạy trên máy chủ, chưa được cô lập mạng/filesystem hay chạy trong container. Chỉ bật chế độ đấu bot trên hạ tầng có sandbox phù hợp.

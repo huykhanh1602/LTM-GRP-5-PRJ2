@@ -126,6 +126,25 @@ test("auth: guest HTTP login, WS auth, and rejection before/with bad token", asy
   assert.equal(bad.status, 400);
 });
 
+test("auth: banned users cannot authenticate over WebSocket", async (t) => {
+  const server = await startServer(t, {
+    gateway: {
+      users: {
+        get: async (id) => ({ id, display_name: "Banned", role: "player", banned: true }),
+        publicUser: (user) => ({ id: user.id, display_name: user.display_name }),
+      },
+    },
+  });
+  const { token } = await guestToken(server.httpUrl, "Banned");
+  const client = createClient(server.wsUrl);
+  t.after(() => client.close());
+  await client.open();
+  client.send({ type: "auth", token });
+
+  const error = await client.waitFor((message) => message.type === "error");
+  assert.equal(error.code, "USER_BANNED");
+});
+
 test("auth: Google login verifies the id_token and keeps the same user", async (t) => {
   const calls = [];
   const server = await startServer(t, {
@@ -412,4 +431,101 @@ test("end to end with the real Python engine and real bot validation", async (t)
   assert.ok(["team_a", "team_b", "draw"].includes(over.winner));
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(store.listMatches({}).items.length, 1);
+});
+
+test("tournament room loads submitted bots and readiness saved in the tournament lobby", async (t) => {
+  const store = createMatchStore({ filename: ":memory:" });
+  t.after(() => store.close());
+  const server = await startServer(t, {
+    matchStore: store,
+    gateway: { matchStore: store, runMatch: fakeMatch(), countdownMs: 1 },
+  });
+  const a = await login(t, server, "Tournament Alpha");
+  const b = await login(t, server, "Tournament Beta");
+  store.upsertUser({ id: a.user.id, display_name: a.user.display_name });
+  store.upsertUser({ id: b.user.id, display_name: b.user.display_name });
+
+  const tournament = store.createTournament({
+    gameId: "rps_chess",
+    code: "WS-READY",
+    name: "WebSocket readiness",
+    format: "single_elimination",
+    config: { roundSubmissionMode: "PER_ROUND" },
+  });
+  store.addTournamentEntry(tournament.id, { userId: a.user.id });
+  store.addTournamentEntry(tournament.id, { userId: b.user.id });
+  store.generateTournamentBracket(tournament.id);
+  store.submitTournamentRoundBot(tournament.id, a.user.id, 1, { filename: "alpha.py", source: BOT });
+  store.submitTournamentRoundBot(tournament.id, b.user.id, 1, { filename: "beta.py", source: BOT });
+  store.setTournamentReady(tournament.id, a.user.id);
+  store.setTournamentReady(tournament.id, b.user.id);
+
+  const join = (client) => client.send({
+    type: "join_tournament_room",
+    game_id: "rps_chess",
+    tournament_id: tournament.id,
+    round_no: 1,
+    slot_index: 0,
+  });
+  join(a.client);
+  const room = await a.client.waitFor((message) =>
+    message.type === "room_state" && message.players.length === 1);
+  assert.equal(room.players[0].has_bot, true);
+  assert.equal(room.players[0].ready, true);
+
+  join(b.client);
+  const start = await a.client.waitFor(a.client.type("match_start"));
+  assert.equal(start.mode, "tournament");
+  const [resultA, resultB] = await Promise.all([
+    a.client.waitFor(a.client.type("game_over")),
+    b.client.waitFor(b.client.type("game_over")),
+  ]);
+  assert.equal(resultA.winner, "team_a");
+  assert.equal(resultB.winner, "team_a");
+  assert.equal(store.getTournament(tournament.id).status, "completed");
+});
+
+test("24 người cùng tìm trận: mỗi người nhận đúng một match_found, không ai bị ghép hai lần", async (t) => {
+  const server = await startServer(t);
+  const players = [];
+  for (let i = 0; i < 24; i++) players.push(await login(t, server, `P${i}`));
+  for (const { client } of players) client.send({ type: "find_match", game_id: "rps_chess", mode: "casual" });
+  const found = await Promise.all(players.map(({ client }) => client.waitFor(client.type("match_found"))));
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  for (const { client } of players) {
+    assert.equal(client.pending().filter((m) => m.type === "match_found").length, 0, "nhận match_found lần hai");
+  }
+  const rooms = new Map();
+  found.forEach((message, index) => rooms.set(message.room_id, [...(rooms.get(message.room_id) ?? []), players[index].user.id]));
+  assert.equal(rooms.size, 12);
+  for (const members of rooms.values()) assert.equal(members.length, 2);
+  assert.equal(server.gateway.queue.size, 0);
+});
+
+test("find_match không quét hàng đợi trong handler: nhiều yêu cầu cùng lúc gộp thành ít lượt ghép", async (t) => {
+  const queue = createMatchQueue();
+  let calls = 0;
+  const original = queue.takePairs.bind(queue);
+  queue.takePairs = (options) => { calls++; return original(options); };
+  const server = await startServer(t, { gateway: { queue, sweepMs: 60_000 } });
+  const players = [];
+  for (let i = 0; i < 40; i++) players.push(await login(t, server, `Q${i}`));
+  for (const { client } of players) client.send({ type: "find_match", game_id: "rps_chess", mode: "casual" });
+  await Promise.all(players.map(({ client }) => client.waitFor(client.type("match_found"))));
+  assert.ok(calls < 40, `takePairs bị gọi ${calls} lần cho 40 yêu cầu`);
+});
+
+test("người đã ở trong phòng không bao giờ bị ghép vào trận thứ hai", async (t) => {
+  const server = await startServer(t);
+  const a = await login(t, server, "Alpha");
+  const b = await login(t, server, "Beta");
+  a.client.send({ type: "create_room", game_id: "rps_chess", mode: "casual" });
+  await a.client.waitFor(a.client.type("room_state"));
+  // Giả lập lỗi: một mục mồ côi của Alpha còn sót trong hàng đợi dù Alpha đã ở phòng khác.
+  server.gateway.queue.add({ userId: a.user.id, gameId: "rps_chess", mode: "casual", rating: 0 });
+  b.client.send({ type: "find_match", game_id: "rps_chess", mode: "casual" });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(a.client.pending().some((m) => m.type === "match_found"), false);
+  assert.equal(b.client.pending().some((m) => m.type === "match_found"), false);
+  assert.equal(server.gateway.queue.has(b.user.id), true, "Beta phải ở lại hàng đợi với thời gian chờ cũ");
 });

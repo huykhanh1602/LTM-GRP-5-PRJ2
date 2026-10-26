@@ -2,6 +2,7 @@ import http from "node:http";
 import { randomInt, randomUUID } from "node:crypto";
 import { StorageError } from "./storage/matchStore.js";
 import { applyCorsHeaders, handleCorsPreflight } from "./cors.js";
+import { ControlsMode, normalizeControlsMode } from "../shared/domain/tournament.js";
 
 const BOT_LANGUAGES = ["python", "javascript", "cpp"];
 const TOURNAMENT_FORMATS = ["single_elimination", "round_robin", "swiss"];
@@ -48,6 +49,15 @@ function randomCode(prefix) {
     let suffix = "";
     for (let index = 0; index < 4; index += 1) suffix += CODE_CHARS[randomInt(CODE_CHARS.length)];
     return `${prefix}${prefix ? "-" : ""}${suffix}`.slice(0, 24);
+}
+
+// Chủ giải chọn kiểu điều khiển; giá trị cũ/rỗng coi như chỉ cho đấu bot.
+function controlsModeOrError(value) {
+    try {
+        return normalizeControlsMode(value);
+    } catch {
+        throw new StorageError("INVALID_INPUT", `allowedControls phải thuộc ${Object.values(ControlsMode).join(", ")}`);
+    }
 }
 
 // Luật/mô tả/ngôn ngữ do người tạo giải khai báo, lưu trong config của giải.
@@ -113,6 +123,10 @@ function buildTournamentConfig(body, organizer) {
         throw new StorageError('INVALID_INPUT', 'submissionWindowMinutes phải là số nguyên từ 1 đến 60');
       }
       config.submissionWindowMinutes = minutes;
+    }
+    // Kiểu điều khiển được phép trong trận của giải: BOT / HUMAN / BOTH.
+    if (body.config?.allowedControls !== undefined) {
+      config.allowedControls = controlsModeOrError(body.config.allowedControls);
     }
     // Khung thời gian đăng ký (mở đơn / đóng đơn) — lưu ISO trong config.
     const isoOrNull = (value, field) => {
@@ -243,9 +257,8 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                 send(401, { error: "AUTHENTICATION_FAILED" });
                 return;
             }
-            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|matches|start|schedule|registration-window))?$/);
+            const organizerRoute = url.pathname.match(/^\/api\/tournaments(?:\/([^/]+)\/(rounds|status|start|schedule|registration-window))?$/);
             const entryRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/entries$/);
-            const slotRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/slots\/(\d+)\/result$/);
             const triggerStartRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/trigger-start$/);
             const myMatchRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match$/);
             const myMatchReadyRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/my-match\/ready$/);
@@ -253,7 +266,6 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const resolveRoundRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rounds\/(\d+)\/resolve$/);
             const isCreate = url.pathname === "/api/tournaments" && request.method === "POST";
             const isEntry = Boolean(entryRoute) && request.method === "POST";
-            const isSlotResult = Boolean(slotRoute) && request.method === "POST";
             const isTriggerStart = Boolean(triggerStartRoute) && request.method === "POST";
             const isReschedule = url.pathname.startsWith("/api/matches/") && url.pathname.endsWith("/reschedule") && request.method === "POST";
             const isTeamCreate = url.pathname === "/api/teams" && request.method === "POST";
@@ -272,7 +284,7 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
             const isMyMatchReady = Boolean(myMatchReadyRoute) && request.method === "POST";
             const isMyMatchSubmission = Boolean(myMatchSubmissionRoute) && request.method === "POST";
             const isResolveRound = Boolean(resolveRoundRoute) && request.method === "POST";
-            if (isCreate || isEntry || isSlotResult || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isInvitationCreate || isInvitationResponse || isEntrySubmission ||
+            if (isCreate || isEntry || isOrganizerAction || isReschedule || isTeamCreate || isTeamMember || isInvitationCreate || isInvitationResponse || isEntrySubmission ||
                 isMyMatchReady || isMyMatchSubmission || isResolveRound || isNotificationRead) {
                 const actor = request.auth?.user;
                 if (!actor?.id) { send(401, { error: "AUTHENTICATION_REQUIRED" }); return; }
@@ -388,8 +400,8 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     // Các thao tác điều hành giải: chỉ chủ giải hoặc admin.
                     const id = isReschedule
                         ? decodePathId(url.pathname.split("/")[3])
-                        : decodePathId(isSlotResult ? slotRoute[1] : (isTriggerStart ? triggerStartRoute[1] : organizerRoute[1]));
-                    if ((isOrganizerAction || isSlotResult) && !isReschedule) {
+                        : decodePathId(isTriggerStart ? triggerStartRoute[1] : organizerRoute[1]);
+                    if (isOrganizerAction && !isReschedule) {
                         const target = await matchStore.getTournament(id);
                         const owner = target.config?.organizerId;
                         if (actor.role !== "admin" && owner && owner !== actor.id) {
@@ -400,33 +412,20 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                         }
                     }
 
-                    if (isSlotResult) {
-                        send(200, await matchStore.attachSlotResult(id, {
-                            roundNo: Number(slotRoute[2]),
-                            slotIndex: Number(slotRoute[3]),
-                            matchId: body.match_id ?? body.matchId,
-                        }));
-                        return;
-                    }
                     if (organizerRoute?.[2] === "start" && request.method === "POST") {
                         send(200, await matchStore.generateTournamentBracket(id)); return;
                     }
                     if (organizerRoute?.[2] === "rounds" && request.method === "POST") {
                         send(201, await matchStore.createTournamentRound(id, body)); return;
                     }
-                    if (organizerRoute?.[2] === "matches" && request.method === "POST") {
-                        send(201, await matchStore.recordTournamentMatch({
-                            tournamentId:id, roundId:body.round_id, matchId:body.match_id ?? null,
-                            participantAId:body.participant_a_id, participantAName:body.participant_a_name,
-                            participantBId:body.participant_b_id, participantBName:body.participant_b_name,
-                            winnerId:body.winner_id ?? null, result:body.result ?? null, playedAt:body.played_at,
-                        })); return;
-                    }
                     if (organizerRoute?.[2] === "status" && request.method === "PATCH") {
                         send(200, await matchStore.updateTournamentStatus(id, body.status, body.champion_id ?? null)); return;
                     }
                     if (organizerRoute?.[2] === "schedule" && request.method === "PATCH") {
-                        send(200, await matchStore.updateTournamentSchedule(id, body.scheduled_at)); return;
+                        const controls = body.allowed_controls ?? body.allowedControls;
+                        send(200, await matchStore.updateTournamentSchedule(
+                            id, body.scheduled_at, controls === undefined ? undefined : controlsModeOrError(controls)));
+                        return;
                     }
                     if (organizerRoute?.[2] === "registration-window" && request.method === "PATCH") {
                         send(200, await matchStore.updateTournamentRegistrationWindow(id, {
@@ -445,6 +444,14 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     }
                     if (url.pathname.startsWith("/api/matches/") && url.pathname.endsWith("/reschedule") && request.method === "POST") {
                         const matchId = decodePathId(url.pathname.split("/")[3]);
+                        if (actor.role !== "admin") {
+                            const targetMatch = await matchStore.getMatch(matchId);
+                            const tournament = await matchStore.getTournamentForMatch?.(targetMatch.id);
+                            if (!tournament?.config?.organizerId || tournament.config.organizerId !== actor.id) {
+                                send(403, { error: "ORGANIZER_REQUIRED", message: "Chỉ chủ giải hoặc quản trị viên mới được đổi lịch trận." });
+                                return;
+                            }
+                        }
                         send(200, await matchStore.rescheduleMatch(matchId, body.scheduled_at)); return;
                     }
                 } catch (error) {
@@ -483,10 +490,17 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     send(200, { items: await matchStore.listPlayerInvitations(actor.id) }); return;
                 }
                 if (url.pathname === "/api/tournaments") {
+                    const actor = request.auth?.user;
+                    const joined = url.searchParams.get("joined") === "1";
+                    if (joined && !actor?.id) {
+                        send(401, { error: "AUTHENTICATION_REQUIRED" });
+                        return;
+                    }
                     send(200, await matchStore.listTournaments({
                         status: url.searchParams.get("status") ?? undefined,
                         limit: url.searchParams.get("limit"),
                         offset: url.searchParams.get("offset"),
+                        participantId: joined ? actor.id : null,
                     }));
                     return;
                 }

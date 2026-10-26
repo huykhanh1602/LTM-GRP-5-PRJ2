@@ -9,7 +9,6 @@ import StandingsTable from "../components/tournament/StandingsTable.jsx";
 import MatchFeed from "../components/tournament/MatchFeed.jsx";
 import TournamentInfoPanel from "../components/tournament/TournamentInfoPanel.jsx";
 import ParticipantProfileModal from "../components/tournament/ParticipantProfileModal.jsx";
-import AttachResultModal from "../components/tournament/AttachResultModal.jsx";
 import TeamRegistrationModal from "../components/tournament/TeamRegistrationModal.jsx";
 import TeamManagementPanel from "../components/tournament/TeamManagementPanel.jsx";
 import AdminControlModal from "../components/tournament/AdminControlModal.jsx";
@@ -17,7 +16,7 @@ import EditRegistrationWindowModal from "../components/profile/EditRegistrationW
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
-import { attachTournamentSlotResult, registerTournament, submitMyMatchRoundBot, setMyMatchReady } from "../api.js";
+import { registerTournament, submitMyMatchRoundBot, setMyMatchReady } from "../api.js";
 import { apiErrorText, formatStartsAt, participantUnit } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
 import "../styles/tournament.css";
@@ -50,8 +49,6 @@ export function PageTournamentLobby({
     setTab,
     profileId,
     setProfileId,
-    attachSlot,
-    setAttachSlot,
     teamModal,
     setTeamModal,
     adminModal,
@@ -124,8 +121,14 @@ export function PageTournamentLobby({
   const canRegister = registrationOpen && !beforeOpen && !afterClose;
   const hasBracket = tournament.rounds.length > 0;
   const unit = participantUnit(tournament.participantMode);
+  const activeRoundNos = new Set(
+    (tournament.raw?.rounds ?? [])
+      .filter((round) => round.status === "in_progress" && round.submission_started_at)
+      .map((round) => Number(round.round_no)),
+  );
   const waitingSlots = tournament.rounds
     .flat()
+    .filter((slot) => activeRoundNos.has(slot.roundNo))
     .filter((slot) => slot.status === "ready" && !slot.winnerId && !slot.matchId);
 
   const entryName = (id) => tournament.entryMap.get(String(id ?? ""))?.teamName ?? "—";
@@ -196,7 +199,15 @@ export function PageTournamentLobby({
         onReady={async (ready) => {
           try {
             await setMyMatchReady(top.match.tournamentId, ready, token);
-            top.refresh();
+            await top.refresh();
+            if (ready) {
+              onEnterRoom?.({
+                tournamentId: top.match.tournamentId,
+                roundNo: top.match.roundNo,
+                slotIndex: top.match.slotIndex,
+                gameId: tournament.gameId ?? tournament.raw?.game_id ?? "rps_chess",
+              });
+            }
           } catch (err) {
             setMessage({ tone: "err", text: apiErrorText(err) });
           }
@@ -320,27 +331,19 @@ export function PageTournamentLobby({
             />
           )}
 
-          {isOrganizer && status === "in_progress" && (
-            <section className="tl-card" aria-label="Trận chờ kết quả">
+          {status === "in_progress" && activeRoundNos.size > 0 && (
+            <section className="tl-card" aria-label="Trận đấu đang mở">
               <header className="tl-card__head">
                 <div>
-                  <h2 className="tl-card__title">Trận chờ kết quả</h2>
+                  <h2 className="tl-card__title">Trận đấu đang mở</h2>
                   <p className="tl-card__desc">
-                    Gắn kết quả của một trận đấu thật vào nhánh để người thắng đi tiếp.
+                    Các trận được chơi trong giải. Kết quả sẽ tự cập nhật và người thắng tự đi tiếp.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn small"
-                  disabled={busy}
-                  onClick={() => setAdminModal(true)}
-                >
-                  🛠 Bảng điều khiển giải
-                </button>
               </header>
 
               {waitingSlots.length === 0 ? (
-                <p className="muted">Không còn nhánh nào đang chờ kết quả.</p>
+                <p className="muted">Các trận của vòng này đã bắt đầu hoặc đã có kết quả.</p>
               ) : (
                 <ul className="tl-pending">
                   {waitingSlots.map((slot) => (
@@ -353,10 +356,16 @@ export function PageTournamentLobby({
                       <button
                         type="button"
                         className="btn small primary"
-                        disabled={busy}
-                        onClick={() => setAttachSlot(slot)}
+                        onClick={() =>
+                          onEnterRoom?.({
+                            tournamentId: tournament.id,
+                            roundNo: slot.roundNo,
+                            slotIndex: slot.matchIndex,
+                            gameId: tournament.gameId ?? tournament.raw?.game_id ?? "rps_chess",
+                          })
+                        }
                       >
-                        Gắn kết quả
+                        ⚔️ Vào phòng đấu
                       </button>
                     </li>
                   ))}
@@ -448,30 +457,6 @@ export function PageTournamentLobby({
         <ParticipantProfileModal userId={profileId} onClose={() => setProfileId(null)} />
       )}
 
-      {attachSlot && (
-        <AttachResultModal
-          slot={{
-            ...attachSlot,
-            attach: (matchId) =>
-              attachTournamentSlotResult(
-                tournament.id,
-                attachSlot.roundNo,
-                attachSlot.matchIndex,
-                matchId,
-                token,
-              ),
-          }}
-          nameA={entryName(attachSlot.participantAId)}
-          nameB={entryName(attachSlot.participantBId)}
-          onClose={() => setAttachSlot(null)}
-          onAttached={(data) => {
-            setRaw(data);
-            setAttachSlot(null);
-            setMessage({ tone: "ok", text: "Đã ghi nhận kết quả trận đấu." });
-          }}
-        />
-      )}
-
       {teamModal && (
         <TeamRegistrationModal
           tournament={tournament}
@@ -491,8 +476,9 @@ export function PageTournamentLobby({
           tournament={tournament}
           token={token}
           onClose={() => setAdminModal(false)}
-          onUpdated={() => {
-            load().catch(() => {});
+          onUpdated={(updated) => {
+            if (updated?.config && String(updated.id) === String(tournament.id)) setRaw(updated);
+            else load().catch(() => {});
             setMessage({ tone: "ok", text: "Bảng điều điều giải đã cập nhật." });
           }}
         />

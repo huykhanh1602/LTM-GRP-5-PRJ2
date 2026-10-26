@@ -28,6 +28,8 @@ import multiprocessing
 import os
 import queue as queue_module
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -51,6 +53,14 @@ STATUS_OK = "ok"
 STATUS_TIMEOUT = "timeout"
 STATUS_ERROR = "error"
 STATUS_LOAD_ERROR = "load_error"
+
+# Cách một đội điều khiển quân cờ trong ván.
+CONTROL_BOT = "bot"
+CONTROL_HUMAN = "human"
+
+# Tin nhắn khởi động: bot đã nạp xong, chưa phải kết quả lượt đi.
+BOT_READY_KEY = "__bot_ready__"
+BOOT_TIMEOUT_MS_DEFAULT = 5000
 
 # Lý do kết thúc trận đấu
 REASON_BASE_CAPTURED = "BASE_CAPTURED"
@@ -399,6 +409,13 @@ def _bot_worker_entry(
         make_move = None
         load_error = f"{type(exc).__name__}: {exc}"
 
+    # Báo sẵn sàng trước vòng lặp: engine chờ tin này lúc khởi động,
+    # nhờ chi phí spawn + import bot không bị tính vào đồng hồ lượt 1.
+    try:
+        result_queue.put({BOT_READY_KEY: True, "error": load_error})
+    except Exception:  # noqa: BLE001
+        return
+
     while True:
         try:
             task = task_queue.get()
@@ -441,14 +458,22 @@ class BotProcess:
     * Nếu bot crash -> lỗi được bắt và trả về dưới dạng ``status="error"``.
     """
 
-    def __init__(self, bot_path: str, team_id: str, timeout_ms: int) -> None:
+    def __init__(
+        self,
+        bot_path: str,
+        team_id: str,
+        timeout_ms: int,
+        boot_timeout_ms: Optional[int] = None,
+    ) -> None:
         self.bot_path = os.path.abspath(bot_path)
         self.team_id = team_id
         self.timeout_ms = int(timeout_ms)
+        self.boot_timeout_ms = int(boot_timeout_ms or BOOT_TIMEOUT_MS_DEFAULT)
         self._ctx = multiprocessing.get_context("spawn")
         self._task_queue = None
         self._result_queue = None
         self._process = None
+        self._boot_error = None
         self._start_worker()
 
     # -- Vòng đời tiến trình ------------------------------------------------
@@ -462,6 +487,27 @@ class BotProcess:
             daemon=True,
         )
         self._process.start()
+        self._wait_until_ready()
+
+    def _wait_until_ready(self) -> None:
+        """Chờ bot nạp xong (spawn + import) trước khi trận bắt đầu đếm giờ."""
+        self._boot_error = None
+        try:
+            ready = self._result_queue.get(timeout=self.boot_timeout_ms / 1000.0)
+        except queue_module.Empty:
+            self._boot_error = (
+                f"Bot không khởi động xong trong {self.boot_timeout_ms}ms."
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            self._boot_error = f"QUEUE_HANDSHAKE_FAILED: {exc}"
+            return
+
+        if not (isinstance(ready, dict) and ready.get(BOT_READY_KEY)):
+            self._boot_error = f"Bot gửi tin nhắn khởi động lạ: {ready!r}"
+            return
+        if ready.get("error"):
+            self._boot_error = str(ready["error"])
 
     def _terminate_worker(self) -> None:
         process = self._process
@@ -500,6 +546,11 @@ class BotProcess:
         if self._process is None or not self._process.is_alive():
             self._restart_worker()
 
+        # Bot không nạp được (lỗi import hoặc treo lúc khởi động): báo ngay,
+        # để đồng hồ lượt đấu không bị tính cho phần khởi động.
+        if self._boot_error is not None:
+            return {"status": STATUS_LOAD_ERROR, "error": self._boot_error}
+
         try:
             self._task_queue.put(payload)
         except Exception as exc:  # noqa: BLE001
@@ -524,6 +575,174 @@ class BotProcess:
         except Exception:  # noqa: BLE001
             pass
         self._terminate_worker()
+
+
+# ---------------------------------------------------------------------------
+# Người chơi cầm chuột: engine hỏi lượt, tiến trình quản lý (Node) trả lời
+# ---------------------------------------------------------------------------
+
+
+HUMAN_TURN_TIMEOUT_MS_DEFAULT = 30_000
+REMOTE_GRACE_SECONDS = 5.0
+
+
+class RemoteTurnBridge:
+    """Kênh NDJSON hai chiều giữa engine và Node cho các lượt của người thật.
+
+    Chỉ một luồng đọc stdin cho toàn bộ trận, phản hồi được tra theo
+    ``request_id`` nên cả hai đội đều có thể do người điều khiển.
+    """
+
+    def __init__(self, writer: Any = None) -> None:
+        self._writer = writer if writer is not None else sys.stdout
+        self._write_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._waiters: Dict[int, Any] = {}
+        self._next_request_id = 0
+        self._reader: Any = None
+
+    def _start_reader(self) -> None:
+        """Chỉ đọc stdin khi thực sự có lượt người, tránh chặn spawn của bot lúc khởi động."""
+        with self._state_lock:
+            if self._reader is not None:
+                return
+            self._reader = threading.Thread(target=self._read_stdin, daemon=True)
+        self._reader.start()
+
+    def _read_stdin(self) -> None:
+        while True:
+            try:
+                line = sys.stdin.readline()
+            except (ValueError, OSError):
+                return
+            if not line:
+                return
+            self.dispatch(line)
+
+    def dispatch(self, raw: str) -> None:
+        """Nạp một dòng JSON từ stdin và giao cho lượt đang chờ đúng id."""
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(message, dict) or message.get("type") != "TURN_RESPONSE":
+            return
+        request_id = message.get("request_id")
+        with self._state_lock:
+            waiter = self._waiters.get(request_id) if isinstance(request_id, int) else None
+        if waiter is not None:
+            waiter.put(message)
+
+    def send(self, message: Dict[str, Any]) -> bool:
+        try:
+            text = json.dumps(message, ensure_ascii=False, separators=(",", ":"), default=str)
+        except (TypeError, ValueError):
+            return False
+        try:
+            with self._write_lock:
+                self._writer.write(text + "\n")
+                self._writer.flush()
+            return True
+        except (BrokenPipeError, ValueError):
+            return False
+
+    def request(
+        self,
+        team_id: str,
+        payload: Dict[str, Any],
+        timeout_ms: int,
+    ) -> Dict[str, Any]:
+        """Hỏi một lượt rồi chờ Node trả lời; quá hạn thì trả status timeout."""
+        self._start_reader()
+        with self._state_lock:
+            self._next_request_id += 1
+            request_id = self._next_request_id
+            waiter: queue_module.Queue = queue_module.Queue()
+            self._waiters[request_id] = waiter
+
+        try:
+            if not self.send({
+                "type": "TURN_REQUEST",
+                "request_id": request_id,
+                "team": team_id,
+                "deadline_ms": int(timeout_ms),
+                "payload": payload,
+            }):
+                return {"status": STATUS_ERROR, "error": "ENGINE_PIPE_CLOSED"}
+
+            # Node tự gửi nước đi dự phòng khi người chơi AFK; engine chỉ chờ
+            # thêm đệm để không bao giờ treo trận.
+            deadline = time.monotonic() + (timeout_ms / 1000.0) + REMOTE_GRACE_SECONDS
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return {"status": STATUS_TIMEOUT, "request_id": request_id}
+                try:
+                    message = waiter.get(timeout=min(0.25, remaining))
+                except queue_module.Empty:
+                    continue
+                action = message.get("action")
+                if action is None:
+                    return {
+                        "status": STATUS_ERROR,
+                        "error": str(message.get("error") or "MISSING_ACTION"),
+                    }
+                return {"status": STATUS_OK, "action": action}
+        finally:
+            with self._state_lock:
+                self._waiters.pop(request_id, None)
+
+
+class RemoteHumanAdapter:
+    """Adapter phía người thật, cùng hợp đồng request/close với BotProcess."""
+
+    def __init__(
+        self,
+        team_id: str,
+        bridge: RemoteTurnBridge,
+        timeout_ms: int = HUMAN_TURN_TIMEOUT_MS_DEFAULT,
+    ) -> None:
+        self.team_id = team_id
+        self.bridge = bridge
+        self.timeout_ms = int(timeout_ms)
+
+    def request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.bridge.request(self.team_id, payload, self.timeout_ms)
+
+    def close(self) -> None:
+        return None
+
+
+def normalize_control(spec: str) -> str:
+    """Chuẩn hóa giá trị người dùng nhập về ``bot`` hoặc ``human``."""
+    normalized = (spec or CONTROL_BOT).strip().lower()
+    if normalized in ("human", "person", "mouse", "chuot"):
+        return CONTROL_HUMAN
+    if normalized in ("bot", "file"):
+        return CONTROL_BOT
+    raise ValueError(f"Chế độ điều khiển không hợp lệ: {spec}")
+
+
+def create_player(
+    spec: str,
+    team_id: str,
+    bot_path: str,
+    bot_time_ms: int,
+    human_turn_ms: int,
+    state: Dict[str, Any],
+) -> Any:
+    """Tạo adapter cho một đội: bot chạy file, hoặc người thật cầm chuột.
+
+    ``state`` là dict dùng chung để cả trận chỉ có một ``RemoteTurnBridge``.
+    """
+    control = normalize_control(spec)
+    if control == CONTROL_HUMAN:
+        bridge = state.get("bridge")
+        if bridge is None:
+            bridge = RemoteTurnBridge()
+            state["bridge"] = bridge
+        return RemoteHumanAdapter(team_id, bridge, human_turn_ms)
+    return BotProcess(bot_path, team_id, bot_time_ms)
 
 
 # ---------------------------------------------------------------------------

@@ -10,11 +10,28 @@ const BOT = "def make_move(*args):\n    return None\n";
 test("toUiRoom always returns two team slots and marks the current user", () => {
   const room = toUiRoom({
     room_id: "AB23", status: "waiting", mode: "casual", game_id: "rps_chess", spectators: 1,
-    players: [{ user_id: "u1", display_name: "Alpha", team_id: "team_a", has_bot: true, filename: "a.py", ready: false, connected: true }],
+    allowed_controls: ["bot", "human"],
+    players: [{ user_id: "u1", display_name: "Alpha", team_id: "team_a", has_bot: true, filename: "a.py", ready: false, connected: true, control: "bot" }],
   }, "u1");
   assert.equal(room.code, "AB23");
-  assert.deepEqual(room.teams[0], { id: "team_a", name: "Alpha", isMe: true, connected: true, submitted: true, ready: false, filename: "a.py" });
-  assert.deepEqual(room.teams[1], { id: "team_b", name: "", isMe: false, connected: false, submitted: false, ready: false, filename: null });
+  assert.deepEqual(room.teams[0], { id: "team_a", name: "Alpha", isMe: true, connected: true, submitted: true, ready: false, filename: "a.py", control: "bot" });
+  assert.deepEqual(room.teams[1], { id: "team_b", name: "", isMe: false, connected: false, submitted: false, ready: false, filename: null, control: "bot" });
+  assert.deepEqual(room.allowedControls, ["bot", "human"]);
+});
+
+test("toUiRoom giữ mặc định an toàn khi server không gửi kiểu điều khiển", () => {
+  const room = toUiRoom({ room_id: "AB23", status: "waiting", mode: "casual", game_id: "rps_chess", players: [] }, "u1");
+  assert.deepEqual(room.allowedControls, ["bot"]);
+  assert.equal(room.teams[0].control, "bot");
+});
+
+test("toUiMessage chuyển your_turn/turn_expired thành lượt bấm ô của người chơi", () => {
+  const before = Date.now();
+  const turn = toUiMessage({ type: "your_turn", team_id: "team_a", deadline_ms: 30000, payload: { board_state: { width: 4 } } }, "u1");
+  assert.equal(turn.type, "your_turn");
+  assert.equal(turn.team_id, "team_a");
+  assert.ok(turn.expires_at >= before + 30000 && turn.expires_at <= Date.now() + 30000);
+  assert.deepEqual(toUiMessage({ type: "turn_expired", team_id: "team_a" }, "u1"), { type: "turn_expired", team_id: "team_a" });
 });
 
 test("toUiMessage maps game_over to match_end and hides channel-only messages", () => {
@@ -22,6 +39,8 @@ test("toUiMessage maps game_over to match_end and hides channel-only messages", 
     type: "match_end", match_id: "M", winner: null, reason: "DRAW",
   });
   assert.equal(toUiMessage({ type: "game_over", winner: "team_b" }, "u").winner, "team_b");
+  assert.equal(toUiMessage({ type: "game_over", winner: "team_b", reason: "FORFEIT", forfeit: true }, "u").forfeit, true);
+  assert.equal(toUiMessage({ type: "game_over", winner: "team_b", reason: "DRAW" }, "u").forfeit, undefined);
   assert.equal(toUiMessage({ type: "bot_accepted" }, "u"), null);
   assert.deepEqual(toUiMessage({ type: "error", code: "NO_BOT", message: "Hãy nộp bot" }, "u"), { type: "error", code: "NO_BOT", message: "Hãy nộp bot" });
 });

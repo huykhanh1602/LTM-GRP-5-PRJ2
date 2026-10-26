@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import TrophyIcon from "../TrophyIcon.jsx";
+import { controlsLabel } from "../../utils/tournamentApi.js";
 
 // Đếm ngược tới mốc thời gian của giải đấu
 function useCountdown(target) {
@@ -59,6 +60,7 @@ export default function TournamentHeader({ tournament }) {
               <span className={`tl-mode-badge tl-mode-badge--${tournament.participantMode === "TEAM" ? "team" : "solo"}`}>
                 {tournament.participantMode === "TEAM" ? "Giải Đội" : "Giải Cá Nhân"}
               </span>
+              <span className="tl-mode-badge">{controlsLabel(tournament.allowedControls)}</span>
               <span className={`tl-status tl-status--${statusClass}`}>
                 <i aria-hidden="true" />
                 {tournament.status === "open" ? "Đang mở đăng ký" : tournament.status === "in_progress" ? "Đã khởi tranh" : tournament.status === "completed" ? "Đã kết thúc" : tournament.statusLabel}

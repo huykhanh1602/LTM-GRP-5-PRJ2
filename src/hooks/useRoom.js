@@ -10,11 +10,13 @@ const INITIAL = {
   room: null,
   queue: null, // { wait_time, mode } khi đang chờ ghép trận
   countdown: null,
+  turn: null, // { team_id, payload, expires_at } khi tới lượt người thật
   error: null,
   init: null, // { match_info, game_config, initial_state } của trận đang xem
   replay: null, // Replay đầy đủ của trận gần nhất
   frames: null,
   finished: false,
+  result: null, // { winner, reason, outcome: "win" | "lose" | "draw" | "watch" } khi ván kết thúc
   matchKey: 0, // tăng mỗi trận mới để màn hình xem trận được tạo lại từ đầu
 };
 
@@ -54,8 +56,16 @@ export function useRoom() {
             : "room",
           room: m.room,
           queue: null,
+          turn: m.room.status === "playing" ? p.turn : null,
           error: null,
         }));
+        break;
+      case "your_turn":
+        setState((p) => ({ ...p, turn: m }));
+        break;
+      case "turn_expired":
+        // Hết giờ: server tự đi nước an toàn, bàn chơi bỏ trạng thái chờ.
+        setState((p) => (p.turn?.team_id === m.team_id ? { ...p, turn: null } : p));
         break;
       case "countdown":
         if (!countdownSfxRef.current) {
@@ -77,6 +87,8 @@ export function useRoom() {
             frames: createFrames(replay),
             finished: false,
             countdown: null,
+            turn: null,
+            result: null,
             error: null,
             matchKey: p.matchKey + 1,
           }));
@@ -89,7 +101,7 @@ export function useRoom() {
         if (liveReplayRef.current) {
           liveReplayRef.current = appendLiveReplayTurn(liveReplayRef.current, m.turn);
         }
-        setState((p) => (p.frames ? { ...p, frames: appendTurn(p.frames, m.turn) } : p));
+        setState((p) => (p.frames ? { ...p, frames: appendTurn(p.frames, m.turn), turn: null } : p));
         break;
       case "match_end": {
         const replay = finishLiveReplay(liveReplayRef.current, m);
@@ -101,15 +113,20 @@ export function useRoom() {
         const persistenceError = persistenceErrors.length
           ? `Trận đã kết thúc nhưng ${persistenceErrors.join(" và ")}. Hãy báo quản trị viên kiểm tra backend.`
           : null;
-        setState((p) =>
-          p.frames ? {
+        setState((p) => {
+          if (!p.frames) return p;
+          const myTeamId = p.room?.teams?.find((team) => team.isMe)?.id ?? p.params?.teamId ?? null;
+          const outcome = !myTeamId ? "watch" : !m.winner ? "draw" : m.winner === myTeamId ? "win" : "lose";
+          return {
             ...p,
             frames: endFrames(p.frames, m),
             replay: replay ?? lastReplayRef.current,
             finished: true,
+            turn: null,
+            result: { ...m, outcome, myTeamId },
             error: persistenceError,
-          } : p
-        );
+          };
+        });
         break;
       }
       case "error":
@@ -143,7 +160,19 @@ export function useRoom() {
     setState({ ...INITIAL, replay: lastReplayRef.current });
   }, []);
 
+  // Bỏ ván giữa chừng: xin server xử thua nhưng vẫn mở kênh để nhận kết quả mà hiện banner.
+  const askLeave = useCallback(() => chanRef.current?.send({ type: "leave_room" }), []);
+
   const setReady = useCallback((ready) => chanRef.current?.send({ type: "ready", ready }), []);
+
+  // Kiểu điều khiển của ván tới: bot (nộp code) hoặc human (bấm chuột).
+  const setControl = useCallback((control) => chanRef.current?.send({ type: "set_control", control }), []);
+
+  // Nước đi của người thật: gửi rồi tắt bàn chờ ngay để không bấm đúp.
+  const playMove = useCallback((action) => {
+    chanRef.current?.send({ type: "human_move", action });
+    setState((p) => ({ ...p, turn: null }));
+  }, []);
 
   const returnToRoom = useCallback(() => {
     setState((p) => (p.room ? { ...p, phase: "room" } : p));
@@ -154,5 +183,5 @@ export function useRoom() {
     return chanRef.current.submitCode(file);
   }, []);
 
-  return { ...state, join, leave, returnToRoom, setReady, submit };
+  return { ...state, join, leave, askLeave, returnToRoom, setReady, setControl, playMove, submit };
 }

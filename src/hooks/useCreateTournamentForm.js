@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { GAME_CATALOG } from "../games/catalog.js";
-import { createTournament, getGames } from "../api.js";
+import { createTournament, getGames, sessionToken } from "../api.js";
 import { apiErrorText } from "../utils/tournamentApi.js";
 
 // Quản lý toàn bộ state + submit của form "Mở giải đấu mới".
-export function useCreateTournamentForm({ token, onOpenTournament }) {
+export function useCreateTournamentForm({ token: _token, onOpenTournament }) {
+  // Fallback: đọc token từ localStorage nếu props không truyền
+  const token = _token ?? sessionToken();
   const [tourName, setTourName] = useState("");
   // Danh sách game hợp lệ lấy từ backend (đảm bảo game_id tồn tại trong DB).
   const [gameOptions, setGameOptions] = useState(
@@ -127,16 +129,11 @@ export function useCreateTournamentForm({ token, onOpenTournament }) {
       setRegOpenClock("");
       setRegCloseDate("");
       setRegCloseClock("");
-      setStartDate("");
-      setStartClock("");
       setLanguages(["python"]);
       setRules("");
       setPrize("");
       setDescription("");
-      setTimeout(() => {
-        setMsg("");
-        onOpenTournament?.(created.id);
-      }, 900);
+      onOpenTournament?.(created.id, null, created.game_id);
     } catch (error) {
       setFormError(apiErrorText(error));
     } finally {

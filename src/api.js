@@ -9,6 +9,13 @@ const baseUrl = (API_URL ?? "").replace(/\/+$/, "");
 // Backend chấp nhận cả /api/v1/* và /api/* (xem net/http.js).
 const V1 = "/api/v1";
 
+const STORAGE_KEY = "daubot_session";
+
+function clearSession() {
+  localStorage.removeItem(STORAGE_KEY);
+  try { window.dispatchEvent(new CustomEvent("auth:unauthorized")); } catch { /* skip */ }
+}
+
 async function request(path, { method = "GET", token, body } = {}) {
     const response = await fetch(`${baseUrl}${path}`, {
         method,
@@ -18,6 +25,10 @@ async function request(path, { method = "GET", token, body } = {}) {
         },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
+    // 401 Unauthorized → token hết hạn / không hợp lệ → tự động đăng xuất
+    if (response.status === 401) {
+      clearSession();
+    }
     const data = await response.json();
     if (!response.ok) {
         const error = new Error(data.message || data.error || `HTTP ${response.status}`);
@@ -42,10 +53,11 @@ export function sessionToken() {
 
 export const getMe = () => get("/api/me", { token: sessionToken() });
 export const getGames = () => get(`${V1}/games`);
-export function getTournaments({ status, limit = 20, offset = 0 } = {}) {
+export function getTournaments({ status, limit = 20, offset = 0, joined = false } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (status !== undefined) params.set("status", status);
-    return get(`${V1}/tournaments?${params}`);
+    if (joined) params.set("joined", "1");
+    return get(`${V1}/tournaments?${params}`, joined ? { token: sessionToken() } : {});
 }
 export const getTournamentNotifications = (token, { limit = 100, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
@@ -54,7 +66,8 @@ export const getTournamentNotifications = (token, { limit = 100, offset = 0 } = 
 export const markTournamentNotificationRead = (id, token) =>
     request(`${V1}/notifications/tournaments/${encodeURIComponent(id)}/read`, { method: "PATCH", token });
 export const getTournament = (idOrCode) => get(`${V1}/tournaments/${encodeURIComponent(idOrCode)}`);
-export const createTournament = (payload, token) => post(`${V1}/tournaments`, payload, token);
+export const createTournament = (payload, token) =>
+  post(`${V1}/tournaments`, payload, token ?? sessionToken());
 export const registerTournament = (idOrCode, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
 export const registerTournamentTeam = (idOrCode, teamId, token, submissionId = null) =>
@@ -83,6 +96,11 @@ export const updateTournamentSchedule = (idOrCode, scheduledAt, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
         method: "PATCH", body: { scheduled_at: scheduledAt }, token,
     });
+// Kiểu điều khiển giải cho phép: BOT / HUMAN / BOTH (không đụng tới lịch khởi tranh).
+export const updateTournamentControls = (idOrCode, allowedControls, token) =>
+    request(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/schedule`, {
+        method: "PATCH", body: { allowed_controls: allowedControls }, token,
+    });
 export const updateRegistrationWindow = (tournamentId, { registrationOpensAt, registrationClosesAt, startsAt = null }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/registration-window`, {
         method: "PATCH", body: { registrationOpensAt, registrationClosesAt, startsAt }, token,
@@ -95,11 +113,6 @@ export const triggerRoundStart = (idOrCode, roundId, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/trigger-start`, { round_id: roundId }, token);
 export const rescheduleMatch = (matchId, scheduledAt, token) =>
     post(`${V1}/matches/${encodeURIComponent(matchId)}/reschedule`, { scheduled_at: scheduledAt }, token);
-export const attachTournamentSlotResult = (idOrCode, roundNo, slotIndex, matchId, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
-        { match_id: matchId }, token);
-export const recordTournamentMatch = (tournamentId, result, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/matches`, result, token);
 export const updateTournamentStatus = (tournamentId, { status, champion_id = null }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/status`, {
         method: "PATCH", body: { status, champion_id }, token,

@@ -33,7 +33,6 @@ export function useTournamentLobby({
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("standings");
   const [profileId, setProfileId] = useState(null);
-  const [attachSlot, setAttachSlot] = useState(null);
   const [teamModal, setTeamModal] = useState(false);
   const [adminModal, setAdminModal] = useState(false);
 
@@ -148,8 +147,6 @@ export function useTournamentLobby({
     setTab,
     profileId,
     setProfileId,
-    attachSlot,
-    setAttachSlot,
     teamModal,
     setTeamModal,
     adminModal,

@@ -72,6 +72,9 @@ export function useTopMatch({ tournamentId = null, token = null, enabled = true,
         const result = await resolveTournamentRound(match.tournamentId, match.roundNo, tokenRef.current);
         onResolvedRef.current?.(result);
         await load();
+      } catch (err) {
+        resolvedRef.current.delete(key);
+        setError(apiErrorText(err));
       } finally {
         setBusy(false);
       }

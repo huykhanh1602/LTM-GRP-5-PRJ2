@@ -4,6 +4,7 @@ import MyTournamentsSection from "../components/profile/MyTournamentsSection.jsx
 import CreateTournamentForm from "../components/profile/CreateTournamentForm.jsx";
 import ProfileSettingsPanel from "../components/profile/ProfileSettingsPanel.jsx";
 import EditRegistrationWindowModal from "../components/profile/EditRegistrationWindowModal.jsx";
+import Modal from "../components/tournament/Modal.jsx";
 import AvatarModal from "../components/profile/AvatarModal.jsx";
 import { getTournaments } from "../api.js";
 import { apiErrorText, toTournamentCard } from "../utils/tournamentApi.js";
@@ -29,6 +30,7 @@ export default function ProfilePage({
   const [activeTab, setActiveTab] = useState("profile"); // "profile" | "settings"
   const [createOpen, setCreateOpen] = useState(false);
   const [myTournaments, setMyTournaments] = useState([]);
+  const [joinedTournaments, setJoinedTournaments] = useState([]);
   const [editWindow, setEditWindow] = useState(null);
   const [windowEditMsg, setWindowEditMsg] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
@@ -44,18 +46,23 @@ export default function ProfilePage({
   // Tài khoản đăng nhập qua Google/Facebook sẽ chưa có mật khẩu → hiện "Thêm mật khẩu".
   const hasPassword = !!user?.has_password;
 
-  // Danh sách giải đấu do chính người này tổ chức (lọc từ API thật)
+  // Giải do người này tổ chức + giải người này tham gia (lọc từ API thật).
   useEffect(() => {
     if (!isLoggedIn) {
       setMyTournaments([]);
+      setJoinedTournaments([]);
       return undefined;
     }
     let active = true;
-    getTournaments({ limit: 100 })
-      .then((data) => {
+    Promise.all([getTournaments({ limit: 100 }), getTournaments({ limit: 100, joined: true })])
+      .then(([all, joinedList]) => {
         if (!active) return;
-        setMyTournaments(
-          data.items.map(toTournamentCard).filter((item) => item.organizerId === user?.id),
+        const organized = all.items.map(toTournamentCard).filter((item) => item.organizerId === user?.id);
+        const organizedIds = new Set(organized.map((item) => item.id));
+        setMyTournaments(organized);
+        // Chủ giải cũng có đơn của mình thì chỉ hiện ở nhóm "Giải tôi tổ chức".
+        setJoinedTournaments(
+          joinedList.items.map(toTournamentCard).filter((item) => !organizedIds.has(item.id)),
         );
       })
       .catch((error) => active && createForm.setFormError(apiErrorText(error)));
@@ -123,17 +130,12 @@ export default function ProfilePage({
           <div>
             {windowEditMsg && <p className="tour-edit-notice">{windowEditMsg}</p>}
             <MyTournamentsSection
-              tournaments={myTournaments}
-              createOpen={createOpen}
-              onToggleCreate={() => setCreateOpen((v) => !v)}
+              organized={myTournaments}
+              joined={joinedTournaments}
+              onCreate={() => setCreateOpen(true)}
               onOpenTournament={onOpenTournament}
               onEditWindow={setEditWindow}
             />
-
-            {/* Form mở giải đấu mới (ẩn/hiện trong tab Trang cá nhân, ghi thẳng vào server) */}
-            {createOpen && (
-              <CreateTournamentForm form={createForm} onCancel={() => setCreateOpen(false)} />
-            )}
           </div>
         )}
 
@@ -148,8 +150,20 @@ export default function ProfilePage({
         )}
       </div>
 
-      {/* ── Modal Đổi Avatar ── */}
+      {/* ── Modal mở avatar ── */}
       <AvatarModal editor={avatar} />
+
+      {/* ── Modal mở giải đấu mới (ghi thẳng vào server) ── */}
+      {createOpen && (
+        <Modal
+          wide
+          title="Mở giải đấu cá nhân / cộng đồng"
+          subtitle="Giải có hiệu lực ngay sau khi tạo; luật chơi sẽ hiện trong phòng chờ của giải."
+          onClose={() => setCreateOpen(false)}
+        >
+          <CreateTournamentForm form={createForm} onCancel={() => setCreateOpen(false)} />
+        </Modal>
+      )}
 
       {/* ── Modal sửa khung mở/đóng đơn của giải do mình tổ chức ── */}
       {editWindow && (

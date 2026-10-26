@@ -13,7 +13,9 @@ def make_move(board_state, my_pieces, opponent_pieces, config):
     # Tập hợp các ô chứa thân mình hoặc thân đối thủ
     my_body = {tuple(p["pos"]) for p in my_pieces}
     opp_body = {tuple(p["pos"]) for p in opponent_pieces}
-    obstacles = my_body | opp_body
+    # Đuôi đã rụng thành chướng ngại vật cố định: đâm vào là thua.
+    dropped_tails = {tuple(pos) for pos in board_state.get("obstacles", [])}
+    obstacles = my_body | opp_body | dropped_tails
 
     # Mục tiêu: mồi gần nhất theo khoảng cách Manhattan
     target = (width // 2, height // 2)

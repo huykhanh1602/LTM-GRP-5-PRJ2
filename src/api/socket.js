@@ -18,6 +18,7 @@ export function toUiRoom(m, myUserId) {
         game_id: m.game_id,
         spectators: m.spectators ?? 0,
         tournament: m.tournament ?? null,
+        allowedControls: Array.isArray(m.allowed_controls) ? m.allowed_controls : ["bot"],
         teams: TEAM_IDS.map((id) => {
             const p = players.find((player) => player.team_id === id);
             return {
@@ -28,6 +29,7 @@ export function toUiRoom(m, myUserId) {
                 submitted: Boolean(p?.has_bot),
                 ready: Boolean(p?.ready),
                 filename: p?.filename ?? null,
+                control: p?.control === "human" ? "human" : "bot",
             };
         }),
     };
@@ -48,6 +50,7 @@ export function toUiMessage(m, myUserId) {
                 ...(m.elo_change_b !== undefined ? { elo_change_b: m.elo_change_b } : {}),
                 ...(typeof m.history_saved === "boolean" ? { history_saved: m.history_saved } : {}),
                 ...(typeof m.rating_saved === "boolean" ? { rating_saved: m.rating_saved } : {}),
+                ...(m.forfeit ? { forfeit: true } : {}),
             };
         case "match_start":
         case "turn":
@@ -55,6 +58,16 @@ export function toUiMessage(m, myUserId) {
         case "queue_state":
         case "match_found":
             return m;
+        case "your_turn":
+            return {
+                type: "your_turn",
+                team_id: m.team_id,
+                deadline_ms: m.deadline_ms,
+                payload: m.payload,
+                expires_at: Date.now() + Math.max(0, Number(m.deadline_ms) || 0),
+            };
+        case "turn_expired":
+            return { type: "turn_expired", team_id: m.team_id };
         case "error":
             return { type: "error", code: m.code, message: m.message || m.code };
         default:

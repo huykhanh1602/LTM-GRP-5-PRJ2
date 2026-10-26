@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export default function Modal({ title, subtitle, onClose, children, footer }) {
+export default function Modal({ title, subtitle, onClose, children, footer, wide = false }) {
   useEffect(() => {
     function handleKey(event) {
       if (event.key === "Escape") onClose();
@@ -12,7 +12,7 @@ export default function Modal({ title, subtitle, onClose, children, footer }) {
   return (
     <div className="tl-modal" role="presentation" onClick={onClose}>
       <div
-        className="tl-modal__panel"
+        className={`tl-modal__panel${wide ? " tl-modal__panel--wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

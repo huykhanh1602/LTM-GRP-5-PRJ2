@@ -48,13 +48,7 @@ export default function CreateTournamentForm({ form, onCancel }) {
   } = form;
 
   return (
-    <div style={{ marginTop: "18px", borderTop: "1px solid var(--border, #e2e8f0)", paddingTop: "16px" }}>
-      <h3 style={{ margin: "0 0 8px" }}>Mở giải đấu cá nhân / cộng đồng</h3>
-      <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "var(--muted)" }}>
-        Giải đấu có hiệu lực ngay sau khi tạo. Luật chơi bạn điền ở đây sẽ hiện trong phòng
-        chờ của giải cho người tham gia đọc.
-      </p>
-
+    <div className="tour-create-form">
       {msg && (
         <div
           className="auth-error"

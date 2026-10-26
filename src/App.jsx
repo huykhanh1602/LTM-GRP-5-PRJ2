@@ -155,7 +155,8 @@ export default function App() {
     let key = "lobby";
     if (view === "lobby") {
       if (room.phase === "match") {
-        key = selectedGameId === "snake_battle" ? "battle_rsm"
+        if (room.result) key = "pc"; // ván đã ngã ngũ → về nhạc phòng chờ
+        else key = selectedGameId === "snake_battle" ? "battle_rsm"
             : selectedGameId === "rps_chess" ? "battle_kbb"
             : "pc";
       } else {
@@ -163,7 +164,7 @@ export default function App() {
       }
     }
     sound.setBgm(key);
-  }, [view, room.phase, selectedGameId]);
+  }, [view, room.phase, room.result, selectedGameId]);
 
   // Tiếng "click" cho mọi nút trên toàn app (delegate, bắt ở pha capture).
   useEffect(() => {
@@ -179,7 +180,7 @@ export default function App() {
     const phase = roomRef.current.phase;
     if (route.view === "home") {
       // Roi phong khi ve trang chu o cac giai doan chua vao match
-      if (phase === "idle" || phase === "connecting" || phase === "queue") roomRef.current.leave();
+      if (phase === "idle" || phase === "connecting" || phase === "queue" || phase === "match") roomRef.current.leave();
     } else if (route.view === "lobby") {
       // Roi phong khi chuyen sang game khac trong khi dang trong phong/match
       const currentGameId = selectedGameIdRef.current;
@@ -189,6 +190,9 @@ export default function App() {
       ) {
         roomRef.current.leave();
       }
+    } else if (phase === "match") {
+      // Rời màn hình chơi giữa ván = thoát phòng, server xử thua đội đó.
+      roomRef.current.leave();
     }
     setSelectedGameId(route.gameId ?? null);
     setTournamentId(route.tournamentId ?? null);
@@ -285,6 +289,19 @@ export default function App() {
     navigate({ view: "lobby", gameId, mode: "casual" }, { replace: true });
   }
 
+  function leaveMatchRoom() {
+    const activeRoom = roomRef.current;
+    const tournament = activeRoom.room?.tournament;
+    activeRoom.leave();
+    if (tournament) {
+      openTournament(
+        tournament.tournament_id ?? tournament.tournamentId,
+        tournament.round_no ?? tournament.roundNo,
+        activeRoom.params?.gameId ?? selectedGameIdRef.current,
+      );
+    }
+  }
+
   // Xem replay của một trận đấu trong giải
   function openReplay(replay) {
     setDatabaseReplay(replay);
@@ -368,7 +385,8 @@ export default function App() {
           key={room.matchKey}
           state={room}
           onReturnToRoom={room.returnToRoom}
-          onLeave={room.leave}
+          onLeave={leaveMatchRoom}
+          onForfeit={room.askLeave}
         />
       );
     } else if (room.phase === "room") {
@@ -376,8 +394,9 @@ export default function App() {
         <Room
           state={room}
           onSubmit={room.submit}
+          onControl={room.setControl}
           onReady={room.setReady}
-          onLeave={room.leave}
+          onLeave={leaveMatchRoom}
         />
       );
     } else {

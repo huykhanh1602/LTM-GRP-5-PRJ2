@@ -1886,6 +1886,9 @@
   box-shadow: 0 30px 60px -20px rgba(87, 69, 104, 0.55);
   animation: tlPopup 0.24s cubic-bezier(0.16, 1, 0.3, 1);
 }
+.tl-modal__panel--wide {
+  max-width: min(940px, 96vw);
+}
 @keyframes tlPopup {
   from { opacity: 0; transform: translateY(14px) scale(0.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -2468,46 +2471,7 @@
   color: var(--c-text-sub);
 }
 
-/* ── Chủ giải chọn trận đấu thật để gắn kết quả ── */
-.tl-match-picker {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow: auto;
-}
-.tl-match-picker label {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  cursor: pointer;
-}
-.tl-match-picker label:has(input:checked) {
-  border-color: var(--c-purple-deep);
-  background: rgba(238, 228, 255, 0.45);
-}
-.tl-match-picker span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.tl-match-picker strong {
-  font-size: 13px;
-  color: var(--c-text-main);
-}
-.tl-match-picker small {
-  font-size: 11.5px;
-  color: var(--c-text-sub);
-}
-
-/* ── Danh sách nhánh đang chờ kết quả ── */
+/* ── Danh sách trận đang mở trong giải ── */
 .tl-pending {
   list-style: none;
   margin: 0;

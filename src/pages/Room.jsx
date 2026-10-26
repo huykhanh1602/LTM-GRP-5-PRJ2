@@ -3,14 +3,21 @@ import SubmitForm from "../components/SubmitForm.jsx";
 import TeamSlot from "../components/TeamSlot.jsx";
 import { PALETTE } from "../utils/colors.js";
 
-// Phòng chờ: thấy trạng thái 2 đội, nộp code, bấm Sẵn sàng; cả 2 sẵn sàng thì đếm ngược.
-export default function Room({ state, onSubmit, onReady, onLeave }) {
+const CONTROL_LABELS = {
+  bot: { icon: "🤖", title: "Đấu bằng bot", note: "Nộp code, máy tự đánh từng lượt." },
+  human: { icon: "🖱️", title: "Đấu bằng chuột", note: "Bạn tự bấm ô trên bàn cờ mỗi lượt, không cần nộp code." },
+};
+
+// Phòng chờ: thấy trạng thái 2 đội, chọn kiểu đấu, nộp code, bấm Sẵn sàng; cả 2 sẵn sàng thì đếm ngược.
+export default function Room({ state, onSubmit, onControl, onReady, onLeave }) {
   const { room, countdown, error } = state;
   const [copied, setCopied] = useState(false);
   if (!room) return null;
 
   const me = room.teams.find((t) => t.isMe);
   const spectating = !me;
+  const allowed = room.allowedControls ?? ["bot"];
+  const byMouse = me?.control === "human";
 
   async function copyCode() {
     try {
@@ -26,8 +33,9 @@ export default function Room({ state, onSubmit, onReady, onLeave }) {
   let hint = "";
   if (spectating) hint = "Bạn đang xem. Trận sẽ tự chạy khi cả 2 đội sẵn sàng.";
   else if (room.status === "finished") hint = "Trận đã kết thúc. Hai đội có thể sẵn sàng để đấu lại.";
-  else if (!me.submitted) hint = "Bước 1: nộp code của đội bạn.";
-  else if (!me.ready) hint = "Bước 2: bấm Sẵn sàng khi bạn muốn bắt đầu.";
+  else if (!byMouse && !me.submitted) hint = "Bước 1: nộp code của đội bạn.";
+  else if (!byMouse && !me.ready) hint = "Bước 2: bấm Sẵn sàng khi bạn muốn bắt đầu.";
+  else if (byMouse && !me.ready) hint = "Bạn đấu bằng chuột — bấm Sẵn sàng để bắt đầu.";
   else if (waitingFor.length) hint = "Đang chờ đối thủ…";
 
   return (
@@ -55,13 +63,48 @@ export default function Room({ state, onSubmit, onReady, onLeave }) {
         ))}
       </div>
 
+      {!spectating && allowed.length > 1 && (
+        <div className="card control-picker">
+          <div className="control-picker__label">Ván này bạn muốn đấu bằng gì?</div>
+          <div className="control-picker__options">
+            {allowed.map((control) => {
+              const info = CONTROL_LABELS[control];
+              const active = (me.control ?? "bot") === control;
+              return (
+                <button
+                  key={control}
+                  type="button"
+                  className={`control-choice ${active ? "control-choice--active" : ""}`}
+                  disabled={
+                    room.status === "countdown" ||
+                    room.status === "playing" ||
+                    (control === "human" && me.submitted)
+                  }
+                  title={control === "human" && me.submitted ? "Đã nộp bot thì ván này không dùng chuột" : undefined}
+                  onClick={() => onControl(control)}
+                >
+                  <span className="control-choice__title">{info.icon} {info.title}</span>
+                  <span className="control-choice__note">{info.note}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {!spectating && (
         <div className="card">
-          <SubmitForm onSubmit={onSubmit} uploadedName={me.filename} locked={me.ready} />
+          {byMouse ? (
+            <p className="hint">
+              🖱️ {CONTROL_LABELS.human.note} Mỗi lượt bạn có 30 giây; hết giờ thì đội tự đi hướng an toàn nhất.
+            </p>
+          ) : (
+            <SubmitForm onSubmit={onSubmit} uploadedName={me.filename} locked={me.ready} />
+          )}
           <div className="ready-row">
             <button
               className={`btn big ${me.ready ? "" : "primary"}`}
-              disabled={!me.submitted || room.status === "countdown"}
+              disabled={!byMouse && !me.submitted || room.status === "countdown"}
               onClick={() => onReady(!me.ready)}
             >
               {me.ready ? "Hủy sẵn sàng" : "✔ Sẵn sàng"}

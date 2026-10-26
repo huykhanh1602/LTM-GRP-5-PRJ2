@@ -30,21 +30,20 @@ export function validateBotSource(source, { python = defaultPython(), timeoutMs 
             resolve(result);
         };
         // -X utf8 để stdout/stderr không lỗi encoding trên Windows khi in tiếng Việt.
-        const child = spawn(python, ["-X", "utf8", "-I", "-c", SCRIPT], { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+        const child = spawn(python, ["-X", "utf8", "-I", "-c", SCRIPT], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
         const timer = setTimeout(() => {
             child.kill();
             done({ ok: false, message: "Quá thời gian kiểm tra bot." });
         }, timeoutMs);
         child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk) => { output = (output + chunk).slice(0, 500); });
-        // Không có Python để kiểm tra thì bỏ qua bước này; engine vẫn báo lỗi khi chạy.
-        child.on("error", () => done({ ok: true, skipped: true }));
-        // Chỉ mã 2 (lỗi cú pháp) và 3 (thiếu make_move) là lỗi của bot. Mã khác nghĩa là chính trình
-        // thông dịch có vấn đề (ví dụ lối tắt "python3" của Microsoft Store), nên bỏ qua bước kiểm tra này.
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (chunk) => { output = (output + chunk).slice(-1000); });
+        child.on("error", (error) => done({ ok: false, message: `Không khởi chạy được Python để kiểm tra bot: ${error.message}` }));
         child.on("close", (code) => {
             if (code === 0) done({ ok: true });
             else if (code === 2 || code === 3) done({ ok: false, message: output.trim() || "Bot không hợp lệ." });
-            else done({ ok: true, skipped: true });
+            else done({ ok: false, message: `Không thể kiểm tra bot: ${output.trim() || `Python thoát với mã ${code ?? "không xác định"}.`}` });
         });
         child.stdin.on("error", () => {});
         child.stdin.end(source);

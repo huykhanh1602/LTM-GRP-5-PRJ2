@@ -4,6 +4,7 @@ import { validateBotSource } from "./botValidator.js";
 import { runEngineMatch } from "./engineRunner.js";
 import { createMatchQueue } from "./matchmaking/queue.js";
 import { createRatingStore } from "./matchmaking/ratings.js";
+import { CONTROLS_BY_MODE } from "../shared/domain/tournament.js";
 
 // Giao thức WebSocket v2: xem docs/WS_PROTOCOL_V2.md.
 // Một kết nối /ws phục vụ đăng nhập, hàng đợi ghép trận, phòng và xem trận.
@@ -13,6 +14,9 @@ const TEAM_IDS = ["team_a", "team_b"];
 const MODES = ["casual", "ranked", "tournament"];
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_BOT_BYTES = 100 * 1024;
+const CONTROLS = ["bot", "human"];
+const HUMAN_TURN_MS = 30_000;
+const SNAKE_DIRECTIONS = ["UP", "DOWN", "LEFT", "RIGHT"];
 
 // Danh sách game đang bật. `config` là các khóa người tạo phòng casual được chỉnh (kèm khoảng cho phép).
 const GAMES = {
@@ -46,8 +50,26 @@ function makeSlot(teamId) {
         source: null,
         version: 0,
         ready: false,
+        control: "bot",
         graceTimer: null,
     };
+}
+
+// Giải chưa chọn kiểu điều khiển → mặc định chỉ bot, như các giải cũ.
+function controlsFromMode(mode) {
+    return CONTROLS_BY_MODE[String(mode ?? "BOT").toUpperCase()] ?? ["bot"];
+}
+
+// Nước đi gửi lên từ bàn chơi: hoặc hướng (Rắn), hoặc quân + ô đích (Oẳn Tù Tì).
+function isHumanAction(action) {
+    if (!action || typeof action !== "object" || action.action_type !== "MOVE") return false;
+    if (typeof action.direction === "string") return SNAKE_DIRECTIONS.includes(action.direction.toUpperCase());
+    return (
+        typeof action.piece_id === "string" &&
+        Array.isArray(action.to) &&
+        action.to.length === 2 &&
+        action.to.every((value) => Number.isInteger(value))
+    );
 }
 
 export function createWsGateway({
@@ -62,7 +84,9 @@ export function createWsGateway({
     countdownMs = 1000,
     graceMs = 30000,
     authTimeoutMs = 10000,
+    humanTurnMs = HUMAN_TURN_MS,
     sweepMs = 1000,
+    matchmakerMaxPairs = 50,
     queueStateEveryMs = 2000,
     maxMessagesPerSecond = 30,
     allowGuestRanked = process.env.ALLOW_GUEST_RANKED === "1",
@@ -73,6 +97,7 @@ export function createWsGateway({
     const userRoom = new Map(); // userId -> room mà người đó đang giữ chỗ
     const tournamentRooms = new Map(); // "t{tournamentId}:r{round}:s{slot}" -> room.code (phòng cố định của 1 trận giải)
     let sweepTimer = null;
+    let closed = false;
     let lastQueueStateAt = 0;
 
     // ------------------------------------------------------------------ phòng
@@ -109,11 +134,25 @@ export function createWsGateway({
         }
     }
 
-    function getOrCreateTournamentRoom({ key, matchStore, tournamentId, roundNo, slotIndex, gameId, config, participants }) {
+    // Chủ giải đổi kiểu điều khiển giữa hai ván: về bot lại những người không còn được phép.
+    function applyAllowedControls(room, allowedControls) {
+        if (!allowedControls || room.status === "playing" || room.status === "countdown") return;
+        if (room.allowedControls === allowedControls) return;
+        room.allowedControls = allowedControls;
+        for (const slot of room.players) {
+            if (slot.userId) clampControl(room, slot);
+        }
+        broadcastRoom(room);
+    }
+
+    function getOrCreateTournamentRoom({ key, matchStore, tournamentId, roundNo, slotIndex, gameId, config, participants, allowedControls }) {
         const existingCode = tournamentRooms.get(key);
         if (existingCode) {
             const room = rooms.get(existingCode);
-            if (room) return room;
+            if (room) {
+                applyAllowedControls(room, allowedControls);
+                return room;
+            }
         }
         // Chỉ 2 tuyển thủ của trận được ngồi ghế; người khác vào làm khán giả.
         const reserved = new Set(Object.values(participants).filter(Boolean));
@@ -122,6 +161,7 @@ export function createWsGateway({
         if (room) {
             tournamentRooms.set(key, room.code);
             if (room.tournament) Object.assign(room.tournament, { tournamentId, roundNo, slotIndex });
+            applyAllowedControls(room, allowedControls);
             return room;
         }
         room = createRoom({
@@ -129,6 +169,7 @@ export function createWsGateway({
             mode: "tournament",
             config: { ...(GAMES[gameId]?.defaultConfig ?? {}) },
             reserved,
+            allowedControls,
         });
         if (room.code !== code) {
             rooms.delete(room.code); // bỏ mã random vừa sinh trước khi gán mã ổn định
@@ -147,7 +188,7 @@ export function createWsGateway({
         return room;
     }
 
-    function createRoom({ gameId, mode, config, reserved = null }) {
+    function createRoom({ gameId, mode, config, reserved = null, allowedControls = CONTROLS }) {
         const room = {
             code: newRoomCode(),
             gameId,
@@ -157,11 +198,16 @@ export function createWsGateway({
             players: TEAM_IDS.map(makeSlot),
             spectators: new Set(),
             reserved, // ranked/tournament: chỉ những userId này được vào
+            allowedControls, // chủ giải giới hạn bot / chuột / cả hai
             matchId: null,
             liveEvents: [],
             countdownTimer: null,
             countdownToken: 0,
             runToken: 0,
+            runAbort: null,
+            matchSnapshot: null, // match_start của engine, dùng để lưu replay khi có người bỏ ván
+            forfeit: null, // { loserTeamId } khi một đội rời giữa ván
+            pendingTurn: null,
         };
         rooms.set(room.code, room);
         return room;
@@ -177,6 +223,7 @@ export function createWsGateway({
             mode: room.mode,
             status: room.status,
             config: room.config,
+            allowed_controls: room.allowedControls,
             ...(room.tournament
                 ? {
                       tournament: {
@@ -194,6 +241,7 @@ export function createWsGateway({
                     team_id: slot.teamId,
                     has_bot: slot.hasBot,
                     filename: slot.filename,
+                    control: slot.control,
                     ready: slot.ready,
                     connected: slot.connected,
                 })),
@@ -244,12 +292,176 @@ export function createWsGateway({
     }
 
     // -------------------------------------------------------------- bắt đầu trận
+    // Người chơi cầm chuột: engine hỏi qua onTurn, ta chuyển tiếp xuống bàn chơi
+    // và chờ tin human_move. Trả về null = hết giờ, engineRunner tự đi nước an toàn.
+    function humanTurnHandler(room, slot) {
+        return (payload, info) => new Promise((resolvePromise) => {
+            let settled = false;
+            const finish = (action) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (room.pendingTurn?.finish === finish) room.pendingTurn = null;
+                resolvePromise(action);
+            };
+            const timer = setTimeout(() => {
+                send(slot.conn, { type: "turn_expired", team_id: slot.teamId });
+                finish(null);
+            }, Math.max(1000, (info?.deadline_ms ?? humanTurnMs) - 500));
+            timer.unref?.();
+            room.pendingTurn = { teamId: slot.teamId, finish, timer };
+            send(slot.conn, {
+                type: "your_turn",
+                team_id: slot.teamId,
+                deadline_ms: info?.deadline_ms ?? humanTurnMs,
+                payload,
+            });
+        });
+    }
+
+    function cancelPendingTurn(room) {
+        const pending = room.pendingTurn;
+        if (!pending) return;
+        room.pendingTurn = null;
+        clearTimeout(pending.timer);
+    }
+
+    function teamSpec(room, slot) {
+        const control = slot.control === "human" ? "human" : "bot";
+        return {
+            name: slot.displayName,
+            code: slot.source,
+            control,
+            onTurn: control === "human" ? humanTurnHandler(room, slot) : undefined,
+        };
+    }
+
+    // Một đội bỏ ván: đội kia thắng ngay, trận đang chạy bị dừng.
+    function forfeit(room, loserTeamId) {
+        if (room.status !== "playing" || room.forfeit) return null;
+        const winnerTeamId = loserTeamId === "team_a" ? "team_b" : "team_a";
+        room.forfeit = { loserTeamId, winnerTeamId };
+        cancelPendingTurn(room);
+        room.runAbort?.abort();
+        return winnerTeamId;
+    }
+
+    // Bỏ ván thì engine không kịp ghi replay, dựng lại kết quả từ những gì đã chạy.
+    function forfeitReplay(room, ids, winnerTeamId) {
+        const snap = room.matchSnapshot;
+        if (!snap?.game_config?.board) return null;
+        return {
+            match_info: {
+                ...(snap.match_info ?? {}),
+                match_id: room.matchId,
+                team_ids: { team_a: ids[0], team_b: ids[1] },
+                winner: winnerTeamId,
+                win_reason: "FORFEIT",
+            },
+            game_config: snap.game_config,
+            initial_state: snap.initial_state ?? [],
+            turns: room.liveEvents.filter((entry) => entry.type === "turn").map((entry) => entry.turn),
+            final_state: [],
+        };
+    }
+
+    // Chốt kết quả: đổi trạng thái phòng, dựng game_over và tính Elo (nếu đấu hạng).
+    function applyResult(room, ids, result) {
+        cancelPendingTurn(room);
+        room.status = "finished";
+        room.players.forEach((slot) => { slot.ready = false; });
+        const winner = result.winner === "team_a" || result.winner === "team_b" ? result.winner : "draw";
+        const over = { type: "game_over", match_id: room.matchId, winner, reason: result.reason ?? null };
+        room.pendingGameOver = over;
+        room.pendingRating = Promise.resolve();
+        if (room.mode === "ranked" && ids[0] && ids[1]) {
+            const outcome = winner === "team_a" ? "a" : winner === "team_b" ? "b" : "draw";
+            if (ratingService) {
+                room.pendingRating = ratingService.applyMatchResult({
+                    matchId: room.matchId,
+                    gameId: room.gameId,
+                    participants: { a: { userId: ids[0] }, b: { userId: ids[1] } },
+                    outcome,
+                    reason: result.reason ?? null,
+                }).then((rating) => {
+                    over.rating_saved = true;
+                    if (rating?.applied) {
+                        over.elo_change_a = rating.a.change;
+                        over.elo_change_b = rating.b.change;
+                    }
+                }).catch((error) => {
+                    over.rating_saved = false;
+                    console.error(`[Rating] Không lưu được kết quả trận ${room.matchId}:`, error);
+                });
+            } else {
+                const rating = ratings.applyResult({
+                    gameId: room.gameId,
+                    userA: ids[0],
+                    userB: ids[1],
+                    winner: outcome,
+                });
+                over.elo_change_a = rating.a.change;
+                over.elo_change_b = rating.b.change;
+                over.rating_saved = true;
+            }
+        }
+        broadcastRoom(room);
+        return over;
+    }
+
+    // Lưu replay + gắn kết quả giải đấu rồi mới phát game_over cho cả phòng.
+    async function persistResult(room, ids, replay, startedAt, emit) {
+        await room.pendingRating;
+        let historySaved = false;
+        if (matchStore && replay) {
+            try {
+                await matchStore.importReplay(replay, {
+                    roomId: room.code,
+                    gameId: room.gameId,
+                    mode: room.mode,
+                    ranked: room.mode === "ranked",
+                    teamAId: ids[0],
+                    teamBId: ids[1],
+                    startedAt,
+                    endedAt: new Date().toISOString(),
+                });
+                historySaved = true;
+            } catch (error) {
+                console.error(`[History] Không lưu được replay trận ${room.matchId}:`, error);
+            }
+        }
+        // Trận của giải đấu: gắn kết quả vào nhánh đấu và mở vòng kế tiếp.
+        const tInfo = room.tournament;
+        if (historySaved && tInfo?.tournamentId && room.matchId) {
+            try {
+                await matchStore.attachSlotResult(tInfo.tournamentId, {
+                    roundNo: tInfo.roundNo,
+                    slotIndex: tInfo.slotIndex,
+                    matchId: room.matchId,
+                });
+                console.log(`[Tournament] Đã gắn kết quả trận ${room.matchId} vào giải ${tInfo.tournamentId}`);
+            } catch (error) {
+                console.error(`[Tournament] Không gắn được kết quả trận ${room.matchId}:`, error?.message ?? error);
+            }
+        }
+        if (room.pendingGameOver) {
+            room.pendingGameOver.history_saved = historySaved;
+            emit(room.pendingGameOver);
+            broadcastRoom(room);
+        }
+    }
+
     async function startMatch(room, token) {
         if (token !== room.countdownToken || room.status !== "countdown") return;
 
         room.status = "playing";
         room.countdownTimer = null;
         room.liveEvents = [];
+        room.pendingTurn = null;
+        room.pendingGameOver = null;
+        room.forfeit = null;
+        room.matchSnapshot = null;
+        room.runAbort = new AbortController();
         const runToken = ++room.runToken;
         const startedAt = new Date().toISOString();
         const [slotA, slotB] = room.players;
@@ -266,111 +478,52 @@ export function createWsGateway({
             const replay = await runMatch({
                 roomCode: room.code,
                 gameId: room.gameId,
-                teamA: { name: slotA.displayName, code: slotA.source },
-                teamB: { name: slotB.displayName, code: slotB.source },
+                humanTurnMs,
+                abortSignal: room.runAbort.signal,
+                teamA: teamSpec(room, slotA),
+                teamB: teamSpec(room, slotB),
                 configPatch: { limits: room.config },
                 onEvent(message) {
                     if (runToken !== room.runToken) return;
                     if (message.type === "match_start") {
                         room.matchId = message.match_info?.match_id ?? null;
+                        room.matchSnapshot = message;
                         const { type: _type, ...rest } = message;
                         emit({ type: "match_start", match_id: room.matchId, game_id: room.gameId, mode: room.mode, ...rest });
                     } else if (message.type === "turn") {
                         emit(message);
                     } else if (message.type === "match_end") {
-                        room.status = "finished";
-                        room.players.forEach((slot) => { slot.ready = false; });
-                        const winner = message.winner === "team_a" || message.winner === "team_b" ? message.winner : "draw";
-                        const over = { type: "game_over", match_id: room.matchId, winner, reason: message.reason ?? null };
-                        room.pendingGameOver = over;
-                        if (room.mode === "ranked" && ids[0] && ids[1]) {
-                            const outcome = winner === "team_a" ? "a" : winner === "team_b" ? "b" : "draw";
-                            if (ratingService) {
-                                room.pendingRating = ratingService.applyMatchResult({
-                                    matchId: room.matchId,
-                                    gameId: room.gameId,
-                                    participants: { a: { userId: ids[0] }, b: { userId: ids[1] } },
-                                    outcome,
-                                    reason: message.reason ?? null,
-                                }).then((result) => {
-                                    over.rating_saved = true;
-                                    if (result?.applied) {
-                                        over.elo_change_a = result.a.change;
-                                        over.elo_change_b = result.b.change;
-                                    }
-                                }).catch((error) => {
-                                    over.rating_saved = false;
-                                    console.error(`[Rating] Không lưu được kết quả trận ${room.matchId}:`, error);
-                                });
-                            } else {
-                                const result = ratings.applyResult({
-                                    gameId: room.gameId,
-                                    userA: ids[0],
-                                    userB: ids[1],
-                                    winner: outcome,
-                                });
-                                over.elo_change_a = result.a.change;
-                                over.elo_change_b = result.b.change;
-                                over.rating_saved = true;
-                            }
-                        }
-                        broadcastRoom(room);
+                        applyResult(room, ids, message);
                     }
                 },
             });
 
-            if (runToken === room.runToken && room.status === "playing") {
-                throw new Error("Engine kết thúc mà không gửi kết quả trận.");
+            cancelPendingTurn(room);
+            if (runToken !== room.runToken) return;
+
+            let finalReplay = replay;
+            if (room.status === "playing") {
+                // Engine dừng vì có người bỏ ván; nếu không có kết quả nào thì xem như lỗi.
+                if (!room.forfeit) throw new Error("Engine kết thúc mà không gửi kết quả trận.");
+                applyResult(room, ids, { winner: room.forfeit.winnerTeamId, reason: "FORFEIT" });
+                finalReplay = forfeitReplay(room, ids, room.forfeit.winnerTeamId);
             }
-            await room.pendingRating;
-            let historySaved = false;
-            if (matchStore) {
-                try {
-                    await matchStore.importReplay(replay, {
-                        roomId: room.code,
-                        gameId: room.gameId,
-                        mode: room.mode,
-                        ranked: room.mode === "ranked",
-                        teamAId: ids[0],
-                        teamBId: ids[1],
-                        startedAt,
-                        endedAt: new Date().toISOString(),
-                    });
-                    historySaved = true;
-                } catch (error) {
-                    console.error(`[History] Không lưu được replay trận ${room.matchId}:`, error);
-                }
-            }
-            // Trận của giải đấu: gắn kết quả vào nhánh đấu và mở vòng kế tiếp.
-            const tInfo = room.tournament;
-            if (historySaved && tInfo?.tournamentId && room.matchId) {
-                try {
-                    await matchStore.attachSlotResult(tInfo.tournamentId, {
-                        roundNo: tInfo.roundNo,
-                        slotIndex: tInfo.slotIndex,
-                        matchId: room.matchId,
-                    });
-                    console.log(`[Tournament] Đã gắn kết quả trận ${room.matchId} vào giải ${tInfo.tournamentId}`);
-                } catch (error) {
-                    console.error(`[Tournament] Không gắn được kết quả trận ${room.matchId}:`, error?.message ?? error);
-                }
-            }
-            if (room.pendingGameOver) {
-                room.pendingGameOver.history_saved = historySaved;
-                emit(room.pendingGameOver);
-                broadcastRoom(room);
-            }
+            await persistResult(room, ids, finalReplay, startedAt, emit);
         } catch (error) {
             if (runToken !== room.runToken) return;
+            cancelPendingTurn(room);
             room.status = "waiting";
             room.players.forEach((slot) => { slot.ready = false; });
             broadcastRoom(room);
             broadcast(room, { type: "error", code: "MATCH_FAILED", message: `Không thể chạy trận đấu: ${error.message}`, v: PROTOCOL_VERSION });
+        } finally {
+            room.runAbort = null;
         }
     }
 
     function beginCountdown(room) {
-        if (room.status !== "waiting" || !room.players.every((slot) => slot.userId && slot.connected && slot.hasBot && slot.ready)) return;
+        const seated = (slot) => slot.userId && slot.connected && slot.ready && (slot.hasBot || slot.control === "human");
+        if (room.status !== "waiting" || !room.players.every(seated)) return;
 
         room.status = "countdown";
         const token = ++room.countdownToken;
@@ -392,6 +545,13 @@ export function createWsGateway({
     }
 
     // ------------------------------------------------------------ gắn / gỡ kết nối
+    // Kiểu điều khiển của một ghế phải nằm trong danh sách phòng cho phép.
+    function clampControl(room, slot) {
+        if (room.allowedControls.includes(slot.control)) return;
+        slot.control = room.allowedControls.includes("bot") ? "bot" : "human";
+        slot.ready = false;
+    }
+
     function seat(room, conn) {
         const slot = slotOf(room, conn.user.id) ?? room.players.find((candidate) => !candidate.userId);
         if (!slot) return null;
@@ -401,6 +561,7 @@ export function createWsGateway({
         slot.conn = conn;
         slot.connected = true;
         slot.ready = false;
+        clampControl(room, slot);
         userRoom.set(conn.user.id, room);
         conn.room = room;
         return slot;
@@ -425,6 +586,13 @@ export function createWsGateway({
         slot.connected = false;
         slot.ready = false;
         if (room.status === "countdown") cancelCountdown(room);
+        // Rớt mạng giữa ván cũng bị tính là bỏ ván: xử thua ngay, không giữ chỗ.
+        if (room.status === "playing" && forfeit(room, slot.teamId)) {
+            freeSlot(room, slot);
+            broadcastRoom(room);
+            destroyIfEmpty(room);
+            return;
+        }
         if (room.status !== "playing") broadcastRoom(room);
 
         // Giữ chỗ graceMs để người chơi vào lại; hết hạn thì nhường chỗ.
@@ -465,42 +633,66 @@ export function createWsGateway({
         });
     }
 
+    // Ghép trận chạy ở một lượt riêng (setImmediate), không chạy trong handler find_match:
+    // nhiều yêu cầu đến cùng lúc chỉ gộp thành một lượt, và mỗi lượt chỉ xử lý tối đa
+    // `matchmakerMaxPairs` cặp (queue.takePairs cũng chặn số người và số ứng viên được xét).
+    let matchmakerHandle = null;
+    let matchmakerRunning = false;
+
+    function scheduleMatchmaker() {
+        if (matchmakerHandle || matchmakerRunning || closed) return;
+        matchmakerHandle = setImmediate(() => {
+            matchmakerHandle = null;
+            runMatchmaker();
+            if (queue.hasWork()) scheduleMatchmaker();
+        });
+    }
+
     function runMatchmaker() {
-        for (const [entryA, entryB] of queue.takePairs()) {
-            const connA = connections.get(entryA.userId);
-            const connB = connections.get(entryB.userId);
-            if (!connA || !connB) {
-                // Một bên đã rời: trả bên còn lại về hàng đợi.
-                for (const [entry, conn] of [[entryA, connA], [entryB, connB]]) {
-                    if (conn) {
-                        queue.add({ userId: entry.userId, gameId: entry.gameId, mode: entry.mode, rating: entry.rating });
+        if (matchmakerRunning) return; // không bao giờ chạy hai lượt chồng nhau
+        matchmakerRunning = true;
+        try {
+            for (const [entryA, entryB] of queue.takePairs({ maxPairs: matchmakerMaxPairs })) {
+                const connA = connections.get(entryA.userId);
+                const connB = connections.get(entryB.userId);
+                // Một bên đã rời hoặc đã ở trong phòng khác thì không được ghép: người còn hợp lệ
+                // được trả về hàng với thời gian chờ cũ.
+                const usableA = connA && !userRoom.has(entryA.userId);
+                const usableB = connB && !userRoom.has(entryB.userId);
+                if (!usableA || !usableB) {
+                    for (const [entry, usable] of [[entryA, usableA], [entryB, usableB]]) {
+                        if (usable) {
+                            queue.add({ userId: entry.userId, gameId: entry.gameId, mode: entry.mode, rating: entry.rating, joinedAt: entry.joinedAt });
+                        }
                     }
+                    continue;
                 }
-                continue;
-            }
-            const room = createRoom({
-                gameId: entryA.gameId,
-                mode: entryA.mode,
-                config: { ...GAMES[entryA.gameId].defaultConfig },
-                reserved: new Set([entryA.userId, entryB.userId]),
-            });
-            seat(room, connA);
-            seat(room, connB);
-            for (const [conn, other, otherEntry] of [[connA, connB, entryB], [connB, connA, entryA]]) {
-                sendQueueState(conn, null);
-                send(conn, {
-                    type: "match_found",
-                    room_id: room.code,
-                    game_id: room.gameId,
-                    mode: room.mode,
-                    opponent: {
-                        id: other.user.id,
-                        display_name: other.user.display_name,
-                        rating: room.mode === "ranked" ? otherEntry.rating : undefined,
-                    },
+                const room = createRoom({
+                    gameId: entryA.gameId,
+                    mode: entryA.mode,
+                    config: { ...GAMES[entryA.gameId].defaultConfig },
+                    reserved: new Set([entryA.userId, entryB.userId]),
                 });
+                seat(room, connA);
+                seat(room, connB);
+                for (const [conn, other, otherEntry] of [[connA, connB, entryB], [connB, connA, entryA]]) {
+                    sendQueueState(conn, null);
+                    send(conn, {
+                        type: "match_found",
+                        room_id: room.code,
+                        game_id: room.gameId,
+                        mode: room.mode,
+                        opponent: {
+                            id: other.user.id,
+                            display_name: other.user.display_name,
+                            rating: room.mode === "ranked" ? otherEntry.rating : undefined,
+                        },
+                    });
+                }
+                broadcastRoom(room);
             }
-            broadcastRoom(room);
+        } finally {
+            matchmakerRunning = false;
         }
         if (queue.size === 0 && sweepTimer) {
             clearInterval(sweepTimer);
@@ -511,7 +703,8 @@ export function createWsGateway({
     function ensureSweep() {
         if (sweepTimer) return;
         sweepTimer = setInterval(() => {
-            runMatchmaker();
+            queue.requestScan(); // cửa sổ rating đã nới thêm: quét lại, chia nhỏ qua nhiều lượt
+            scheduleMatchmaker();
             const nowMs = Date.now();
             if (nowMs - lastQueueStateAt >= queueStateEveryMs) {
                 lastQueueStateAt = nowMs;
@@ -559,6 +752,11 @@ export function createWsGateway({
                 conn.socket.close(1008, "invalid token");
                 return;
             }
+            if (user.banned) {
+                sendError(conn, "USER_BANNED", "Tài khoản đã bị khóa.");
+                conn.socket.close(1008, "user banned");
+                return;
+            }
             clearTimeout(conn.authTimer);
 
             const previous = connections.get(user.id);
@@ -598,8 +796,8 @@ export function createWsGateway({
                 rating: ratings.get(message.game_id, conn.user.id),
             });
             sendQueueState(conn, entry);
-            runMatchmaker();
-            if (queue.has(conn.user.id)) ensureSweep();
+            scheduleMatchmaker();
+            ensureSweep();
         },
 
         cancel_match(conn) {
@@ -678,6 +876,7 @@ export function createWsGateway({
                 slotIndex,
                 gameId: message.game_id,
                 config: {},
+                allowedControls: controlsFromMode(slotInfo.config?.allowedControls),
                 participants: { a: slotInfo.participantAId, b: slotInfo.participantBId },
             });
 
@@ -691,8 +890,24 @@ export function createWsGateway({
             if (isLivePlayer || slotOf(room, conn.user.id)) {
                 queue.remove(conn.user.id);
                 resetFinished(room);
-                if (!seat(room, conn)) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người chơi.");
+                const playerSlot = seat(room, conn);
+                if (!playerSlot) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người chơi.");
+                const isParticipantA = await isTournamentPlayer(slotInfo.participantAId, conn.user.id);
+                const participantSubmission = isParticipantA
+                    ? slotInfo.participantASubmission
+                    : slotInfo.participantBSubmission;
+                const participantReady = isParticipantA
+                    ? slotInfo.participantAReady
+                    : slotInfo.participantBReady;
+                if (participantSubmission?.source) {
+                    playerSlot.source = participantSubmission.source;
+                    playerSlot.filename = participantSubmission.filename;
+                    playerSlot.hasBot = true;
+                    playerSlot.version++;
+                }
+                playerSlot.ready = Boolean(participantReady && playerSlot.hasBot);
                 broadcastRoom(room);
+                beginCountdown(room);
             } else {
                 // Khán giả: xem mà không ngồi ghế.
                 queue.remove(conn.user.id);
@@ -723,8 +938,25 @@ export function createWsGateway({
             const slot = slotOf(room, conn.user.id);
             if (!slot) {
                 leaveRoom(conn); // khán giả
+            } else if (room.status === "playing") {
+                // Rời giữa ván = bỏ ván: gửi kết quả cho người thoát để họ thấy mình thua.
+                const winnerTeamId = forfeit(room, slot.teamId);
+                if (winnerTeamId) {
+                    send(conn, {
+                        type: "game_over",
+                        match_id: room.matchId,
+                        winner: winnerTeamId,
+                        reason: "FORFEIT",
+                        forfeit: true,
+                        v: PROTOCOL_VERSION,
+                    });
+                }
+                conn.room = null;
+                freeSlot(room, slot);
+                broadcastRoom(room);
+                destroyIfEmpty(room);
             } else {
-                if (room.status === "playing" || room.status === "countdown") {
+                if (room.status === "countdown") {
                     return sendError(conn, "WRONG_STATE", "Không thể rời phòng khi trận đã bắt đầu.");
                 }
                 conn.room = null;
@@ -739,6 +971,7 @@ export function createWsGateway({
             const room = conn.room;
             const slot = room && slotOf(room, conn.user.id);
             if (!slot) return sendError(conn, "NOT_IN_ROOM", "Hãy vào phòng với tư cách người chơi trước khi nộp bot.");
+            if (slot.control === "human") return sendError(conn, "MOUSE_MODE", "Bạn đã chọn đấu bằng chuột, không nộp bot.");
             if (!["code", "file"].includes(message.mode_type)) return sendError(conn, "INVALID_MESSAGE", "mode_type phải là code hoặc file.");
             if (message.language !== "python") return sendError(conn, "UNSUPPORTED_LANGUAGE", "Hiện chỉ hỗ trợ python.");
             if (typeof message.content !== "string" || message.content.trim() === "") return sendError(conn, "INVALID_BOT", "Nội dung bot không được để trống.");
@@ -772,13 +1005,55 @@ export function createWsGateway({
             broadcastRoom(room);
         },
 
+        // Chọn kiểu điều khiển cho ván này: bot tự chạy, hoặc người thật cầm chuột.
+        set_control(conn, message) {
+            const room = conn.room;
+            if (!room) return sendError(conn, "NOT_IN_ROOM", "Bạn không ở trong phòng nào.");
+            const slot = slotOf(room, conn.user.id);
+            if (!slot) return sendError(conn, "WRONG_STATE", "Khán giả không chọn được kiểu điều khiển.");
+            if (!CONTROLS.includes(message.control)) return sendError(conn, "INVALID_MESSAGE", "control phải là bot hoặc human.");
+            if (room.status === "playing" || room.status === "countdown") {
+                return sendError(conn, "WRONG_STATE", "Ván đã bắt đầu, chỉ đổi được trước ván kế tiếp.");
+            }
+            if (!room.allowedControls.includes(message.control)) {
+                return sendError(conn, "MODE_NOT_ALLOWED", "Giải đấu này không cho phép kiểu điều khiển đó.");
+            }
+            if (message.control === "human" && slot.hasBot) {
+                return sendError(conn, "BOT_SUBMITTED", "Đã nộp bot thì ván này phải đấu bằng bot.");
+            }
+            if (slot.control === message.control) return;
+            slot.control = message.control;
+            slot.ready = false;
+            broadcastRoom(room);
+        },
+
+        // Nước đi của người thật, trả về đúng lượt engine đang chờ.
+        human_move(conn, message) {
+            const room = conn.room;
+            const slot = room && slotOf(room, conn.user.id);
+            const pending = room?.pendingTurn;
+            if (!slot || !pending || pending.teamId !== slot.teamId) {
+                return sendError(conn, "WRONG_STATE", "Không phải lượt của bạn.");
+            }
+            if (!isHumanAction(message.action)) return sendError(conn, "INVALID_MESSAGE", "Nước đi không hợp lệ.");
+            room.pendingTurn = null;
+            const direction = typeof message.action.direction === "string"
+                ? message.action.direction.toUpperCase()
+                : null;
+            pending.finish({
+                ...message.action,
+                action_type: "MOVE",
+                ...(direction ? { direction } : {}),
+            });
+        },
+
         ready(conn, message) {
             if (typeof message.ready !== "boolean") return sendError(conn, "INVALID_MESSAGE", "ready phải là true hoặc false.");
             const room = conn.room;
             if (!room) return sendError(conn, "NOT_IN_ROOM", "Bạn không ở trong phòng nào.");
             const slot = slotOf(room, conn.user.id);
             if (!slot) return sendError(conn, "WRONG_STATE", "Khán giả không thể sẵn sàng.");
-            if (message.ready && !slot.hasBot) return sendError(conn, "NO_BOT", "Hãy nộp bot trước khi sẵn sàng.");
+            if (message.ready && slot.control !== "human" && !slot.hasBot) return sendError(conn, "NO_BOT", "Hãy nộp bot trước khi sẵn sàng.");
             if (room.status === "playing") return sendError(conn, "WRONG_STATE", "Trận đấu đang diễn ra.");
             resetFinished(room);
             if (room.status === "countdown" && !message.ready) cancelCountdown(room);
@@ -840,6 +1115,9 @@ export function createWsGateway({
     }
 
     function close() {
+        closed = true;
+        clearImmediate(matchmakerHandle);
+        matchmakerHandle = null;
         clearInterval(sweepTimer);
         sweepTimer = null;
         for (const room of rooms.values()) {

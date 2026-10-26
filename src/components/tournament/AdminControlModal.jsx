@@ -5,6 +5,7 @@ import {
   startTournament,
   triggerRoundStart,
   updateRoundSchedule,
+  updateTournamentControls,
   updateTournamentSchedule,
 } from "../../api.js";
 import { apiErrorText, participantUnit } from "../../utils/tournamentApi.js";
@@ -49,11 +50,16 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
     : null;
   const regClosed = closesAt === null || Date.now() > closesAt;
   const [kickoffAt, setKickoffAt] = useState(() => toLocalInputValue(tournament.raw?.starts_at));
+  const [controlsMode, setControlsMode] = useState(() => tournament.raw?.config?.allowedControls ?? "BOT");
   const [roundAtById, setRoundAtById] = useState({});
   const [matchId, setMatchId] = useState(null);
   const [matchAt, setMatchAt] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setControlsMode(tournament.raw?.config?.allowedControls ?? "BOT");
+  }, [tournament.id, tournament.raw?.config?.allowedControls]);
 
   // Trận có mã trận (mọi vòng): ưu tiên chưa có kết quả để mặc định chọn "trận tiếp theo".
   const matchOptions = rawRounds
@@ -101,7 +107,7 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
   return (
     <Modal
       title="Bảng điều khiển giải"
-      subtitle="Điều khiển lịch khởi tranh, vòng đấu và hoãn/dời lịch trận"
+      subtitle="Điều khiển lịch khởi tranh, kiểu đấu (bot/chuột) và hoãn/dời lịch trận"
       onClose={onClose}
     >
       {error && (
@@ -259,6 +265,40 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
           </div>
         </>
       )}
+
+      <h3 className="tl-admin-title">🎮 Kiểu điều khiển trong trận</h3>
+      <label className="tl-form-label" htmlFor="tl-admin-controls">
+        Cho phép đấu
+      </label>
+      <select
+        id="tl-admin-controls"
+        className="tl-form-input"
+        value={controlsMode}
+        onChange={(event) => setControlsMode(event.target.value)}
+      >
+        <option value="BOT">Chỉ bot — mỗi người nộp code, máy tự đánh</option>
+        <option value="HUMAN">Chỉ chuột — người tự di chuyển từng lượt</option>
+        <option value="BOTH">Cả hai — mỗi người chọn một kiểu trước ván</option>
+      </select>
+      <p className="tl-form-note">
+        "Cả hai" không nghĩa là một đội dùng cả bot lẫn chuột: trước ván, người chơi chọn một trong hai. Đã nộp bot thì ván đó đánh bằng bot, chọn chuột thì cả ván dùng chuột và không nộp bot. Áp dụng từ ván kế tiếp.
+      </p>
+      <div className="tl-actions">
+        <button
+          type="button"
+          className="btn primary"
+          disabled={busy}
+          onClick={() => run(async () => {
+            const updated = await updateTournamentControls(tournament.id, controlsMode, token);
+            if (updated.config?.allowedControls !== controlsMode) {
+              throw new Error("Máy chủ chưa xác nhận đã lưu kiểu điều khiển. Hãy tải lại giải và thử lại.");
+            }
+            return updated;
+          }, "Đã lưu kiểu điều khiển.")}
+        >
+          💾 Lưu kiểu điều khiển
+        </button>
+      </div>
 
       {matchOptions.length > 0 && (
         <>

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { TextDecoder } from "node:util";
 import { WebSocketServer } from "ws";
 import { runEngineMatch } from "./engineRunner.js";
+import { validateBotSource } from "./botValidator.js";
 
 const TEAM_IDS = ["team_a", "team_b"];
 const MAX_BOT_BYTES = 100 * 1024;
@@ -36,6 +37,7 @@ function createRoom(code) {
 
 export function createRoomGateway({
     runMatch = runEngineMatch,
+    validateBot = validateBotSource,
     countdownMs = 1000,
     matchStore = null,
 } = {}) {
@@ -403,6 +405,11 @@ export function createRoomGateway({
                 codeText = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
             } catch {
                 sendJson(400, { error: "INVALID_ENCODING", message: "File bot phải được mã hóa UTF-8." });
+                return true;
+            }
+            const verdict = await validateBot(codeText);
+            if (!verdict.ok) {
+                sendJson(422, { error: "INVALID_BOT", message: verdict.message || "Không thể xác thực bot." });
                 return true;
             }
             if (matchStore) {

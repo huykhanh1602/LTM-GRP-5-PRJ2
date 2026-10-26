@@ -1,23 +1,15 @@
-/* Giao diện riêng cho game Rắn Săn Mồi. Hai đội dùng hai màu tương phản, không phụ thuộc màu chung của đội. */
-.piece.snake-piece { padding: 0; }
-.piece.snake-piece[data-owner="team_a"] { --snake: #16a34a; --snake-dark: #0f7a37; }
-.piece.snake-piece[data-owner="team_b"] { --snake: #f97316; --snake-dark: #c2570a; }
+/* Giao diện riêng cho game Rắn Săn Mồi. Mỗi con rắn là một đường SVG liền; hai đội dùng hai màu tương phản. */
+.piece.snake-piece { padding: 0; transition: none; }
 
-.snake-seg {
-  position: absolute;
-  background: var(--snake);
-  transition: opacity .3s ease, filter .3s ease;
-}
-.snake-seg.snake-head { background: var(--snake-dark); box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
-.snake-seg.dead { opacity: .35; filter: grayscale(1); }
+.snake-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: visible; }
 
-.snake-eye {
-  position: absolute;
-  width: 24%; height: 24%;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: inset 0 0 0 2px #111;
-}
+.snake { --snake: #6b7280; --snake-dark: #374151; transition: opacity .3s ease, filter .3s ease; }
+.snake-team_a { --snake: #16a34a; --snake-dark: #0f7a37; }
+.snake-team_b { --snake: #f97316; --snake-dark: #c2570a; }
+.snake.dead { opacity: .35; filter: grayscale(1); }
+
+.snake-body { fill: none; stroke: var(--snake); stroke-linecap: round; stroke-linejoin: round; }
+.snake-head { fill: var(--snake-dark); stroke: rgba(255, 255, 255, .9); stroke-width: .06; }
 
 .snake-food {
   position: absolute;
@@ -34,3 +26,25 @@
   border-radius: 0 100% 0 100%;
   background: #22c55e;
 }
+
+/* Đuôi đã rụng: khối đá xám có dấu ✕, viền mảnh theo màu rắn đã rụng nó (khác hẳn thân rắn màu đặc). */
+.snake-obstacle {
+  position: absolute;
+  inset: 14%;
+  border-radius: 20%;
+  background: #cbd5e1;
+  border: calc(100cqw / var(--w, 16) * 0.07) dashed #475569;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.snake-obstacle::after {
+  content: "✕";
+  font-size: calc(100cqw / var(--w, 16) * 0.5);
+  line-height: 1;
+  font-weight: 900;
+  color: #334155;
+}
+.snake-obstacle-team_a { border-color: #16a34a; }
+.snake-obstacle-team_b { border-color: #f97316; }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 // ─────────────────────────────────────────────────────────────
 // useAuth — Quản lý trạng thái đăng nhập, profile & bảo mật
@@ -90,11 +90,39 @@ export function useAuth() {
     setSession(data);
   }
 
+  // Hàm logout nội bộ (dùng chung cho cả manual + auto)
+  function clearSession() {
+    localStorage.removeItem(STORAGE_KEY);
+    setSession(null);
+  }
+
+  // Lắng nghe sự kiện auth:unauthorized từ api.js → tự động đăng xuất
+  useEffect(() => {
+    const handler = () => clearSession();
+    window.addEventListener("auth:unauthorized", handler);
+    return () => window.removeEventListener("auth:unauthorized", handler);
+  }, []);
+
+  // Validate token với backend khi khởi tạo (F5/load trang)
+  useEffect(() => {
+    const saved = loadSession();
+    if (!saved?.token) return;
+    let active = true;
+    fetch(`${getApiBase()}/api/me`, {
+      headers: { Authorization: `Bearer ${saved.token}` },
+    })
+      .then((res) => {
+        if (!active) return;
+        if (res.status === 401) clearSession();
+      })
+      .catch(() => { /* network error → giữ nguyên session */ });
+    return () => { active = false; };
+  }, []);
+
   // Đăng xuất
   const logout = useCallback(() => {
     if (token) fetch(`${getApiBase()}/api/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => { });
-    localStorage.removeItem(STORAGE_KEY);
-    setSession(null);
+    clearSession();
   }, [token]);
 
   // Đăng nhập bằng Email / SĐT + mật khẩu
