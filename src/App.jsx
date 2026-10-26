@@ -289,6 +289,19 @@ export default function App() {
     navigate({ view: "lobby", gameId, mode: "casual" }, { replace: true });
   }
 
+  function leaveMatchRoom() {
+    const activeRoom = roomRef.current;
+    const tournament = activeRoom.room?.tournament;
+    activeRoom.leave();
+    if (tournament) {
+      openTournament(
+        tournament.tournament_id ?? tournament.tournamentId,
+        tournament.round_no ?? tournament.roundNo,
+        activeRoom.params?.gameId ?? selectedGameIdRef.current,
+      );
+    }
+  }
+
   // Xem replay của một trận đấu trong giải
   function openReplay(replay) {
     setDatabaseReplay(replay);
@@ -372,7 +385,7 @@ export default function App() {
           key={room.matchKey}
           state={room}
           onReturnToRoom={room.returnToRoom}
-          onLeave={room.leave}
+          onLeave={leaveMatchRoom}
           onForfeit={room.askLeave}
         />
       );
@@ -383,7 +396,7 @@ export default function App() {
           onSubmit={room.submit}
           onControl={room.setControl}
           onReady={room.setReady}
-          onLeave={room.leave}
+          onLeave={leaveMatchRoom}
         />
       );
     } else {

@@ -1009,6 +1009,9 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       }
       const match = getMatch(matchId);
       if (match.status !== 'finished') throw new StorageError('MATCH_NOT_FINISHED', 'Trận đấu chưa kết thúc nên chưa có kết quả', 409);
+      if (match.mode !== 'tournament') {
+        throw new StorageError('MATCH_NOT_TOURNAMENT', 'Chỉ ghi nhận được trận được chơi trong giải đấu', 409);
+      }
 
       const entries = listTournamentEntries(tournamentId);
       const rounds = listTournamentRounds(tournamentId);
@@ -1055,12 +1058,12 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
         });
       }
       refreshRoundStatuses({ tournamentId, totalRounds: bracket.totalRounds, entryCount: entries.length, format: tournament.format });
-      // Vòng kế chỉ tự mở khi chủ giải đã bật auto_start và giờ đặt đã tới; chưa đặt thì chờ bấm mở.
+      // Vòng kế tự mở khi không được lên lịch; lịch tương lai vẫn chờ tới giờ đã đặt.
       const roundRow = db.prepare('SELECT status FROM tournament_rounds WHERE id = ?').get(round.id);
       if (roundRow?.status === 'completed' && roundNo < bracket.totalRounds) {
         const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
-        const due = next && Number(next.auto_start) === 1
-          && (!next.scheduled_at || Date.parse(next.scheduled_at) <= Date.now());
+        const due = next && (!next.scheduled_at
+          || (Number(next.auto_start) === 1 && Date.parse(next.scheduled_at) <= Date.now()));
         if (due && !next.submission_started_at) {
           const tournamentCfg = JSON.parse(db.prepare('SELECT config_json FROM tournaments WHERE id = ?').get(tournamentId).config_json ?? '{}');
           const windowMinutes = Number(tournamentCfg.submissionWindowMinutes) || 10;
@@ -1287,10 +1290,22 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
     if (!round) throw new StorageError('ROUND_NOT_FOUND', 'Không tìm thấy vòng đấu này.', 404);
     const row = db.prepare(`SELECT id, match_id, participant_a_id, participant_a_name, participant_b_id, participant_b_name,
       winner_id FROM tournament_match_history WHERE round_id = ? AND slot_index = ?`).get(round.id, slotIndex);
+    const config = JSON.parse(tournament.config_json);
+    const readiness = db.prepare(`SELECT participant_id, ready FROM tournament_readiness
+      WHERE tournament_id = ? AND round_no = ? AND slot_index = ?`)
+      .all(tournament.id, roundNo, slotIndex);
+    const readyByParticipant = new Map(readiness.map((item) => [item.participant_id, Boolean(item.ready)]));
+    const submission = (entryId) => {
+      if (!entryId) return null;
+      const saved = submissionOf(tournament.id, config, entryId, roundNo);
+      if (!saved) return null;
+      const bot = getBotSubmissionById(saved.id);
+      return { filename: bot.filename, source: bot.source };
+    };
     return {
       tournamentId: tournament.id,
       tournamentStatus: tournament.status,
-      config: JSON.parse(tournament.config_json),
+      config,
       roundNo,
       slotIndex,
       slotId: row?.id ?? null,
@@ -1300,6 +1315,10 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       participantBId: row?.participant_b_id ?? null,
       participantBName: row?.participant_b_name ?? null,
       winnerId: row?.winner_id ?? null,
+      participantASubmission: submission(row?.participant_a_id),
+      participantBSubmission: submission(row?.participant_b_id),
+      participantAReady: Boolean(readyByParticipant.get(row?.participant_a_id)),
+      participantBReady: Boolean(readyByParticipant.get(row?.participant_b_id)),
     };
   }
 
@@ -1367,9 +1386,9 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       db.prepare('UPDATE tournament_rounds SET status = ? WHERE id = ?').run(allSettled ? 'completed' : 'in_progress', round.id);
       if (allSettled && roundNo < totalRounds) {
         const next = rounds.find((item) => Number(item.round_no) === roundNo + 1);
-        // Vòng kế chỉ tự mở khi chủ giải đã đặt giờ và giờ đó tới hạn; chưa đặt thì chờ bấm mở.
-        const due = Number(next?.auto_start) === 1
-          && (!next?.scheduled_at || Date.parse(next.scheduled_at) <= Date.now());
+        // Vòng kế tự mở khi không được lên lịch; lịch tương lai vẫn chờ tới giờ đã đặt.
+        const due = next && (!next.scheduled_at
+          || (Number(next.auto_start) === 1 && Date.parse(next.scheduled_at) <= Date.now()));
         if (next && due) {
           const windowMinutes = Number(config.submissionWindowMinutes) || 10;
           const startedAt = new Date().toISOString();

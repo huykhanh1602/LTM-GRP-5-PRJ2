@@ -44,9 +44,8 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
 
   // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
   const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
-  // Người chơi bằng chuột bám theo realtime; không chờ playback index cập nhật sau match_end.
   const hasOutcome = Boolean(state.result) && state.result.outcome !== "watch";
-  const showOutcome = hasOutcome && !outcomeHidden && (byMouse || player.index >= player.last);
+  const showOutcome = hasOutcome && !outcomeHidden;
 
   // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
   const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
@@ -145,7 +144,10 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
           result={state.result}
           myTeamId={state.result.myTeamId}
           onDone={onLeave}
-          onViewState={() => setOutcomeHidden(true)}
+          onViewState={() => {
+            player.seek(player.last);
+            setOutcomeHidden(true);
+          }}
           autoReturn={!outcomeReopened}
         />
       )}

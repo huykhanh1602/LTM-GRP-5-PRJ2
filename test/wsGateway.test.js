@@ -433,6 +433,58 @@ test("end to end with the real Python engine and real bot validation", async (t)
   assert.equal(store.listMatches({}).items.length, 1);
 });
 
+test("tournament room loads submitted bots and readiness saved in the tournament lobby", async (t) => {
+  const store = createMatchStore({ filename: ":memory:" });
+  t.after(() => store.close());
+  const server = await startServer(t, {
+    matchStore: store,
+    gateway: { matchStore: store, runMatch: fakeMatch(), countdownMs: 1 },
+  });
+  const a = await login(t, server, "Tournament Alpha");
+  const b = await login(t, server, "Tournament Beta");
+  store.upsertUser({ id: a.user.id, display_name: a.user.display_name });
+  store.upsertUser({ id: b.user.id, display_name: b.user.display_name });
+
+  const tournament = store.createTournament({
+    gameId: "rps_chess",
+    code: "WS-READY",
+    name: "WebSocket readiness",
+    format: "single_elimination",
+    config: { roundSubmissionMode: "PER_ROUND" },
+  });
+  store.addTournamentEntry(tournament.id, { userId: a.user.id });
+  store.addTournamentEntry(tournament.id, { userId: b.user.id });
+  store.generateTournamentBracket(tournament.id);
+  store.submitTournamentRoundBot(tournament.id, a.user.id, 1, { filename: "alpha.py", source: BOT });
+  store.submitTournamentRoundBot(tournament.id, b.user.id, 1, { filename: "beta.py", source: BOT });
+  store.setTournamentReady(tournament.id, a.user.id);
+  store.setTournamentReady(tournament.id, b.user.id);
+
+  const join = (client) => client.send({
+    type: "join_tournament_room",
+    game_id: "rps_chess",
+    tournament_id: tournament.id,
+    round_no: 1,
+    slot_index: 0,
+  });
+  join(a.client);
+  const room = await a.client.waitFor((message) =>
+    message.type === "room_state" && message.players.length === 1);
+  assert.equal(room.players[0].has_bot, true);
+  assert.equal(room.players[0].ready, true);
+
+  join(b.client);
+  const start = await a.client.waitFor(a.client.type("match_start"));
+  assert.equal(start.mode, "tournament");
+  const [resultA, resultB] = await Promise.all([
+    a.client.waitFor(a.client.type("game_over")),
+    b.client.waitFor(b.client.type("game_over")),
+  ]);
+  assert.equal(resultA.winner, "team_a");
+  assert.equal(resultB.winner, "team_a");
+  assert.equal(store.getTournament(tournament.id).status, "completed");
+});
+
 test("24 người cùng tìm trận: mỗi người nhận đúng một match_found, không ai bị ghép hai lần", async (t) => {
   const server = await startServer(t);
   const players = [];

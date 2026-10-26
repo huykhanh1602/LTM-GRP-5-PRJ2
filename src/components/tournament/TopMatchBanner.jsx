@@ -49,13 +49,13 @@ function Side({ side, isMe }) {
 }
 
 export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom, onOpenReplay, onSubmit, onReady }) {
+  const [showSubmission, setShowSubmission] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   if (!match?.found) return null;
   const { me, opponent, mode, matchId, isParticipant, roundNo } = match;
   const spectator = isParticipant === false;
   const isPerRound = mode === "PER_ROUND";
   const minutes = match.submissionWindowMinutes ?? 10;
-  const [showSubmission, setShowSubmission] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
   // Xác định trạng thái nộp code và sẵn sàng
   const needsSubmission = isPerRound
@@ -95,7 +95,7 @@ export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom
                       : `Bot đại diện đã được đăng ký. Bấm Sẵn sàng khi sẵn sàng thi đấu.`))}
           </p>
         </div>
-        {!spectator && deadline && <Countdown deadline={deadline} />}
+        {!spectator && deadline && !match.bothReady && !matchId && <Countdown deadline={deadline} />}
       </header>
 
       <div className="tm-vs-row">

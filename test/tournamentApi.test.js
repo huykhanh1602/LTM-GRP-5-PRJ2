@@ -11,7 +11,7 @@ const USERS = {
 
 const json = async (response) => ({ status: response.status, body: await response.json() });
 
-test("HTTP giải đấu: tạo giải, đăng ký, khóa đăng ký khi khởi tranh, gắn kết quả thật", async (t) => {
+test("HTTP giải đấu: tạo giải, đăng ký, khóa đăng ký và chỉ hỗ trợ cập nhật kết quả nội bộ", async (t) => {
   const store = createMatchStore({ filename: ":memory:" });
   for (const user of Object.values(USERS)) store.upsertUser(user);
   const server = createHttpServer({
@@ -77,26 +77,34 @@ test("HTTP giải đấu: tạo giải, đăng ký, khóa đăng ký khi khởi 
   // Giải đang diễn ra thì đóng đăng ký.
   assert.equal((await json(await call(`/api/tournaments/${id}/entries`, { method: "POST", token: "token-three", body: {} }))).body.error, "TOURNAMENT_NOT_OPEN");
 
-  // Kết quả phải là trận đấu thật giữa đúng hai đấu thủ của nhánh.
-  const foreign = store.startMatch({ roomId: "R", mode: "casual", ranked: false, initialState: [], teamA: { id: "org", name: "Chủ giải" }, teamB: { id: "three", name: "Đấu thủ 3" } });
+  // Không còn API cho BTC gắn kết quả một trận đấu bên ngoài vào giải.
+  const foreign = store.startMatch({ roomId: "R", mode: "casual", ranked: false, initialState: [], teamA: { id: "org", name: "Chủ giải" }, teamB: { id: "two", name: "Đấu thủ 2" } });
   store.finishMatch(foreign.id, { winner: "org" }, []);
-  const mismatch = await json(await call(`/api/tournaments/${id}/rounds/1/slots/0/result`, { method: "POST", token: "token-org", body: { match_id: foreign.id } }));
-  assert.equal(mismatch.body.error, "MATCH_MISMATCH");
+  assert.throws(
+    () => store.attachSlotResult(id, { roundNo: 1, slotIndex: 0, matchId: foreign.id }),
+    (error) => error.code === "MATCH_NOT_TOURNAMENT",
+  );
+  const externalAttach = await json(await call(`/api/tournaments/${id}/rounds/1/slots/0/result`, { method: "POST", token: "token-org", body: { match_id: foreign.id } }));
+  assert.equal(externalAttach.status, 405);
+  const manualResult = await json(await call(`/api/tournaments/${id}/matches`, {
+    method: "POST", token: "token-org",
+    body: { round_id: started.body.rounds[0].id, participant_a_id: "org", participant_b_id: "two", winner_id: "org" },
+  }));
+  assert.equal(manualResult.status, 405);
 
+  // Kết quả trận đấu được lưu bởi phòng thi đấu của giải và tự động điền vào nhánh.
   const real = store.startMatch({ roomId: "R", mode: "tournament", ranked: false, initialState: [], teamA: { id: "two", name: "Đấu thủ 2" }, teamB: { id: "org", name: "Chủ giải" } });
   store.finishMatch(real.id, { winner: "two", reason: "BASE_CAPTURED" }, []);
-  assert.equal((await json(await call(`/api/tournaments/${id}/rounds/1/slots/0/result`, { method: "POST", token: "token-two", body: { match_id: real.id } }))).status, 403);
-  const finished = await json(await call(`/api/tournaments/${id}/rounds/1/slots/0/result`, { method: "POST", token: "token-org", body: { match_id: real.id } }));
-  assert.equal(finished.status, 200);
-  assert.equal(finished.body.status, "completed");
-  assert.deepEqual(finished.body.champion, { id: "two", name: "Đấu thủ 2" });
-  assert.equal(finished.body.bracket.rounds[0][0].matchId, real.id);
+  const finished = store.attachSlotResult(id, { roundNo: 1, slotIndex: 0, matchId: real.id });
+  assert.equal(finished.status, "completed");
+  assert.deepEqual(finished.champion, { id: "two", name: "Đấu thủ 2" });
+  assert.equal(finished.bracket.rounds[0][0].matchId, real.id);
 
   // Hồ sơ công khai của người tham gia.
   const profile = await json(await call("/api/users/two"));
   assert.equal(profile.status, 200);
   assert.equal(profile.body.display_name, "Đấu thủ 2");
-  assert.deepEqual(profile.body.stats, { played: 1, wins: 1, draws: 0, losses: 0 });
+  assert.deepEqual(profile.body.stats, { played: 2, wins: 1, draws: 0, losses: 1 });
   assert.deepEqual(profile.body.tournaments.map((row) => row.id), [id]);
   assert.equal((await call("/api/users/khong-ton-tai")).status, 404);
 

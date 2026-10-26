@@ -99,11 +99,6 @@ export const triggerRoundStart = (idOrCode, roundId, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/trigger-start`, { round_id: roundId }, token);
 export const rescheduleMatch = (matchId, scheduledAt, token) =>
     post(`${V1}/matches/${encodeURIComponent(matchId)}/reschedule`, { scheduled_at: scheduledAt }, token);
-export const attachTournamentSlotResult = (idOrCode, roundNo, slotIndex, matchId, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/rounds/${roundNo}/slots/${slotIndex}/result`,
-        { match_id: matchId }, token);
-export const recordTournamentMatch = (tournamentId, result, token) =>
-    post(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/matches`, result, token);
 export const updateTournamentStatus = (tournamentId, { status, champion_id = null }, token) =>
     request(`${V1}/tournaments/${encodeURIComponent(tournamentId)}/status`, {
         method: "PATCH", body: { status, champion_id }, token,

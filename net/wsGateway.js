@@ -890,8 +890,24 @@ export function createWsGateway({
             if (isLivePlayer || slotOf(room, conn.user.id)) {
                 queue.remove(conn.user.id);
                 resetFinished(room);
-                if (!seat(room, conn)) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người chơi.");
+                const playerSlot = seat(room, conn);
+                if (!playerSlot) return sendError(conn, "ROOM_FULL", "Phòng đã đủ hai người chơi.");
+                const isParticipantA = await isTournamentPlayer(slotInfo.participantAId, conn.user.id);
+                const participantSubmission = isParticipantA
+                    ? slotInfo.participantASubmission
+                    : slotInfo.participantBSubmission;
+                const participantReady = isParticipantA
+                    ? slotInfo.participantAReady
+                    : slotInfo.participantBReady;
+                if (participantSubmission?.source) {
+                    playerSlot.source = participantSubmission.source;
+                    playerSlot.filename = participantSubmission.filename;
+                    playerSlot.hasBot = true;
+                    playerSlot.version++;
+                }
+                playerSlot.ready = Boolean(participantReady && playerSlot.hasBot);
                 broadcastRoom(room);
+                beginCountdown(room);
             } else {
                 // Khán giả: xem mà không ngồi ghế.
                 queue.remove(conn.user.id);

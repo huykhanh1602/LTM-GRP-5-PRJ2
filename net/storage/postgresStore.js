@@ -670,11 +670,12 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     if(!Number.isSafeInteger(roundNo)||roundNo<1) throw new StorageError('INVALID_INPUT','roundNo must be a positive integer');
     if(!Number.isSafeInteger(slotIndex)||slotIndex<0) throw new StorageError('INVALID_INPUT','slotIndex must not be negative');
     return transaction(async client=>{
-      const tournament=(await query('SELECT id,status,format FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
+      const tournament=(await query('SELECT id,status,format,config FROM tournaments WHERE id=$1 FOR UPDATE',[tournamentId],client)).rows[0];
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(tournament.status!=='in_progress') throw new StorageError('TOURNAMENT_NOT_RUNNING','Chỉ gắn được kết quả khi giải đang diễn ra',409);
       const match=await getMatch(matchId,client);
       if(match.status!=='finished') throw new StorageError('MATCH_NOT_FINISHED','Trận đấu chưa kết thúc nên chưa có kết quả',409);
+      if(match.mode!=='tournament') throw new StorageError('MATCH_NOT_TOURNAMENT','Chỉ ghi nhận được trận được chơi trong giải đấu',409);
       const entries=await listTournamentEntries(tournamentId,client);
       const rounds=await listTournamentRounds(tournamentId,client);
       const bracket=buildBracket({rounds,entryCount:entries.length,format:tournament.format});
@@ -704,6 +705,20 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
           winner:{id:winnerId,name:winnerId===slot.participantAId?slot.participantAName:slot.participantBName}},client);
       }
       await refreshRoundStatuses({tournamentId,totalRounds:bracket.totalRounds,entryCount:entries.length,format:tournament.format},client);
+      const currentRound=(await query('SELECT status FROM tournament_rounds WHERE id=$1',[round.id],client)).rows[0];
+      if(currentRound?.status==='completed'&&roundNo<bracket.totalRounds){
+        const next=rounds.find(item=>Number(item.round_no)===roundNo+1);
+        const due=next&&(!next.scheduled_at
+          ||(Boolean(next.auto_start)&&Date.parse(next.scheduled_at)<=Date.now()));
+        if(due&&!next.submission_started_at){
+          const windowMinutes=Number(tournament.config?.submissionWindowMinutes)||10;
+          const nowIso=new Date().toISOString();
+          const deadlineIso=new Date(Date.now()+windowMinutes*60*1000).toISOString();
+          await query(`UPDATE tournament_rounds SET status='in_progress',submission_started_at=$1,submission_deadline=$2
+            WHERE id=$3 AND tournament_id=$4 AND submission_started_at IS NULL`,
+          [iso(nowIso),iso(deadlineIso),next.id,tournamentId],client);
+        }
+      }
       const settled=(await query(`SELECT COUNT(*) AS decided FROM tournament_match_history
         WHERE round_id=$1 AND (winner_id IS NOT NULL OR result IS NOT NULL)`,[round.id],client)).rows[0].decided;
       const lastRound=Number(roundNo)===bracket.totalRounds&&settled>=bracket.rounds[roundNo-1].length;
@@ -934,8 +949,8 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(allSettled&&roundNo<totalRounds){
         const next=rounds.find(item=>Number(item.round_no)===roundNo+1);
         // Vòng kế chỉ tự mở khi chủ giải đã đặt giờ và giờ đó tới hạn; chưa đặt thì chờ bấm mở.
-        const due=next&&Number(next.auto_start)===1
-          &&(!next.scheduled_at||Date.parse(next.scheduled_at)<=Date.now());
+        const due=next&&(!next.scheduled_at
+          ||(Boolean(next.auto_start)&&Date.parse(next.scheduled_at)<=Date.now()));
         if(next&&due){
           const windowMinutes=Number(config.submissionWindowMinutes)||10;
           const startedAt=new Date().toISOString();

@@ -60,6 +60,9 @@ test("bracket loại trực tiếp đi hết vòng và tìm ra quán quân từ 
     );
     assert.equal(afterSemiB.bracket.rounds[1][0].participantBId, "bob");
     assert.equal(afterSemiB.bracket.rounds[1][0].status, "ready");
+    assert.equal(afterSemiB.rounds[1].status, "in_progress");
+    assert.ok(afterSemiB.rounds[1].submission_started_at);
+    assert.ok(Date.parse(afterSemiB.rounds[1].submission_deadline) > Date.now());
 
     const final = playMatch(store, "bob", "alice");
     const completed = store.attachSlotResult(tournament.id, { roundNo: 2, slotIndex: 0, matchId: final });
@@ -98,6 +101,37 @@ test("số đấu thủ không phải lũy thừa 2 thì hạt số 1 được b
     const completed = store.attachSlotResult(tournament.id, { roundNo: 2, slotIndex: 0, matchId: final });
     assert.equal(completed.status, "completed");
     assert.equal(completed.champion.id, "cio");
+  } finally { store.close(); }
+});
+
+test("vòng kế tiếp mở nộp code tự động sau khi vòng trước xong", () => {
+  const store = createMatchStore({ filename: ":memory:" });
+  try {
+    for (const id of ["ann", "ben", "cio", "dot"]) {
+      store.upsertUser({ id, display_name: id });
+    }
+    const tournament = store.createTournament({
+      gameId: "rps_chess", code: "CUP-NEXT", name: "Next round", format: "single_elimination",
+    });
+    for (const id of ["ann", "ben", "cio", "dot"]) store.addTournamentEntry(tournament.id, { userId: id });
+    const started = store.generateTournamentBracket(tournament.id);
+    const [semiA, semiB] = started.bracket.rounds[0];
+
+    store.attachSlotResult(tournament.id, {
+      roundNo: 1, slotIndex: semiA.matchIndex, matchId: playMatch(store, semiA.participantAId, semiA.participantBId),
+    });
+    const completedRound = store.attachSlotResult(tournament.id, {
+      roundNo: 1, slotIndex: semiB.matchIndex, matchId: playMatch(store, semiB.participantAId, semiB.participantBId),
+    });
+
+    assert.equal(completedRound.rounds[0].status, "completed");
+    assert.equal(completedRound.rounds[1].status, "in_progress");
+    assert.ok(completedRound.rounds[1].submission_started_at);
+    assert.ok(Date.parse(completedRound.rounds[1].submission_deadline) > Date.now());
+    const finalist = store.getTournamentMyMatch(tournament.id, semiA.participantAId);
+    assert.equal(finalist.found, true);
+    assert.equal(finalist.roundNo, 2);
+    assert.equal(finalist.submissionDeadline, completedRound.rounds[1].submission_deadline);
   } finally { store.close(); }
 });
 
