@@ -490,6 +490,11 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     }));
                     return;
                 }
+                const tournamentRankingsRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)\/rankings$/);
+                if (tournamentRankingsRoute) {
+                    send(200, { items: await matchStore.getTournamentRankings(decodePathId(tournamentRankingsRoute[1])) });
+                    return;
+                }
                 const tournamentRoute = url.pathname.match(/^\/api\/tournaments\/([^/]+)$/);
                 if (tournamentRoute) {
                     send(200, await matchStore.getTournament(decodePathId(tournamentRoute[1])));
@@ -521,8 +526,12 @@ export function createHttpServer({ matchStore, roomGateway, authService, authent
                     return;
                 }
                 if (url.pathname === "/api/rankings") {
+                    const gameId = url.searchParams.get("gameId") ?? undefined;
+                    if (gameId && !(await matchStore.listGames()).some(game => game.id === gameId)) {
+                        throw new StorageError("GAME_NOT_FOUND", "Game not found", 404);
+                    }
                     send(200, {
-                        items: await matchStore.getRankings(),
+                        items: await matchStore.getRankings({ gameId }),
                         scoring: { win: 3, draw: 1, loss: 0 },
                     });
                     return;
