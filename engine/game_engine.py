@@ -824,15 +824,19 @@ class GameEngine:
             p.to_state() for p in self.pieces.values() if p.alive and p.owner == team
         ]
         opponent_pieces = [
-            p.to_state()
+            {**p.to_state(), "type": "UNKNOWN", "hp": 1}
             for p in self.pieces.values()
             if p.alive and p.owner == self._opponent(team)
         ]
+        bot_config = {
+            key: value for key, value in self.config.raw.items()
+            if key != "initial_state"
+        }
         return {
             "board_state": board_state,
             "my_pieces": my_pieces,
             "opponent_pieces": opponent_pieces,
-            "config": self.config.raw,
+            "config": bot_config,
         }
 
     # -- Kết thúc trận ------------------------------------------------------

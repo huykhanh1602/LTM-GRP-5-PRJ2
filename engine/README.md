@@ -67,8 +67,8 @@ Tham số:
 | ----------------- | ------------ | ---------------------------------------------------------------------------------- |
 | `board_state`     | `dict`       | `width`, `height`, `coordinate_system`, `special_tiles`, `turn`, `current_player`. |
 | `my_pieces`       | `list[dict]` | Quân của đội mình (chỉ quân còn sống): `id`, `owner`, `type`, `pos`, `hp`.         |
-| `opponent_pieces` | `list[dict]` | Quân đối phương (chỉ quân còn sống).                                               |
-| `config`          | `dict`       | Nguyên văn nội dung `config.json`.                                                 |
+| `opponent_pieces` | `list[dict]` | Vị trí các quân đối phương còn sống; `type` luôn là `"UNKNOWN"` và `hp` là `1` để không lộ thông tin quân. Loại quân thật chỉ được engine dùng để xử lý va chạm. |
+| `config`          | `dict`       | Cấu hình bàn cờ, luật và giới hạn; không chứa `initial_state` để tránh lộ loại/quân ban đầu của đối thủ. |
 
 Giá trị trả về — một dict nước đi:
 
@@ -93,6 +93,7 @@ hoặc `None` để bỏ lượt (bị tính là nước không hợp lệ).
   `PAPER` thắng `ROCK`. Quân thắng ở lại ô, quân thua bị hủy.
   Cùng loại: mặc định **cả hai cùng bị hủy** (cấu hình `same_type_collision`:
   `BOTH_DESTROYED` | `ATTACKER_DIES` | `DEFENDER_DIES`).
+- **Thông tin ẩn:** Bot chỉ được biết vị trí quân đối phương, không được biết loại quân trước khi va chạm.
 - **Bẫy (`TRAP`):** quân đứng lên bị hủy (`effect = DESTROYED`).
 - **Thành (`BASE`):** đưa quân vào ô Thành của đối phương thắng ngay.
 
