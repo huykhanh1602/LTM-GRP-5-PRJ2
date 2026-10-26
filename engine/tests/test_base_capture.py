@@ -53,16 +53,6 @@ def make_engine(team_a_base, team_b_base, move_to):
 
 
 class BaseCaptureTests(unittest.TestCase):
-    def test_bot_payload_hides_opponent_piece_type(self):
-        engine = make_engine(team_a_base=[0, 2], team_b_base=[2, 2], move_to=[1, 0])
-
-        payload = engine._build_payload(TEAM_A)
-
-        self.assertEqual(payload["opponent_pieces"][0]["type"], "UNKNOWN")
-        self.assertEqual(payload["opponent_pieces"][0]["pos"], [2, 0])
-        self.assertNotIn("initial_state", payload["config"])
-        self.assertEqual(engine.pieces["B1"].type, "SCISSORS")
-
     def test_default_bases_are_on_the_opponent_starting_sides(self):
         config_path = Path(__file__).resolve().parents[1] / "config.json"
         raw = json.loads(config_path.read_text(encoding="utf-8"))

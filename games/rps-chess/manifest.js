@@ -4,7 +4,7 @@ import { defineGameManifest } from '../../shared/games/manifest.js';
 // Backend dùng engine/config, frontend dùng ui/viewer.
 export const manifest = defineGameManifest({
   id: 'rps_chess',
-  name: 'Kéo · Búa · Bao',
+  name: 'Kéo · Búa · Bao Cờ',
   kind: 'server',
   modes: ['casual', 'ranked', 'tournament'],
   capabilities: ['ranked', 'tournament', 'spectator'],
