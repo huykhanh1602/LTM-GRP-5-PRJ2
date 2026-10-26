@@ -49,13 +49,6 @@ function assertRegistrationWindowOpen(config, now = Date.now()) {
   }
 }
 
-function assertRegistrationClosed(config, now = Date.now()) {
-  const close = config?.registrationClosesAt ? new Date(config.registrationClosesAt).getTime() : null;
-  if (close !== null && now < close) {
-    throw new StorageError('REGISTRATION_STILL_OPEN', 'Chưa tới thời gian đóng đơn, chưa thể khởi tranh', 409);
-  }
-}
-
 // node:sqlite báo lỗi ràng buộc qua errcode, không phải chuỗi code.
 const CONSTRAINT_KINDS = { 787: 'FOREIGNKEY', 1555: 'PRIMARYKEY', 2067: 'UNIQUE' };
 function constraintKind(error) {
@@ -938,7 +931,6 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       if (!['open', 'in_progress'].includes(tournament.status)) {
         throw new StorageError('INVALID_STATUS_TRANSITION', 'Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra', 409);
       }
-      assertRegistrationClosed(JSON.parse(tournament.config_json ?? '{}'));
       if (db.prepare('SELECT id FROM tournament_rounds WHERE tournament_id = ? LIMIT 1').get(tournamentId)) {
         throw new StorageError('BRACKET_EXISTS', 'Sơ đồ nhánh của giải đã được tạo trước đó', 409);
       }

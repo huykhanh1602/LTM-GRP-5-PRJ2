@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { createFrames, appendTurn as appendReplayTurn } from '../../src/utils/replayEngine.js';
 import { StorageError } from './matchStore.js';
-import { assertRegistrationWindowOpen, assertRegistrationClosed } from './registrationWindow.js';
+import { assertRegistrationWindowOpen } from './registrationWindow.js';
 import { normalizeSearchText, searchTermMatches } from './searchText.js';
 import { BYE_ID, BYE_NAME, buildBracket, nextSlotOf, pairFirstRound, planSize, roundRobinChampion, roundRobinPairs, roundRobinStandings, slotCount } from './tournamentBracket.js';
 
@@ -614,7 +614,6 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
       if(!tournament) throw new StorageError('TOURNAMENT_NOT_FOUND','Tournament not found',404);
       if(!['single_elimination','round_robin'].includes(tournament.format)) throw new StorageError('FORMAT_NOT_SUPPORTED','Thể thức này chưa xếp được sơ đồ đấu',409);
       if(!['open','in_progress'].includes(tournament.status)) throw new StorageError('INVALID_STATUS_TRANSITION','Chỉ tạo được nhánh khi giải đang mở đăng ký hoặc đang diễn ra',409);
-      assertRegistrationClosed(tournament.config??{});
       if((await query('SELECT id FROM tournament_rounds WHERE tournament_id=$1 LIMIT 1',[tournamentId],client)).rows[0]) throw new StorageError('BRACKET_EXISTS','Sơ đồ nhánh của giải đã được tạo trước đó',409);
       const rawEntries=await listTournamentEntries(tournamentId,client);
       const entries=rawEntries.map((entry,index)=>({

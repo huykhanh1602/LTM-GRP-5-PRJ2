@@ -48,7 +48,6 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
   const closesAt = tournament.registrationClosesAt
     ? new Date(tournament.registrationClosesAt).getTime()
     : null;
-  const regClosed = closesAt === null || Date.now() > closesAt;
   const [kickoffAt, setKickoffAt] = useState(() => toLocalInputValue(tournament.raw?.starts_at));
   const [controlsMode, setControlsMode] = useState(() => tournament.raw?.config?.allowedControls ?? "BOT");
   const [roundAtById, setRoundAtById] = useState({});
@@ -130,8 +129,8 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
             onChange={(event) => setKickoffAt(event.target.value)}
           />
           <p className="tl-form-note">
-            Tới thời gian này hệ thống tự động tạo sơ đồ nhánh (khi đã đóng đơn và đủ tối thiểu 2
-            người/đội). Muốn bắt đầu ngay thì bấm nút khởi tranh.
+            Tới thời gian này hệ thống tự động tạo sơ đồ nhánh (khi đã đóng đơn và đủ tối thiểu
+            2 {participantUnit(tournament.participantMode)}). Muốn bắt đầu ngay thì bấm nút khởi tranh.
           </p>
           <div className="tl-actions">
             <button
@@ -159,12 +158,10 @@ export default function AdminControlModal({ tournament, token, onClose, onUpdate
             <button
               type="button"
               className="btn"
-              disabled={busy || tournament.registered < 2 || !regClosed}
-              title={!regClosed
-                ? "Chỉ khởi tranh sau thời gian đóng đơn"
-                : tournament.registered < 2
-                  ? `Cần ít nhất 2 ${participantUnit(tournament.participantMode)} đăng ký`
-                  : undefined}
+              disabled={busy || tournament.registered < 2}
+              title={tournament.registered < 2
+                ? `Cần ít nhất 2 ${participantUnit(tournament.participantMode)} đăng ký`
+                : undefined}
               onClick={() => {
                 // Khởi tranh ngay thì ngày khởi tranh là bây giờ, không giữ giờ lịch đã gõ.
                 const nowIso = new Date().toISOString();

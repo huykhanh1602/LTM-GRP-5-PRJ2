@@ -12,9 +12,3 @@ export function assertRegistrationWindowOpen(config, now = Date.now()) {
   }
 }
 
-export function assertRegistrationClosed(config, now = Date.now()) {
-  const close = config?.registrationClosesAt ? new Date(config.registrationClosesAt).getTime() : null;
-  if (close !== null && now < close) {
-    throw new StorageError('REGISTRATION_STILL_OPEN', 'Chưa tới thời gian đóng đơn, chưa thể khởi tranh', 409);
-  }
-}
