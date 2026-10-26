@@ -9,6 +9,13 @@ const baseUrl = (API_URL ?? "").replace(/\/+$/, "");
 // Backend chấp nhận cả /api/v1/* và /api/* (xem net/http.js).
 const V1 = "/api/v1";
 
+const STORAGE_KEY = "daubot_session";
+
+function clearSession() {
+  localStorage.removeItem(STORAGE_KEY);
+  try { window.dispatchEvent(new CustomEvent("auth:unauthorized")); } catch { /* skip */ }
+}
+
 async function request(path, { method = "GET", token, body } = {}) {
     const response = await fetch(`${baseUrl}${path}`, {
         method,
@@ -18,6 +25,10 @@ async function request(path, { method = "GET", token, body } = {}) {
         },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
+    // 401 Unauthorized → token hết hạn / không hợp lệ → tự động đăng xuất
+    if (response.status === 401) {
+      clearSession();
+    }
     const data = await response.json();
     if (!response.ok) {
         const error = new Error(data.message || data.error || `HTTP ${response.status}`);
@@ -53,7 +64,8 @@ export const getTournamentNotifications = (token, { limit = 100, offset = 0 } = 
 export const markTournamentNotificationRead = (id, token) =>
     request(`${V1}/notifications/tournaments/${encodeURIComponent(id)}/read`, { method: "PATCH", token });
 export const getTournament = (idOrCode) => get(`${V1}/tournaments/${encodeURIComponent(idOrCode)}`);
-export const createTournament = (payload, token) => post(`${V1}/tournaments`, payload, token);
+export const createTournament = (payload, token) =>
+  post(`${V1}/tournaments`, payload, token ?? sessionToken());
 export const registerTournament = (idOrCode, token) =>
     post(`${V1}/tournaments/${encodeURIComponent(idOrCode)}/entries`, {}, token);
 export const registerTournamentTeam = (idOrCode, teamId, token, submissionId = null) =>
