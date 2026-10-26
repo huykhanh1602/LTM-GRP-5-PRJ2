@@ -1,29 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { sound } from "../audio/soundManager.js";
 import { REASON_LABELS } from "../utils/replayEngine.js";
-
-const AUTO_RETURN_MS = 6000;
 
 const TITLES = { win: "CHIẾN THẮNG", lose: "BẠN THUA", draw: "HÒA" };
 const ICONS = { win: "🏆", lose: "💀", draw: "🤝" };
 
-// Banner thắng/thua giữa màn hình. Mặc định tự đưa người chơi về phòng chờ sau vài giây;
-// bấm "Trạng thái" (onViewState) để đóng banner và xem nguyên trạng thái cuối ván trên bàn cờ.
-// autoReturn=false khi người chơi mở lại banner thủ công: không tự thoát và không phát lại âm thanh.
-export default function MatchOutcome({ result, myTeamId, onDone, onViewState, autoReturn = true }) {
-  const [left, setLeft] = useState(AUTO_RETURN_MS);
-
+// Hiện kết quả ngay khi trận kết thúc và chờ người chơi chọn nơi tiếp tục.
+export default function MatchOutcome({ result, myTeamId, onReturnToRoom, onLeave }) {
   useEffect(() => {
-    if (!autoReturn) return undefined;
     sound.play(result.outcome === "draw" ? "draw" : result.outcome);
-    const started = Date.now();
-    const tick = setInterval(() => setLeft(Math.max(0, AUTO_RETURN_MS - (Date.now() - started))), 200);
-    const timer = setTimeout(onDone, AUTO_RETURN_MS);
-    return () => {
-      clearInterval(tick);
-      clearTimeout(timer);
-    };
-  }, []);
+  }, [result.outcome]);
 
   const outcome = result.outcome;
   const label = REASON_LABELS[result.reason] ?? null;
@@ -49,14 +35,8 @@ export default function MatchOutcome({ result, myTeamId, onDone, onViewState, au
           <div className="outcome__elo">Elo {change >= 0 ? `+${change}` : change}</div>
         )}
         <div className="outcome__actions">
-          <button className="btn big" onClick={onDone}>
-            {autoReturn ? `Về phòng chờ (${Math.ceil(left / 1000)}s)` : "Về phòng chờ"}
-          </button>
-          {onViewState && (
-            <button className="btn big outcome__view" onClick={onViewState}>
-              📋 Trạng thái
-            </button>
-          )}
+          <button className="btn big" onClick={onReturnToRoom}>Về phòng chờ nộp code</button>
+          <button className="btn big outcome__view" onClick={onLeave}>Thoát phòng</button>
         </div>
       </div>
     </div>

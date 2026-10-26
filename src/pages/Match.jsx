@@ -34,18 +34,12 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
   const [showHistory, setShowHistory] = useState(false);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [askExit, setAskExit] = useState(false); // hỏi xác nhận bỏ ván đang chơi
-  // "Trạng thái": người chơi đóng banner kết quả để xem trạng thái cuối ván; "reopened" = mở lại banner (không tự thoát).
-  const [outcomeHidden, setOutcomeHidden] = useState(false);
-  const [outcomeReopened, setOutcomeReopened] = useState(false);
-  useEffect(() => {
-    setOutcomeHidden(false);
-    setOutcomeReopened(false);
-  }, [state.result]);
 
   // Đang đánh thật (không phải khán giả): rời màn hình giữa ván = bỏ ván, bị xử thua.
   const inPlay = Boolean(me) && !finished && state.room?.status === "playing";
   const hasOutcome = Boolean(state.result) && state.result.outcome !== "watch";
-  const showOutcome = hasOutcome && !outcomeHidden;
+  const playbackAtEnd = player.last >= 0 && player.index >= player.last;
+  const outcomeVisibleToPlayer = byMouse || playbackAtEnd;
 
   // Lượt đang chờ mình bấm ô (server chỉ gửi your_turn cho đúng người cầm chuột).
   const turn = state.turn && state.turn.team_id === me?.id ? state.turn : null;
@@ -139,16 +133,12 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
         </Modal>
       )}
 
-      {showOutcome && (
+      {finished && hasOutcome && outcomeVisibleToPlayer && (
         <MatchOutcome
           result={state.result}
           myTeamId={state.result.myTeamId}
-          onDone={onLeave}
-          onViewState={() => {
-            player.seek(player.last);
-            setOutcomeHidden(true);
-          }}
-          autoReturn={!outcomeReopened}
+          onReturnToRoom={onReturnToRoom}
+          onLeave={onLeave}
         />
       )}
 
@@ -159,19 +149,6 @@ export default function Match({ state, onReturnToRoom, onLeave, onForfeit }) {
           <Board board={init.game_config.board} frame={player.frame} colorOf={colorOf} pick={pick} onCellClick={turn ? clickCell : undefined} />
           <ResultBanner replay={init} frame={player.frame} />
           <Controls {...player} />
-          {finished && (
-            <div className="end-actions">
-              <button className="btn" onClick={onReturnToRoom}>← Quay lại phòng chờ</button>
-              {hasOutcome && outcomeHidden && (
-                <button
-                  className="btn"
-                  onClick={() => { setOutcomeReopened(true); setOutcomeHidden(false); }}
-                >
-                  🏁 Xem kết quả
-                </button>
-              )}
-            </div>
-          )}
         </section>
         <aside className="side">
           <button
