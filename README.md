@@ -1,102 +1,72 @@
-# Đấu Trường Kéo Búa Bao 🎮
+# BotVui — Đấu Trường Game Bot
 
-> **Nền tảng đấu Game Bot** — Nơi những dòng code đối đầu!
+Nền tảng thi đấu game bot nhiều người chơi: viết bot Python, nộp lên, xem bot của bạn đấu trực tiếp.
 
-Một nền tảng game đa năng cho phép người chơi viết bot Python (`.py`) và đấu với nhau theo thời gian thực. Hỗ trợ nhiều thể loại game: đối kháng chiến thuật, săn mồi, giải đố...
+---
 
-## 🎯 Tổng quan
+## Tính năng
 
-| Thành phần      | Công nghệ                                   |
-| --------------- | ------------------------------------------- |
-| **Frontend**    | React 19 + Vite 8                           |
-| **Backend**     | Node.js ≥ 24 (thuần, không framework)       |
-| **Game Engine** | Python 3 (multiprocessing)                  |
-| **Database**    | PostgreSQL (production) / SQLite (local)    |
-| **Realtime**    | WebSocket (giao thức v2)                    |
-| **Deploy**      | Docker, Render (backend), Vercel (frontend) |
+- **Hai game:** Oẳn Tù Tì Trên Bàn Cờ (`rps_chess`) và Rắn Săn Mồi (`snake_battle`)
+- **Chế độ chơi:** Casual (phòng riêng), Ranked (ghép trận + Elo), Tournament (giải đấu có nhánh đấu)
+- **Xem trận trực tiếp & replay** — cùng định dạng, cùng bộ renderer
+- **Đăng nhập:** Khách, Email/mật khẩu, Google, Facebook
+- **Giải đấu:** Single elimination, Round robin; chủ giải tự tạo/quản lý; tự động khởi tranh theo lịch
+- **Chơi người thật** (không bắt buộc phải có bot): chọn chế độ `human` trong phòng
 
-## 🎮 Các game
+---
 
-| Game                   | ID             | Loại   | Mô tả                                                    |
-| ---------------------- | -------------- | ------ | -------------------------------------------------------- |
-| **Kéo · Búa · Bao Cờ** | `rps_chess`    | Server | Bot điều khiển quân cờ, phân giải va chạm bằng oẳn tù tì |
-| **Rắn Săn Mồi**        | `snake_battle` | Server | Bot điều khiển rắn, ăn mồi, tránh chướng ngại vật        |
-| **Pikachu Puzzle**     | `pikachu`      | Client | Game giải đố cổ điển, chạy hoàn toàn trên trình duyệt    |
+## Tech Stack
 
-## 🏗️ Kiến trúc
+| Lớp         | Công nghệ                                                |
+| ----------- | -------------------------------------------------------- |
+| Frontend    | React 19, Vite 8, CSS thuần                              |
+| Backend     | Node.js ≥ 24, `ws`, `http` (không framework)             |
+| Game Engine | Python 3 (stdlib only), subprocess/multiprocessing       |
+| Database    | SQLite (local) / PostgreSQL (deploy)                     |
+| Auth        | Session token (scrypt), Google OAuth, Facebook OAuth     |
+| Deploy      | Docker (Node 24 + Python 3) → Railway; Frontend → Vercel |
 
-```
-┌─────────────────────────────────────────────────┐
-│                  Frontend (React)                │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  Lobby   │  │   Room   │  │  Match View  │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-└──────────────────────┬──────────────────────────┘
-                       │ WebSocket (v2)
-┌──────────────────────▼──────────────────────────┐
-│              Backend Node.js (net/)              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  WS GW   │  │  HTTP    │  │  MatchMaker  │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │  Engine  │  │  Rating  │  │ Tournament   │  │
-│  │  Runner  │  │  Service │  │  Scheduler   │  │
-│  └──────────┘  └──────────┘  └──────────────┘  │
-└──────┬──────────────────────────────────────────┘
-       │ STDIN/STDOUT (NDJSON)
-┌──────▼──────────────────────────────────────────┐
-│           Python Game Engine (engine/)           │
-│  ┌────────────────┐  ┌──────────────────────┐   │
-│  │  match_runner  │  │  snake/match_runner  │   │
-│  └────────────────┘  └──────────────────────┘   │
-└─────────────────────────────────────────────────┘
+---
+
+## Cài đặt & chạy local (Windows)
+
+### Điều kiện cần
+
+- **Node.js ≥ 24** — kiểm tra: `node -v`
+- **Python 3** — kiểm tra: `python --version` (Windows) hoặc `python3 --version` (macOS/Linux)
+- **pnpm** (tùy chọn, dùng lock file): `npm i -g pnpm` — hoặc dùng `npm` thường cũng được
+
+### Bước 1 — Cài dependencies
+
+```powershell
+npm install
 ```
 
-## 🚀 Bắt đầu nhanh
+### Bước 2 — Cấu hình môi trường
 
-### Yêu cầu
-
-- **Node.js** ≥ 24.0.0
-- **pnpm** 11.25.0 (bật `corepack enable`)
-- **Python** 3 (kiểm tra với `python --version` hoặc `python3 --version`)
-- **PostgreSQL** (tùy chọn — local dùng SQLite)
-
-### Cài đặt
-
-```bash
-# 1. Clone repository
-git clone <repo-url>
-cd ltm-grp-5-prj2
-
-# 2. Cài dependencies
-pnpm install
-
-# 3. Tạo file môi trường
-cp .env.example .env
-
-# 4. (Tùy chọn) Cấu hình Python
-# Sửa PYTHON_EXECUTABLE trong .env nếu cần
-# Windows: py
-# macOS/Linux: python3
+```powershell
+Copy-Item .env.example .env
 ```
 
-### Chạy local
+Chỉnh `.env` nếu cần (xem bảng bên dưới). Mặc định đã dùng được ngay.
 
-```bash
-# Chạy backend server (cổng 3000)
-pnpm run server
+### Bước 3 — Chạy cùng lúc Backend + Frontend
 
-# Mở terminal khác — chạy frontend dev
-pnpm run dev
+```powershell
+npm run dev:all
 ```
 
-Mở trình duyệt tại `http://localhost:5173`.
+Lệnh này tự khởi backend (cổng 3000) và Vite dev server (cổng 5175+), rồi in link ra console.
 
-### Chạy toàn bộ hệ thống (1 lệnh)
-
-```bash
-pnpm run dev:all
-```
+> **Hoặc chạy riêng từng service:**
+>
+> ```powershell
+> # Terminal 1 — Backend
+> npm run server
+>
+> # Terminal 2 — Frontend
+> npm run dev
+> ```
 
 ### Kiểm thử
 
@@ -104,124 +74,193 @@ pnpm run dev:all
 pnpm test
 ```
 
-## 📦 Deploy
+---
 
-### Docker
+## Biến môi trường (`.env`)
 
-```bash
-docker build -t game-platform .
-docker run -p 3000:3000 \
-  -e DATABASE_URL=postgres://... \
-  -e GOOGLE_CLIENT_ID=... \
-  game-platform
-```
+Sao chép `.env.example` thành `.env`. Không cần chỉnh gì để chạy local cơ bản.
 
-### Render (backend)
+| Biến                     | Mô tả                                             | Mẫu / Mặc định                                |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------- |
+| `PORT`                   | Cổng backend                                      | `3000`                                        |
+| `VITE_WS_URL`            | URL WebSocket cho frontend                        | `ws://localhost:3000`                         |
+| `VITE_API_URL`           | URL HTTP API cho frontend (để trống → Vite proxy) | _(trống)_                                     |
+| `VITE_GOOGLE_CLIENT_ID`  | OAuth Client ID (public)                          | _(để trống nếu không cần Google login)_       |
+| `DATABASE_URL`           | Chuỗi kết nối PostgreSQL (để trống → dùng SQLite) | _(trống)_                                     |
+| `DB_PATH`                | Đường dẫn SQLite                                  | `data/game.sqlite`                            |
+| `PYTHON_EXECUTABLE`      | Lệnh Python                                       | `py` (Windows) / `python3` (Linux)            |
+| `GOOGLE_CLIENT_ID`       | Client ID xác minh phía server                    | _(chỉ đặt ở backend)_                         |
+| `FACEBOOK_APP_ID`        | Facebook App ID                                   | _(chỉ đặt ở backend)_                         |
+| `FACEBOOK_APP_SECRET`    | Facebook App Secret                               | _(chỉ đặt ở backend, không đưa lên frontend)_ |
+| `AUTH_ALLOW_GUEST`       | `0` để tắt đăng nhập khách                        | `1`                                           |
+| `MAX_CONCURRENT_MATCHES` | Số trận chạy đồng thời                            | `1`                                           |
+| `MAX_QUEUED_MATCHES`     | Số trận chờ trong hàng đợi                        | `24`                                          |
 
-1. Tạo service từ thư mục gốc repository
-2. Dockerfile tự động cài Node.js + Python 3
-3. Đặt các biến môi trường trong Render Dashboard
+---
 
-### Vercel (frontend)
-
-1. Kết nối repository, framework preset: **Vite**
-2. Build command: `pnpm build`
-3. Output: `dist`
-4. Đặt `VITE_API_URL` trỏ tới backend Render
-
-## 🔐 Xác thực
-
-| Phương thức      | Mô tả                                              |
-| ---------------- | -------------------------------------------------- |
-| **Google OAuth** | Đăng nhập bằng tài khoản Google                    |
-| **Guest**        | Đăng nhập nhanh với tên hiển thị (chỉ chơi casual) |
-
-## 🏆 Tính năng
-
-- **Xếp hạng (Elo)** — Tính điểm và xếp hạng người chơi sau mỗi trận ranked
-- **Giải đấu** — Hỗ trợ thể thức loại trực tiếp (single elimination) và vòng tròn (round robin)
-- **Xem trực tiếp** — Spectator mode: xem trận đấu đang diễn ra theo thời gian thực
-- **Lưu trận & phát lại** — Lưu trận đấu và xem lại bất kỳ lúc nào
-- **Tìm trận (Matchmaking)** — Tự động ghép cặp người chơi cùng trình độ
-
-## 📁 Cấu trúc thư mục
+## Cấu trúc thư mục
 
 ```
-├── engine/              # Python game engines
-│   ├── game_engine.py   # Engine Kéo Búa Bao Cờ
-│   ├── match_runner.py  # Runner chính
-│   ├── snake/           # Engine Rắn Săn Mồi
-│   └── tests/           # Kiểm thử engine
-├── games/               # Game manifests
-│   ├── pikachu/         # Pikachu Puzzle
-│   ├── rps-chess/       # Kéo Búa Bao Cờ
-│   └── snake/           # Rắn Săn Mồi
-├── net/                 # Backend Node.js
-│   ├── index.js         # Entry point
-│   ├── config.js        # Cấu hình
-│   ├── http.js          # HTTP server
-│   ├── wsGateway.js     # WebSocket gateway
-│   ├── botGateway.js    # Bot submission
-│   ├── roomGateway.js   # Phòng chờ
-│   ├── orchestrator.js  # Điều phối trận đấu
-│   ├── engineRunner.js  # Gọi Python engine
-│   ├── matchmaking/     # Ghép trận
-│   ├── auth/            # Xác thực
-│   ├── storage/         # Lưu trữ
-│   ├── application/     # Nghiệp vụ (rating, tournament)
-│   └── infrastructure/  # Persistence (Postgres, SQLite)
-├── public/              # Static assets
-├── scripts/             # Scripts tiện ích
-├── shared/              # Code dùng chung
-├── src/                 # Frontend React
-└── test/                # Kiểm thử backend
+├── net/                  # Backend Node.js
+│   ├── index.js          # Entry point — khởi tạo tất cả services
+│   ├── http.js           # HTTP server, toàn bộ REST API
+│   ├── wsGateway.js      # WebSocket v2: auth, queue, phòng, match
+│   ├── roomGateway.js    # WebSocket v1 (còn dùng song song)
+│   ├── engineRunner.js   # Gọi Python engine qua subprocess
+│   ├── auth/             # Đăng nhập: session, Google, Facebook, email/password
+│   ├── storage/          # matchStore (SQLite/PostgreSQL), schema.sql
+│   ├── matchmaking/      # Hàng đợi ghép trận, Elo tạm thời
+│   ├── application/      # RatingService, TournamentService
+│   └── infrastructure/   # Repository implementations (SQLite, Postgres)
+│
+├── engine/               # Python game engine — Oẳn Tù Tì Trên Bàn Cờ
+│   ├── game_engine.py    # Logic game, va chạm, bot process
+│   ├── match_runner.py   # Chạy một trận, xuất replay.json
+│   ├── config.json       # Cấu hình bàn cờ mặc định
+│   ├── bot_sample_*.py   # Bot mẫu
+│   └── snake/            # Python game engine — Rắn Săn Mồi
+│       ├── snake_engine.py
+│       ├── match_runner.py
+│       └── config.json
+│
+├── src/                  # Frontend React
+│   ├── App.jsx           # Routing (hash-based), layout chính
+│   ├── api.js            # Tất cả lời gọi HTTP API
+│   ├── hooks/useRoom.js  # Hook kết nối WebSocket, quản lý phòng
+│   ├── hooks/useAuth.js  # Hook đăng nhập/đăng xuất
+│   ├── pages/            # Các trang: Home, GameLobby, Room, Match, Replay...
+│   ├── games/            # Component render từng game (rps_chess, snake_battle)
+│   └── components/       # UI dùng chung, tournament widgets
+│
+├── games/                # Game manifests (backend + frontend đọc chung)
+│   ├── rps-chess/
+│   └── snake/
+│
+├── shared/               # Code dùng chung BE+FE (protocol events, tournament domain)
+├── test/                 # Test Node.js (node --test)
+├── scripts/              # Tiện ích: dev-all.js, seed data, check scripts
+├── docs/                 # Tài liệu chi tiết
+│   ├── WS_PROTOCOL_V2.md # Giao thức WebSocket v2
+│   ├── PROTOCOL.md       # Giao thức v1 (legacy)
+│   └── match-storage.md  # Database, API, replay storage
+├── Dockerfile            # Node 24 + Python 3
+└── .env.example          # Mẫu biến môi trường
 ```
 
-## 📚 Tài liệu
+---
 
-| Tài liệu                                           | Mô tả                             |
-| -------------------------------------------------- | --------------------------------- |
-| [`docs/PROTOCOL.md`](docs/PROTOCOL.md)             | Giao thức giao diện ↔ server (v1) |
-| [`docs/WS_PROTOCOL_V2.md`](docs/WS_PROTOCOL_V2.md) | Giao thức WebSocket v2 (hiện tại) |
-| [`docs/match-storage.md`](docs/match-storage.md)   | Lưu trữ trận đấu & bảng xếp hạng  |
-| [`engine/README.md`](engine/README.md)             | Hướng dẫn engine Kéo Búa Bao Cờ   |
-| [`engine/snake/README.md`](engine/snake/README.md) | Hướng dẫn viết bot Rắn Săn Mồi    |
+## Viết & thử bot
 
-## 🐍 Viết bot
+### Oẳn Tù Tì Trên Bàn Cờ (`rps_chess`)
 
-Mỗi game có hợp đồng bot riêng. Xem hướng dẫn chi tiết tại:
+Bot là một file `.py` có hàm:
 
-- [Hướng dẫn bot Rắn Săn Mồi](engine/snake/README.md)
-- [Hướng dẫn bot Kéo Búa Bao Cờ](engine/README.md)
-
-### Bot mẫu
-
-```
-engine/
-├── bot_sample_1.py       # Bot KBB ngẫu nhiên
-├── bot_sample_2.py       # Bot KBB tham lam
-├── bot_sample_3.py       # Bot KBB mẫu 3
-├── bot_sample_4.py       # Bot KBB mẫu 4
-└── snake/
-    ├── bot_sample_greedy.py  # Bot rắn tham lam
-    └── bot_sample_random.py  # Bot rắn ngẫu nhiên
+```python
+def make_move(board_state, my_pieces, opponent_pieces, config):
+    # Trả về: {"piece_id": "A1", "action_type": "MOVE", "to": [x, y]}
+    # Hoặc None để bỏ lượt
 ```
 
-## 🛠️ Scripts
+Thử bot trực tiếp (không cần server):
 
-| Script             | Mô tả                      |
-| ------------------ | -------------------------- |
-| `pnpm run dev`     | Chạy frontend dev server   |
-| `pnpm run dev:all` | Chạy cả frontend + backend |
-| `pnpm run server`  | Chạy backend server        |
-| `pnpm run build`   | Build frontend production  |
-| `pnpm test`        | Chạy tất cả kiểm thử       |
-| `pnpm run preview` | Preview bản build          |
+```powershell
+python engine/match_runner.py --bot-a engine/bot_sample_1.py --bot-b engine/bot_sample_2.py
+```
 
-## 👥 Đóng góp
+### Rắn Săn Mồi (`snake_battle`)
 
-Dự án được phát triển bởi nhóm **LTM-GRP-5-PRJ2**.
+```python
+def make_move(board_state, my_pieces, opponent_pieces, config):
+    # Trả về: {"action_type": "MOVE", "direction": "UP"}  # UP | DOWN | LEFT | RIGHT
+```
 
-## 📄 Giấy phép
+```powershell
+python engine/snake/match_runner.py --bot-a engine/snake/bot_sample_greedy.py --bot-b ./bot_cua_ban.py
+```
 
-Private — Nội bộ nhóm học tập.
+> **Windows:** luôn chạy qua `match_runner.py` (cần `if __name__ == "__main__":` trong bot nếu có code cấp module).
+
+---
+
+## WebSocket API (v2)
+
+Kết nối: `ws://<host>/ws`
+
+**Luồng cơ bản:**
+
+```
+1. Mở kết nối
+2. Gửi: {"type": "auth", "token": "<session_token>"}
+3. Nhận: {"type": "auth_ok", "user": {...}}
+4. Gửi: {"type": "find_match", "game_id": "rps_chess", "mode": "casual"}
+5. Nhận: {"type": "match_found", "room_id": "K7QD", ...}
+6. Gửi: {"type": "submit_bot", "mode_type": "code", "language": "python", "content": "def make_move..."}
+7. Nhận: {"type": "bot_accepted"}
+8. Gửi: {"type": "ready", "ready": true}
+9. Nhận: {"type": "countdown", "seconds": 3} → match_start → turn × N → game_over
+```
+
+Xem chi tiết: [`docs/WS_PROTOCOL_V2.md`](docs/WS_PROTOCOL_V2.md)
+
+---
+
+## REST API chính
+
+| Method | Endpoint                  | Mô tả                                            |
+| ------ | ------------------------- | ------------------------------------------------ |
+| `POST` | `/api/auth/guest`         | Đăng nhập khách                                  |
+| `POST` | `/api/auth/register`      | Đăng ký email/password                           |
+| `POST` | `/api/auth/login`         | Đăng nhập email/password                         |
+| `POST` | `/api/auth/google`        | Đăng nhập Google                                 |
+| `GET`  | `/api/me`                 | Thông tin người dùng hiện tại                    |
+| `GET`  | `/api/games`              | Danh sách game đang hoạt động                    |
+| `GET`  | `/api/matches`            | Lịch sử trận (`?teamId=&status=&limit=&offset=`) |
+| `GET`  | `/api/matches/:id/replay` | Dữ liệu replay đầy đủ                            |
+| `GET`  | `/api/rankings`           | Bảng xếp hạng                                    |
+| `GET`  | `/api/tournaments`        | Danh sách giải đấu                               |
+| `POST` | `/api/tournaments`        | Tạo giải (cần đăng nhập)                         |
+| `GET`  | `/health`                 | Health check                                     |
+
+Backend chấp nhận cả `/api/*` và `/api/v1/*`.
+
+---
+
+## Deploy
+
+### Docker (Backend)
+
+```dockerfile
+# Dockerfile đã có sẵn — Node 24 + Python 3
+docker build -t botvui .
+docker run -p 3000:3000 --env-file .env botvui
+```
+
+### Render + Vercel (cấu hình đề xuất)
+
+- **Backend** → Render: tạo Web Service, chọn **Docker** runtime, deploy từ `Dockerfile`, đặt các biến server trong Render dashboard (Environment)
+- **Frontend** → Vercel: `npm run build` → deploy thư mục `dist`, đặt `VITE_API_URL` trỏ tới Render service URL (vd: `https://<tên-service>.onrender.com`)
+
+### Migrate SQLite → PostgreSQL
+
+```powershell
+# Đặt DATABASE_URL trong .env trỏ tới PostgreSQL, rồi:
+node net/storage/migrateSqliteToPostgres.js
+```
+
+---
+
+## Công cụ & scripts hữu ích
+
+```powershell
+# Seed 3 trận ví dụ vào database (không ảnh hưởng điểm)
+node scripts/seed-replay-examples.mjs
+
+# Tạo dữ liệu demo lịch sử
+node scripts/create-demo-history.mjs
+
+# Nhập replay từ engine Python vào database
+node net/importReplay.js engine/replay.json
+node net/importReplay.js engine/replay.json --unranked  # không tính điểm
+```
+
+---
