@@ -151,6 +151,19 @@ Sao chép `.env.example` thành `.env`. Không cần chỉnh gì để chạy lo
 
 ## Viết & thử bot
 
+Có sẵn code bot mẫu trong thư mục [`engine/`](engine/) để chạy thử:
+
+```
+engine/
+├── bot_sample_1.py          # Bot KBB ngẫu nhiên
+├── bot_sample_2.py          # Bot KBB tham lam
+├── bot_sample_3.py          # Bot KBB mẫu 3
+├── bot_sample_4.py          # Bot KBB mẫu 4
+└── snake/
+    ├── bot_sample_greedy.py # Bot rắn tham lam
+    └── bot_sample_random.py # Bot rắn ngẫu nhiên
+```
+
 ### Oẳn Tù Tì Trên Bàn Cờ (`rps_chess`)
 
 Bot là một file `.py` có hàm:
