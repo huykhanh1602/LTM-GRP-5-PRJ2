@@ -37,8 +37,41 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
   const pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: false }, ...poolOptions });
   const schema = readFileSync(new URL('./postgres-schema.sql', import.meta.url), 'utf8');
   let ready;
+
+  /** Parse multi-statement SQL into individual statements (split by ';'). */
+  function parseStatements(sql) {
+    return sql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .map(s => s + ';');
+  }
+
+  /** Run DDL statements sequentially with deadlock retry. */
+  async function runSchema() {
+    const statements = parseStatements(schema);
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 500;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        for (const stmt of statements) {
+          await pool.query(stmt);
+        }
+        return; // success
+      } catch (err) {
+        const isDeadlock = err.code === '40P01';
+        if (isDeadlock && attempt < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   function initialize() {
-    return ready ??= pool.query(schema).then(() => undefined);
+    return ready ??= runSchema();
   }
   async function query(text, values = [], client = pool) {
     await initialize();
