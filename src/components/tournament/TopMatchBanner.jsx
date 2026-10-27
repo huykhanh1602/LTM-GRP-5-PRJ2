@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // TopMatchBanner — Banner trận đấu hiển thị trên cùng trang Giải đấu.
-// - Nếu isParticipant === true:  hiển thị nút "Vào phòng đấu" / "Sẵn sàng" / "Nộp code".
+// - Nếu isParticipant === true:  hiển thị "🚪 Vào phòng đấu" (primary) + "👁️ Xem với tư cách khán giả".
 // - Nếu isParticipant === false: chỉ hiển thị [ A ] VS [ B ] + nút "👁️ Xem trực tiếp".
-// - Hỗ trợ 2 chế độ nộp code: PER_ROUND (nộp theo vòng) và SINGLE (nộp 1 lần).
+// - Việc nộp code được thực hiện trực tiếp bên trong phòng đấu/Room.
 // ─────────────────────────────────────────────────────────────
 import { useEffect, useState } from "react";
-import { SubmissionModal } from "./SubmissionModal.jsx";
 
 function Countdown({ deadline }) {
   const [text, setText] = useState("--:--");
@@ -48,34 +47,12 @@ function Side({ side, isMe }) {
   );
 }
 
-export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom, onOpenReplay, onSubmit, onReady }) {
-  const [showSubmission, setShowSubmission] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom, onOpenReplay }) {
   if (!match?.found) return null;
   const { me, opponent, mode, matchId, isParticipant, roundNo } = match;
   const spectator = isParticipant === false;
   const isPerRound = mode === "PER_ROUND";
   const minutes = match.submissionWindowMinutes ?? 10;
-
-  // Xác định trạng thái nộp code và sẵn sàng
-  const needsSubmission = isPerRound
-    ? !me.submitted          // PER_ROUND: cần nộp code mỗi vòng
-    : !me.submissionId;      // SINGLE: cần nộp code lần đầu (chưa có bot đại diện)
-  const canReady = isPerRound
-    ? me.submitted && !me.ready   // PER_ROUND: đã nộp code mới được sẵn sàng
-    : me.submissionId && !me.ready; // SINGLE: đã có bot đại diện mới được sẵn sàng
-  const isReady = me.ready;
-
-  async function handleSubmission({ roundNo: rn, filename, source }) {
-    if (!onSubmit) return;
-    setSubmitting(true);
-    try {
-      await onSubmit({ roundNo: rn, filename, source });
-      setShowSubmission(false);
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   return (
     <section className="tm-banner tl-card" aria-label={spectator ? "Trận đấu" : "Trận đấu của tôi"}>
@@ -89,10 +66,8 @@ export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom
             {spectator
               ? (matchId ? "Trận đấu đang diễn ra." : "Đang chờ 2 bên sẵn sàng.")
               : (isPerRound
-                  ? `Cửa sổ nộp code vòng này là ${minutes} phút. Nộp code và bấm Sẵn sàng để vào trận.`
-                  : (needsSubmission
-                      ? `Nộp bot đại diện lần đầu. Bot này sẽ được dùng cho toàn bộ giải đấu.`
-                      : `Bot đại diện đã được đăng ký. Bấm Sẵn sàng khi sẵn sàng thi đấu.`))}
+                  ? `Cửa sổ nộp code vòng này là ${minutes} phút. Vào phòng đấu để nộp code và thi đấu.`
+                  : `Vào phòng đấu để nộp bot đại diện và thi đấu.`)}
           </p>
         </div>
         {!spectator && deadline && !match.bothReady && !matchId && <Countdown deadline={deadline} />}
@@ -127,68 +102,22 @@ export function TopMatchBanner({ match, deadline, busy, onEnterRoom, onWatchRoom
           </button>
         </div>
       ) : (
-        <>
-          <div className="tm-actions">
-            {/* Nút Nộp code — chỉ hiện khi cần nộp */}
-            {needsSubmission && onSubmit && (
-              <button
-                type="button"
-                className="btn primary big"
-                disabled={busy}
-                onClick={() => setShowSubmission(true)}
-              >
-                📝 Nộp code
-              </button>
-            )}
+        <div className="tm-actions">
+          {/* Nút Vào phòng đấu — Primary, luôn hoạt động với callback của ô "Trận đấu đang mở" */}
+          <button
+            type="button"
+            className="btn primary big"
+            onClick={() => onEnterRoom?.()}
+          >
+            🚪 Vào phòng đấu
+          </button>
 
-            {/* Nút Sẵn sàng — chỉ hiện khi đã nộp code và chưa sẵn sàng */}
-            {canReady && onReady && (
-              <button
-                type="button"
-                className="btn primary big"
-                disabled={busy}
-                onClick={() => onReady(true)}
-              >
-                ✔ Sẵn sàng
-              </button>
-            )}
-
-            {/* Đã sẵn sàng */}
-            {isReady && (
-              <span className="tm-hint">✅ Bạn đã sẵn sàng — đang chờ đối thủ…</span>
-            )}
-
-            {/* Nút vào phòng đấu — luôn hiện */}
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => onEnterRoom?.()}
-            >
-              🚪 Vào phòng đấu
+          {onWatchRoom && (
+            <button type="button" className="btn" disabled={busy} onClick={() => onWatchRoom?.()}>
+              👁️ Xem với tư cách khán giả
             </button>
-
-            {onWatchRoom && (
-              <button type="button" className="btn" disabled={busy} onClick={() => onWatchRoom?.()}>
-                👁 Xem với tư cách khán giả
-              </button>
-            )}
-          </div>
-          <p className="tm-hint">
-            Phòng chỉ nhận <strong>2 tuyển thủ của trận</strong> làm người chơi. Nếu hết giờ mà chưa nộp code,
-            bạn sẽ bị <strong>xử thua</strong>; cả 2 chưa nộp thì hệ thống <strong>chọn ngẫu nhiên 1 người</strong> đi tiếp.
-          </p>
-        </>
-      )}
-
-      {showSubmission && (
-        <SubmissionModal
-          roundNo={roundNo}
-          deadline={deadline}
-          submitting={submitting}
-          onClose={() => setShowSubmission(false)}
-          onSubmit={handleSubmission}
-        />
+          )}
+        </div>
       )}
     </section>
   );

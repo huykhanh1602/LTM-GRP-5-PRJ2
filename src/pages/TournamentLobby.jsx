@@ -16,7 +16,7 @@ import EditRegistrationWindowModal from "../components/profile/EditRegistrationW
 import TournamentPicker from "../components/tournament/TournamentPicker.jsx";
 import { TopMatchBanner } from "../components/tournament/TopMatchBanner.jsx";
 import { useTopMatch } from "../hooks/useTopMatch.js";
-import { registerTournament, submitMyMatchRoundBot, setMyMatchReady } from "../api.js";
+import { registerTournament } from "../api.js";
 import { apiErrorText, formatStartsAt, participantUnit } from "../utils/tournamentApi.js";
 import { useTournamentLobby } from "../hooks/useTournamentLobby.js";
 import "../styles/tournament.css";
@@ -187,31 +187,6 @@ export function PageTournamentLobby({
             : null
         }
         onOpenReplay={(matchId) => openReplay(matchId)}
-        onSubmit={async ({ roundNo, filename, source }) => {
-          try {
-            await submitMyMatchRoundBot(top.match.tournamentId, roundNo, { filename, source }, token);
-            top.refresh();
-          } catch (err) {
-            setMessage({ tone: "err", text: apiErrorText(err) });
-            throw err;
-          }
-        }}
-        onReady={async (ready) => {
-          try {
-            await setMyMatchReady(top.match.tournamentId, ready, token);
-            await top.refresh();
-            if (ready) {
-              onEnterRoom?.({
-                tournamentId: top.match.tournamentId,
-                roundNo: top.match.roundNo,
-                slotIndex: top.match.slotIndex,
-                gameId: tournament.gameId ?? tournament.raw?.game_id ?? "rps_chess",
-              });
-            }
-          } catch (err) {
-            setMessage({ tone: "err", text: apiErrorText(err) });
-          }
-        }}
       />
 
       <div className="tl-main">
