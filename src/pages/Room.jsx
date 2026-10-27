@@ -1,6 +1,7 @@
 import { useState } from "react";
 import SubmitForm from "../components/SubmitForm.jsx";
 import TeamSlot from "../components/TeamSlot.jsx";
+import BotGuideModal from "../components/BotGuideModal.jsx";
 import { PALETTE } from "../utils/colors.js";
 
 const CONTROL_LABELS = {
@@ -12,6 +13,7 @@ const CONTROL_LABELS = {
 export default function Room({ state, onSubmit, onControl, onReady, onLeave }) {
   const { room, countdown, error } = state;
   const [copied, setCopied] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   if (!room) return null;
 
   const me = room.teams.find((t) => t.isMe);
@@ -99,7 +101,14 @@ export default function Room({ state, onSubmit, onControl, onReady, onLeave }) {
               🖱️ {CONTROL_LABELS.human.note} Mỗi lượt bạn có 30 giây; hết giờ thì đội tự đi hướng an toàn nhất.
             </p>
           ) : (
-            <SubmitForm onSubmit={onSubmit} uploadedName={me.filename} locked={me.ready} />
+            <>
+              <SubmitForm onSubmit={onSubmit} uploadedName={me.filename} locked={me.ready} />
+              <div style={{ marginTop: "8px", textAlign: "right" }}>
+                <button className="btn small" type="button" onClick={() => setShowGuide(true)}>
+                  📖 Hướng dẫn viết bot
+                </button>
+              </div>
+            </>
           )}
           <div className="ready-row">
             <button
@@ -122,6 +131,7 @@ export default function Room({ state, onSubmit, onControl, onReady, onLeave }) {
           <div key={countdown} className="countdown-num">{countdown}</div>
         </div>
       )}
+      {showGuide && <BotGuideModal onClose={() => setShowGuide(false)} />}
     </div>
   );
 }

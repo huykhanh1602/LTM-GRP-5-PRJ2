@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import BotGuideModal from "../components/BotGuideModal.jsx";
 import { GAME_CATALOG } from "../games/catalog.js";
 import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../config.js";
 import { getTournaments, searchUsers } from "../api.js";
@@ -65,6 +66,7 @@ export default function GameLobby({
   const [inviteQuery, setInviteQuery] = useState("");
   const [inviteSuggestions, setInviteSuggestions] = useState([]);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Quản lý giải đấu
   const [tournaments, setTournaments] = useState([]);
@@ -434,6 +436,13 @@ export default function GameLobby({
               >
                 🎮 Chơi Demo (Chạy thử Bot)
               </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setShowGuide(true)}
+              >
+                📖 Hướng dẫn viết bot
+              </button>
             </div>
 
             {mode === "casual" && isLoggedIn && <section className="player-invite-box" aria-label="Mời người chơi đấu">
@@ -509,6 +518,7 @@ export default function GameLobby({
           <p className="err">{problem || error}</p>
         )}
       </div>
+      {showGuide && <BotGuideModal onClose={() => setShowGuide(false)} />}
     </div>
   );
 }
