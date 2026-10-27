@@ -158,4 +158,39 @@ export const GAME_CATALOG = [
       tournament: { enabled: false, label: "Giải đấu", badge: "tournament", desc: "Chưa mở." },
     },
   },
+
+  // ── Game 5: Pikachu AI Đối Kháng ──────────────────────────
+  {
+    id: "pikachu",
+    name: "Pikachu AI Đối Kháng",
+    shortDesc: "Lập trình bot tìm cặp hình giống nhau nối tối đa 3 đoạn thẳng — ai dọn bàn nhanh hơn sẽ thắng.",
+    cover: "/game/pikachu_game.png",
+    icon: "/category-pikachu-3d.png",
+    accentColor: "#f5a623",
+    categories: ["all", "new", "tri_tue", "kinh_dien", "2_nguoi"],
+    tags: ["Trí tuệ", "Bot", "Nối hình"],
+    playerCount: "2 người",
+    ageBadge: "12+",
+    available: true,
+    modes: {
+      casual: {
+        enabled: true,
+        label: "Chơi vui",
+        badge: "casual",
+        desc: "Ghép ngẫu nhiên hoặc tạo phòng riêng. Không tính Elo. Thử nghiệm bot thoải mái.",
+      },
+      ranked: {
+        enabled: true,
+        label: "Đua hạng",
+        badge: "ranked",
+        desc: "Ghép tự động theo Elo. Kết quả được lưu vào bảng xếp hạng máy chủ.",
+      },
+      tournament: {
+        enabled: true,
+        label: "Giải đấu",
+        badge: "tournament",
+        desc: "Thi đấu loại trực tiếp hoặc tính điểm vòng tròn chọn nhà vô địch.",
+      },
+    },
+  },
 ];
