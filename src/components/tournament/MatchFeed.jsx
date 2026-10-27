@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { resolveEntry } from "../../utils/tournamentView.js";
+import Modal from "./Modal.jsx";
 
 // ─────────────────────────────────────────────────────────────
 // Danh sách trận vừa kết thúc / đang diễn ra
@@ -11,6 +13,7 @@ export default function MatchFeed({
   onReplay,
   onSpectate,
 }) {
+  const [resultMatch, setResultMatch] = useState(null);
   const visibleFeed = roundNo
     ? feed.filter(match => Number(match.roundNo ?? String(match.round ?? "").match(/\d+/)?.[0]) === Number(roundNo))
     : feed;
@@ -25,6 +28,7 @@ export default function MatchFeed({
   }
 
   return (
+    <>
     <ul className="tl-feed">
       {visibleFeed.map((match) => {
         const a = resolveEntry(entryMap, match.a);
@@ -36,6 +40,7 @@ export default function MatchFeed({
         const involvesMe = match.a === myEntryId || match.b === myEntryId;
         const scoreA = match.score?.a ?? 0;
         const scoreB = match.score?.b ?? 0;
+        const replayId = match.replayId ?? match.matchId;
 
         return (
           <li
@@ -85,10 +90,11 @@ export default function MatchFeed({
                 <button
                   type="button"
                   className="btn small"
-                  onClick={() => onReplay?.(match)}
-                  disabled={isUpcoming || (!match.replayId && !match.matchId)}
+                  onClick={() => replayId ? onReplay?.(match) : setResultMatch(match)}
+                  disabled={isUpcoming}
+                  title={replayId ? "Phát lại các lượt đã lưu" : "Trận này chỉ lưu kết quả, không có dữ liệu lượt chơi"}
                 >
-                  ⟲ Xem trận
+                  {replayId ? "⟲ Xem trận" : "📋 Xem kết quả"}
                 </button>
               )}
               <code>{String(match.matchId ?? match.id ?? "").replace("M-KBB-", "")}</code>
@@ -97,5 +103,42 @@ export default function MatchFeed({
         );
       })}
     </ul>
+    {resultMatch && (() => {
+      const resultA = resolveEntry(entryMap, resultMatch.a);
+      const resultB = resolveEntry(entryMap, resultMatch.b);
+      const winner = resultMatch.winnerId === resultMatch.a
+        ? resultA?.teamName ?? resultMatch.a
+        : resultMatch.winnerId === resultMatch.b
+          ? resultB?.teamName ?? resultMatch.b
+          : null;
+      const reason = resultMatch.result?.reason;
+      const explanation = resultMatch.result?.forfeit || reason === "FORFEIT"
+        ? "Trận được xử lý do một bên không nộp bot đúng hạn. Không có lượt chơi để phát lại."
+        : reason === "RANDOM"
+          ? "Kết quả được hệ thống xử lý vì hai bên chưa nộp bot đúng hạn. Không có lượt chơi để phát lại."
+          : "Bản lưu chỉ có kết quả trận đấu, không có dữ liệu lượt chơi để phát lại.";
+      return (
+        <Modal
+          title="Kết quả trận đấu"
+          subtitle={resultMatch.round || "Trận trong giải đấu"}
+          onClose={() => setResultMatch(null)}
+        >
+          <div className="tl-modal__scoreboard">
+            <div className="tl-modal__team"><strong>{resultA?.teamName ?? resultMatch.a ?? "—"}</strong></div>
+            <div className="tl-modal__score">
+              <b>{resultMatch.score ? resultMatch.score.a : "–"}</b>
+              <span>vs</span>
+              <b>{resultMatch.score ? resultMatch.score.b : "–"}</b>
+            </div>
+            <div className="tl-modal__team"><strong>{resultB?.teamName ?? resultMatch.b ?? "—"}</strong></div>
+          </div>
+          <p className="tl-modal__note">
+            {winner ? <>Người thắng: <strong>{winner}</strong>. </> : "Trận hòa. "}
+            {explanation}
+          </p>
+        </Modal>
+      );
+    })()}
+    </>
   );
 }

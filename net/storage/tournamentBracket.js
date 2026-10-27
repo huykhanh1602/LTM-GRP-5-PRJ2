@@ -133,6 +133,8 @@ function slotFromRow(row, roundIndex, matchIndex, scheduledAt = null) {
   const result = row.result ?? null;
   const bye = Boolean(result?.bye);
   const winnerId = row.winner_id ?? null;
+  // Older history rows may only keep the source match ID in result_json.
+  const matchId = row.match_id ?? result?.source_match_id ?? null;
   return {
     slotId: row.id,
     matchKey: `r${roundIndex}m${matchIndex}`,
@@ -145,7 +147,8 @@ function slotFromRow(row, roundIndex, matchIndex, scheduledAt = null) {
     participantAName: row.participant_a_name,
     participantBName: row.participant_b_name,
     winnerId: row.winner_id ?? null,
-    matchId: row.match_id ?? null,
+    matchId,
+    replayId: matchId,
     result,
     playedAt: row.played_at ?? null,
     scheduledAt,

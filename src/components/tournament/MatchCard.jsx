@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { resolveEntry } from "../../utils/tournamentView.js";
+import Modal from "./Modal.jsx";
 
 const STATUS_META = {
   pending: { label: "Chờ xác định", tone: "pending" },
@@ -89,6 +90,7 @@ export default function MatchCard({
   onSpectate,
   onReplay,
 }) {
+  const [showResult, setShowResult] = useState(false);
   const meta = STATUS_META[match.status] ?? STATUS_META.pending;
   const scoreA = match.score?.a ?? null;
   const scoreB = match.score?.b ?? null;
@@ -97,8 +99,21 @@ export default function MatchCard({
 
   const entryA = resolveEntry(entryMap, match.participantAId);
   const entryB = resolveEntry(entryMap, match.participantBId);
+  const replayId = match.replayId ?? match.matchId;
+  const winnerName = match.winnerId === match.participantAId
+    ? entryA?.teamName ?? match.participantAName
+    : match.winnerId === match.participantBId
+      ? entryB?.teamName ?? match.participantBName
+      : null;
+  const reason = match.result?.reason;
+  const resultExplanation = match.result?.forfeit || reason === "FORFEIT"
+    ? "Trận được xử lý do một bên không nộp bot đúng hạn. Không có lượt chơi để phát lại."
+    : reason === "RANDOM"
+      ? "Kết quả được hệ thống xử lý vì hai bên chưa nộp bot đúng hạn. Không có lượt chơi để phát lại."
+      : "Bản lưu chỉ có kết quả trận đấu, không có dữ liệu lượt chơi để phát lại.";
 
   return (
+    <>
     <article className={`tl-match tl-match--${meta.tone} ${isFinal ? "tl-match--final" : ""} ${isThirdPlace ? "tl-match--third" : ""}`}>
       <header className="tl-match__head">
         <span className="tl-match__label">
@@ -142,10 +157,10 @@ export default function MatchCard({
           <button
             type="button"
             className="tl-match__action"
-            onClick={() => onReplay?.(match)}
-            disabled={!match.replayId && !match.matchId}
+            onClick={() => replayId ? onReplay?.(match) : setShowResult(true)}
+            title={replayId ? "Phát lại các lượt đã lưu" : "Trận này chỉ lưu kết quả, không có dữ liệu lượt chơi"}
           >
-            ⟲ Xem trận đấu
+            {replayId ? "⟲ Xem trận đấu" : "📋 Xem kết quả"}
           </button>
         )}
 
@@ -172,5 +187,23 @@ export default function MatchCard({
         )}
       </footer>
     </article>
+    {showResult && (
+      <Modal title="Kết quả trận đấu" subtitle={title ?? `Trận ${match.matchIndex + 1}`} onClose={() => setShowResult(false)}>
+        <div className="tl-modal__scoreboard">
+          <div className="tl-modal__team"><strong>{entryA?.teamName ?? match.participantAName ?? "—"}</strong></div>
+          <div className="tl-modal__score">
+            <b>{match.score ? match.score.a : "–"}</b>
+            <span>vs</span>
+            <b>{match.score ? match.score.b : "–"}</b>
+          </div>
+          <div className="tl-modal__team"><strong>{entryB?.teamName ?? match.participantBName ?? "—"}</strong></div>
+        </div>
+        <p className="tl-modal__note">
+          {winnerName ? <>Người thắng: <strong>{winnerName}</strong>. </> : "Trận hòa. "}
+          {resultExplanation}
+        </p>
+      </Modal>
+    )}
+    </>
   );
 }

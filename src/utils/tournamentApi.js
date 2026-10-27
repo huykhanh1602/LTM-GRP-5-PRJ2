@@ -75,7 +75,7 @@ function decorateSlots(bracket) {
     rounds: bracket.rounds.map((slots) =>
       slots.map((slot) => ({
         ...slot,
-        replayId: slot.matchId ?? null,
+        replayId: slot.matchId ?? slot.result?.source_match_id ?? null,
         startedAt: slot.playedAt ?? null,
       })),
     ),

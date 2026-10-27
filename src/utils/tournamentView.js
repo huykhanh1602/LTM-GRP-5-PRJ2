@@ -195,7 +195,8 @@ export function normalizeSlot(raw = {}, roundIndex = 0, matchIndex = 0) {
     raw.player_b_id,
     raw.b,
   );
-  const matchId = pickId(raw.matchId, raw.match_id);
+  const result = raw.result ?? raw.result_json ?? null;
+  const matchId = pickId(raw.matchId, raw.match_id, result?.source_match_id);
   const winnerId = pickId(raw.winnerId, raw.winner_id);
   const score = readScore(raw);
 
@@ -212,7 +213,8 @@ export function normalizeSlot(raw = {}, roundIndex = 0, matchIndex = 0) {
     participantBName: firstDefined(raw.participantBName, raw.participant_b_name, null),
     winnerId,
     matchId,
-    replayId: pickId(raw.replayId, raw.replay_id),
+    replayId: pickId(raw.replayId, raw.replay_id, result?.source_match_id, matchId),
+    result,
     score,
     replayCount: toNumber(firstDefined(raw.replayCount, raw.replay_count), 0),
     startedAt: firstDefined(raw.startedAt, raw.started_at, null),
@@ -364,6 +366,7 @@ export function buildFeedFromRounds(rounds = [], labels = []) {
         score: slot.score,
         winnerId: slot.winnerId,
         replayId: slot.replayId,
+        result: slot.result,
         isFinal: roundIndex === rounds.length - 1 && matches.length === 1,
       });
     }
@@ -380,9 +383,10 @@ function normalizeFeedRows(rows, labels) {
   if (!Array.isArray(rows)) return [];
   return rows.map((row = {}, index) => {
     const rawStatus = String(row.status ?? "").toLowerCase();
+    const result = row.result ?? row.result_json ?? null;
     return {
       id: pickId(row.id, row.matchId, row.match_id) ?? `feed-${index}`,
-      matchId: pickId(row.matchId, row.match_id),
+      matchId: pickId(row.matchId, row.match_id, result?.source_match_id),
       matchKey: pickId(row.matchKey, row.match_key),
       round: firstDefined(row.round, row.roundLabel, row.round_label, labels[toNumber(firstDefined(row.roundIndex, row.round_index))], "—"),
       status:
@@ -396,7 +400,8 @@ function normalizeFeedRows(rows, labels) {
       b: pickId(row.b, row.participantBId, row.participant_b_id, row.playerBId, row.player_b_id),
       score: readScore(row),
       winnerId: pickId(row.winnerId, row.winner_id),
-      replayId: pickId(row.replayId, row.replay_id),
+      replayId: pickId(row.replayId, row.replay_id, result?.source_match_id),
+      result,
       isFinal: Boolean(firstDefined(row.isFinal, row.is_final, false)),
     };
   });
