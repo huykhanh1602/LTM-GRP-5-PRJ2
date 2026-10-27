@@ -6,14 +6,14 @@ Một nền tảng game đa năng cho phép người chơi viết bot Python (`.
 
 ## 🎯 Tổng quan
 
-| Thành phần      | Công nghệ                                    |
-| --------------- | -------------------------------------------- |
-| **Frontend**    | React 19 + Vite 8                            |
-| **Backend**     | Node.js ≥ 24 (thuần, không framework)        |
-| **Game Engine** | Python 3 (multiprocessing)                   |
-| **Database**    | PostgreSQL (production) / SQLite (local)     |
-| **Realtime**    | WebSocket (giao thức v2)                     |
-| **Deploy**      | Docker, Railway (backend), Vercel (frontend) |
+| Thành phần      | Công nghệ                                   |
+| --------------- | ------------------------------------------- |
+| **Frontend**    | React 19 + Vite 8                           |
+| **Backend**     | Node.js ≥ 24 (thuần, không framework)       |
+| **Game Engine** | Python 3 (multiprocessing)                  |
+| **Database**    | PostgreSQL (production) / SQLite (local)    |
+| **Realtime**    | WebSocket (giao thức v2)                    |
+| **Deploy**      | Docker, Render (backend), Vercel (frontend) |
 
 ## 🎮 Các game
 
@@ -116,18 +116,18 @@ docker run -p 3000:3000 \
   game-platform
 ```
 
-### Railway (backend)
+### Render (backend)
 
 1. Tạo service từ thư mục gốc repository
 2. Dockerfile tự động cài Node.js + Python 3
-3. Đặt các biến môi trường trong Railway Dashboard
+3. Đặt các biến môi trường trong Render Dashboard
 
 ### Vercel (frontend)
 
 1. Kết nối repository, framework preset: **Vite**
 2. Build command: `pnpm build`
 3. Output: `dist`
-4. Đặt `VITE_API_URL` trỏ tới backend Railway
+4. Đặt `VITE_API_URL` trỏ tới backend Render
 
 ## 🔐 Xác thực
 
