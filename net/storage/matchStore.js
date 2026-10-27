@@ -516,7 +516,7 @@ export function createMatchStore({ filename = process.env.DB_PATH || resolve('da
       (SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id) AS participant_count,
       (SELECT MAX(h.played_at) FROM tournament_match_history h WHERE h.tournament_id = t.id) AS ended_at
       FROM tournaments t JOIN games g ON g.id = t.game_id ${where}
-      ORDER BY t.starts_at IS NULL, t.starts_at, t.created_at DESC, t.id LIMIT ? OFFSET ?`)
+      ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`)
       .all(...args, limit, offset).map(row => {
         const { config_json, ...item } = row;
         return { ...item, config: JSON.parse(config_json) };

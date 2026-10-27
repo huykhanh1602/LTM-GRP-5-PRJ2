@@ -327,7 +327,7 @@ export function createPostgresMatchStore({ connectionString = process.env.DATABA
     const rows=(await query(`SELECT t.id,t.game_id,g.name AS game_name,t.code,t.name,t.format,t.status,t.config,t.starts_at,t.champion_id,t.created_at,
       (SELECT COUNT(*)::int FROM tournament_entries e WHERE e.tournament_id=t.id) AS participant_count,
       (SELECT MAX(h.played_at) FROM tournament_match_history h WHERE h.tournament_id=t.id) AS ended_at
-      FROM tournaments t JOIN games g ON g.id=t.game_id ${where} ORDER BY t.starts_at NULLS LAST,t.created_at DESC,t.id
+      FROM tournaments t JOIN games g ON g.id=t.game_id ${where} ORDER BY t.created_at DESC,t.id DESC
       LIMIT $${args.length+1} OFFSET $${args.length+2}`,[...args,limit,offset])).rows;
     return { items:rows.map(r=>({...r,starts_at:r.starts_at?.toISOString()??null,ended_at:r.ended_at?.toISOString()??null,created_at:r.created_at.toISOString()})),total,limit,offset };
   }
