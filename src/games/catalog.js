@@ -32,7 +32,7 @@ export const GAME_CATALOG = [
   // ── Game 2: Rắn Săn Mồi (Snake Bot) ─────────────────────
   {
     id: "snake_battle",
-    name: "Rắn Săn Mồi (Snake Bot)",
+    name: "Rắn Săn Mồi",
     shortDesc: "Lập trình bot điều khiển rắn săn mồi và tránh va chạm — người chơi nhiều điểm hơn sẽ thắng cuộc.",
     cover: "/game/rsm_game.png",
     icon: "/logo/rsm_logo.png",
@@ -67,7 +67,7 @@ export const GAME_CATALOG = [
   // ── Game 1: Kéo Búa Bao Cờ ──────────────────────────────
   {
     id: "rps_chess",
-    name: "Kéo · Búa · Bao Cờ",
+    name: "Kéo Búa Bao",
     shortDesc: "Lập trình bot chiến đấu trên bàn cờ chiến thuật — ai chiếm căn cứ đối thủ trước thì thắng.",
     cover: "/game/kbb_game.png",
     icon: "/logo/kbb_logo.webp",
