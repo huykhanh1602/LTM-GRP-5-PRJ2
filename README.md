@@ -1,4 +1,4 @@
-# 🎮 BotVui — Đấu Trường Game Bot
+# BotVui — Đấu Trường Game Bot
 
 Nền tảng thi đấu game bot nhiều người chơi: viết bot Python, nộp lên, xem bot của bạn đấu trực tiếp.
 
@@ -264,6 +264,3 @@ node net/importReplay.js engine/replay.json --unranked  # không tính điểm
 
 ---
 
-## Giấy phép
-
-Dự án nội bộ nhóm LTM-GRP-5 — Chưa có giấy phép công khai.
