@@ -234,10 +234,10 @@ docker build -t botvui .
 docker run -p 3000:3000 --env-file .env botvui
 ```
 
-### Railway + Vercel (cấu hình đề xuất)
+### Render + Vercel (cấu hình đề xuất)
 
-- **Backend** → Railway: deploy từ `Dockerfile`, đặt các biến server trong Railway dashboard
-- **Frontend** → Vercel: `npm run build` → deploy thư mục `dist`, đặt `VITE_API_URL` trỏ tới Railway origin
+- **Backend** → Render: tạo Web Service, chọn **Docker** runtime, deploy từ `Dockerfile`, đặt các biến server trong Render dashboard (Environment)
+- **Frontend** → Vercel: `npm run build` → deploy thư mục `dist`, đặt `VITE_API_URL` trỏ tới Render service URL (vd: `https://<tên-service>.onrender.com`)
 
 ### Migrate SQLite → PostgreSQL
 
