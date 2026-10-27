@@ -130,6 +130,12 @@ export default function GameLobby({
   const now = Date.now();
 
   // ── Actions ──────────────────────────────────────────────
+  function startDemo() {
+    setProblem("");
+    const playerName = (user?.display_name?.trim() || "Người chơi Demo");
+    onJoin({ demo: true, gameId: game.id, teamName: playerName });
+  }
+
   function findMatch() {
     if (!isLoggedIn) {
       setProblem("Hãy đăng nhập để dùng tài khoản của bạn làm người chơi.");
@@ -420,6 +426,14 @@ export default function GameLobby({
                   Tạo phòng mới
                 </button>
               )}
+              {/* Nút Chơi Demo — khả dụng ở mọi chế độ, không yêu cầu đăng nhập */}
+              <button
+                className="btn"
+                disabled={connecting}
+                onClick={startDemo}
+              >
+                🎮 Chơi Demo (Chạy thử Bot)
+              </button>
             </div>
 
             {mode === "casual" && isLoggedIn && <section className="player-invite-box" aria-label="Mời người chơi đấu">

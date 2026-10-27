@@ -79,7 +79,7 @@ const SUBMIT_ERRORS = new Set([
     "INVALID_BOT", "BOT_TOO_LARGE", "UNSUPPORTED_LANGUAGE", "WRONG_STATE", "NOT_IN_ROOM", "INVALID_MESSAGE", "RATE_LIMITED",
 ]);
 
-export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken = null, role, create, find, mode = "casual", gameId = "rps_chess", tournament = null }) {
+export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken = null, role, create, find, mode = "casual", gameId = "rps_chess", tournament = null, demo = false }) {
     const listeners = new Set();
     const emit = (m) => listeners.forEach((l) => l(m));
     let ws = null;
@@ -102,6 +102,9 @@ export function createSocketChannel({ wsUrl, httpUrl, code, teamName, authToken 
                 round_no: tournament.roundNo ?? tournament.round_no,
                 slot_index: tournament.slotIndex ?? tournament.slot_index,
             }));
+        } else if (demo) {
+            // Tạo phòng demo với bot mẫu
+            ws.send(JSON.stringify({ type: "create_demo_room", game_id: gameId }));
         } else if (role === "spectator") ws.send(JSON.stringify({ type: "watch_room", code }));
         else if (find) ws.send(JSON.stringify({ type: "find_match", game_id: gameId, mode }));
         else if (create) ws.send(JSON.stringify({ type: "create_room", game_id: gameId, mode: "casual" }));

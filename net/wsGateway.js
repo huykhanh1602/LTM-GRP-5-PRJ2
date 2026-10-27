@@ -1,4 +1,7 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { validateBotSource } from "./botValidator.js";
 import { runEngineMatch } from "./engineRunner.js";
@@ -508,7 +511,15 @@ export function createWsGateway({
                 applyResult(room, ids, { winner: room.forfeit.winnerTeamId, reason: "FORFEIT" });
                 finalReplay = forfeitReplay(room, ids, room.forfeit.winnerTeamId);
             }
-            await persistResult(room, ids, finalReplay, startedAt, emit);
+            if (room.mode !== "demo") {
+                await persistResult(room, ids, finalReplay, startedAt, emit);
+            } else {
+                // Demo: không lưu lịch sử, chỉ phát game_over
+                if (room.pendingGameOver) {
+                    emit(room.pendingGameOver);
+                    broadcastRoom(room);
+                }
+            }
         } catch (error) {
             if (runToken !== room.runToken) return;
             cancelPendingTurn(room);
@@ -804,7 +815,6 @@ export function createWsGateway({
             if (!queue.remove(conn.user.id)) return sendError(conn, "NOT_QUEUED", "Bạn không ở trong hàng đợi.");
             sendQueueState(conn, null);
         },
-
         create_room(conn, message) {
             if (!requireGameAndMode(conn, message, ["casual"])) return;
             if (conn.room || userRoom.has(conn.user.id)) return sendError(conn, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng.");
@@ -814,6 +824,55 @@ export function createWsGateway({
             const room = createRoom({ gameId: message.game_id, mode: "casual", config });
             seat(room, conn);
             broadcastRoom(room);
+        },
+
+        async create_demo_room(conn, message) {
+            if (!isGame(message.game_id)) return sendError(conn, "UNKNOWN_GAME", "game_id không tồn tại.");
+            if (conn.room || userRoom.has(conn.user.id)) return sendError(conn, "ALREADY_IN_ROOM", "Bạn đang ở trong một phòng.");
+            queue.remove(conn.user.id);
+
+            // Đọc file bot mẫu từ thư mục engine
+            const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+            const bot1Path = join(projectRoot, "engine", "bot_sample_1.py");
+            const bot4Path = join(projectRoot, "engine", "bot_sample_4.py");
+            let bot1Source, bot4Source;
+            try {
+                bot1Source = await readFile(bot1Path, "utf8");
+                bot4Source = await readFile(bot4Path, "utf8");
+            } catch (err) {
+                return sendError(conn, "INTERNAL_ERROR", "Không đọc được file bot mẫu.");
+            }
+
+            // Tạo phòng chế độ demo
+            const room = createRoom({
+                gameId: message.game_id,
+                mode: "demo",
+                config: { ...(GAMES[message.game_id]?.defaultConfig ?? {}) },
+            });
+
+            // Ghép người dùng vào ghế team_a
+            const userSlot = seat(room, conn);
+            if (!userSlot) return sendError(conn, "INTERNAL_ERROR", "Không thể vào phòng.");
+
+            // Tự động nộp bot_sample_1.py cho team_a (người chơi)
+            userSlot.source = bot1Source;
+            userSlot.filename = "bot_sample_1.py";
+            userSlot.hasBot = true;
+            userSlot.ready = true;
+
+            // Thiết lập team_b với bot_sample_4.py (đối thủ máy)
+            const botSlot = room.players[1];
+            botSlot.userId = `demo-bot-${randomUUID()}`;
+            botSlot.displayName = "Bot mẫu 4 (Phòng thủ)";
+            botSlot.connected = true;
+            botSlot.hasBot = true;
+            botSlot.source = bot4Source;
+            botSlot.filename = "bot_sample_4.py";
+            botSlot.ready = true;
+            botSlot.control = "bot";
+
+            broadcastRoom(room);
+            beginCountdown(room);
         },
 
         join_room(conn, message) {
